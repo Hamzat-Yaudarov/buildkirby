@@ -1,0 +1,22 @@
+{
+  "name": "telegram-stars-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for earning stars with referral system",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "admin": "node admin-tools.js"
+  },
+  "keywords": ["telegram", "bot", "stars", "referral"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.64.0",
+    "sqlite3": "^5.1.6",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

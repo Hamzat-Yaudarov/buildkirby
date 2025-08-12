@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
+
+[services.api]
+icon = "telegram"
