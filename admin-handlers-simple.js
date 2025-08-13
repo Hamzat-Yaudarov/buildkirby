@@ -1,10 +1,22 @@
-const db = require('./database');
+console.log('[ADMIN-HANDLERS] Starting import...');
+
+let db = null;
+try {
+    db = require('./database');
+    console.log('[ADMIN-HANDLERS] Database imported successfully:', typeof db);
+} catch (error) {
+    console.error('[ADMIN-HANDLERS] Error importing database:', error);
+}
+
+console.log('[ADMIN-HANDLERS] Import completed');
 
 // Simple admin handlers that definitely work
 async function handleAdminTasks(bot, chatId, messageId) {
-    console.log('[SIMPLE ADMIN] handleAdminTasks called');
-    
+    console.log('[SIMPLE ADMIN] handleAdminTasks called - START');
+    console.log('[SIMPLE ADMIN] Parameters:', { chatId, messageId, botType: typeof bot });
+
     try {
+        console.log('[SIMPLE ADMIN] Creating message...');
         const message = `📋 **Управление заданиями**
 
 🛠️ **Команды для создания заданий:**
@@ -12,8 +24,11 @@ async function handleAdminTasks(bot, chatId, messageId) {
 
 📋 **Доступные действия:**
 • Создание новых заданий
-• Просмотр существующих заданий  
+• Просмотр существующих заданий
 • Управление активностью заданий`;
+
+        console.log('[SIMPLE ADMIN] Calling bot.editMessageText...');
+        console.log('[SIMPLE ADMIN] Message length:', message.length);
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -26,60 +41,63 @@ async function handleAdminTasks(bot, chatId, messageId) {
                 ]
             }
         });
-        
+
         console.log('[SIMPLE ADMIN] handleAdminTasks completed successfully');
     } catch (error) {
         console.error('[SIMPLE ADMIN] Error in handleAdminTasks:', error);
-        await bot.editMessageText('❌ Ошибка загрузки управления заданиями.', {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-                ]
-            }
-        });
+        console.error('[SIMPLE ADMIN] Error type:', error.constructor.name);
+        console.error('[SIMPLE ADMIN] Error message:', error.message);
+        console.error('[SIMPLE ADMIN] Error stack:', error.stack);
+
+        try {
+            await bot.editMessageText('❌ Ошибка загрузки управления заданиями.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                    ]
+                }
+            });
+        } catch (secondError) {
+            console.error('[SIMPLE ADMIN] Error sending error message:', secondError);
+        }
     }
 }
 
 async function handleAdminChannels(bot, chatId, messageId) {
-    console.log('[SIMPLE ADMIN] handleAdminChannels called');
-    
+    console.log('[SIMPLE ADMIN] handleAdminChannels called - START');
+
     try {
-        const message = `📺 **Управление обязательными каналами**
+        console.log('[SIMPLE ADMIN] Testing ultra-simple message first...');
 
-🛠️ **Команды для управления каналами:**
-• /add_channel @channel|Название
-
-📺 **Доступные действия:**
-• Добавление обязательных каналов
-• Просмотр списка каналов
-• Управление активностью каналов`;
-
-        await bot.editMessageText(message, {
+        // Сначала попробуем самое простое сообщение без Markdown
+        await bot.editMessageText('ТЕСТ: Управление каналами работает!', {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '📺 Список каналов', callback_data: 'admin_list_channels' }],
-                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                    [{ text: 'Назад', callback_data: 'admin_menu' }]
                 ]
             }
         });
-        
-        console.log('[SIMPLE ADMIN] handleAdminChannels completed successfully');
+
+        console.log('[SIMPLE ADMIN] Ultra-simple test successful!');
+
     } catch (error) {
         console.error('[SIMPLE ADMIN] Error in handleAdminChannels:', error);
-        await bot.editMessageText('❌ Ошибка загрузки управления каналами.', {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-                ]
-            }
-        });
+        console.error('[SIMPLE ADMIN] Error type:', error.constructor.name);
+        console.error('[SIMPLE ADMIN] Error message:', error.message);
+
+        try {
+            // Попробуем отправить еще более простое сообщение
+            await bot.editMessageText('ERROR', {
+                chat_id: chatId,
+                message_id: messageId
+            });
+        } catch (secondError) {
+            console.error('[SIMPLE ADMIN] Error sending error message:', secondError);
+        }
     }
 }
 

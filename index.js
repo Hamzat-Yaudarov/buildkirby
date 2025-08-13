@@ -1,7 +1,17 @@
+console.log('[MAIN] Starting imports...');
+
 const TelegramBot = require('node-telegram-bot-api');
+console.log('[MAIN] TelegramBot imported');
+
 const cron = require('node-cron');
+console.log('[MAIN] cron imported');
+
 const db = require('./database');
-const adminHandlers = require('./admin-handlers-simple');
+console.log('[MAIN] database imported');
+
+const adminHandlers = require('./admin-test');
+console.log('[MAIN] admin-test imported, type:', typeof adminHandlers);
+console.log('[MAIN] adminHandlers.handleAdminTasks type:', typeof adminHandlers.handleAdminTasks);
 
 // Bot token - should be set via environment variable
 const token = process.env.BOT_TOKEN || '8379368723:AAEnG133OZ4qMrb5vQfM7VdEFSuLiWydsyM';
@@ -318,7 +328,7 @@ bot.onText(/\/test_version/, async (msg) => {
 
     const testMessage = `🔧 **Тест версии бота**
 
-📅 Версия: ИСПРАВЛЕННАЯ v2.1
+📅 Версия: ИСПРАВЛЕННАЯ v2.2
 🕒 Время: ${new Date().toLocaleString('ru-RU')}
 👤 Ваш ID: ${userId}
 🔧 Admin ID: ${isAdmin(userId) ? 'ВЫ АДМИН' : 'НЕ АДМИН'}
@@ -326,6 +336,36 @@ bot.onText(/\/test_version/, async (msg) => {
 ✅ Если вы видите это сообщение - работает НОВАЯ версия!`;
 
     bot.sendMessage(chatId, testMessage, { parse_mode: 'Markdown' });
+});
+
+// Direct test admin functions
+bot.onText(/\/test_admin_direct/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ Только для админа');
+        return;
+    }
+
+    try {
+        console.log('[DIRECT-TEST] Testing admin function directly...');
+
+        const sentMsg = await bot.sendMessage(chatId, 'Тестируем админ-функцию...', {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: 'Тест задания', callback_data: 'admin_tasks' }],
+                    [{ text: 'Тест каналы', callback_data: 'admin_channels' }]
+                ]
+            }
+        });
+
+        console.log('[DIRECT-TEST] Test message sent, ID:', sentMsg.message_id);
+
+    } catch (error) {
+        console.error('[DIRECT-TEST] Error:', error);
+        bot.sendMessage(chatId, `❌ Ошибка теста: ${error.message}`);
+    }
 });
 
 // Admin command handler
@@ -575,10 +615,19 @@ bot.on('callback_query', async (callbackQuery) => {
                 if (isAdmin(userId)) {
                     try {
                         console.log('[MAIN] Calling adminHandlers.handleAdminTasks...');
+                        console.log('[MAIN] adminHandlers object:', typeof adminHandlers);
+                        console.log('[MAIN] handleAdminTasks function:', typeof adminHandlers.handleAdminTasks);
+
+                        if (typeof adminHandlers.handleAdminTasks !== 'function') {
+                            throw new Error('handleAdminTasks is not a function');
+                        }
+
                         await adminHandlers.handleAdminTasks(bot, chatId, msg.message_id);
+                        console.log('[MAIN] handleAdminTasks completed successfully');
                     } catch (error) {
                         console.error('[MAIN] Error in handleAdminTasks:', error);
-                        await bot.editMessageText('❌ Ошибка загрузки управления заданиями.', {
+                        console.error('[MAIN] Error stack:', error.stack);
+                        await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
                             chat_id: chatId,
                             message_id: msg.message_id,
                             reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
@@ -591,10 +640,18 @@ bot.on('callback_query', async (callbackQuery) => {
                 if (isAdmin(userId)) {
                     try {
                         console.log('[MAIN] Calling adminHandlers.handleAdminChannels...');
+                        console.log('[MAIN] handleAdminChannels function:', typeof adminHandlers.handleAdminChannels);
+
+                        if (typeof adminHandlers.handleAdminChannels !== 'function') {
+                            throw new Error('handleAdminChannels is not a function');
+                        }
+
                         await adminHandlers.handleAdminChannels(bot, chatId, msg.message_id);
+                        console.log('[MAIN] handleAdminChannels completed successfully');
                     } catch (error) {
                         console.error('[MAIN] Error in handleAdminChannels:', error);
-                        await bot.editMessageText('❌ Ошибка загрузки управления каналами.', {
+                        console.error('[MAIN] Error stack:', error.stack);
+                        await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
                             chat_id: chatId,
                             message_id: msg.message_id,
                             reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
@@ -1168,7 +1225,7 @@ async function handleRatingsAll(chatId, messageId) {
             message += 'Пока нет данных для рейтинга.';
         } else {
             result.rows.forEach((user, index) => {
-                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                const medal = index === 0 ? '🥇' : index === 1 ? '���' : index === 2 ? '🥉' : `${index + 1}.`;
                 message += `${medal} **${user.first_name}** - ${user.referrals_count} рефералов\n`;
             });
         }
