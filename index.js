@@ -1,7 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const cron = require('node-cron');
 const db = require('./database');
-const adminHandlers = require('./admin-handlers');
+const adminHandlers = require('./admin-handlers-simple');
 
 // Bot token - should be set via environment variable
 const token = process.env.BOT_TOKEN || '8379368723:AAEnG133OZ4qMrb5vQfM7VdEFSuLiWydsyM';
@@ -311,10 +311,29 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     }
 });
 
+// Test command to verify version
+bot.onText(/\/test_version/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    const testMessage = `🔧 **Тест версии бота**
+
+📅 Версия: ИСПРАВЛЕННАЯ v2.1
+🕒 Время: ${new Date().toLocaleString('ru-RU')}
+👤 Ваш ID: ${userId}
+🔧 Admin ID: ${isAdmin(userId) ? 'ВЫ АДМИН' : 'НЕ АДМИН'}
+
+✅ Если вы видите это сообщение - работает НОВАЯ версия!`;
+
+    bot.sendMessage(chatId, testMessage, { parse_mode: 'Markdown' });
+});
+
 // Admin command handler
 bot.onText(/\/admin/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
+
+    console.log(`[ADMIN] /admin command called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
 
     if (!isAdmin(userId)) {
         bot.sendMessage(chatId, '❌ У вас нет прав доступа к панели администратора.');
@@ -327,7 +346,7 @@ bot.onText(/\/admin/, async (msg) => {
         const message = `🔧 **Админ-панель**
 
 📊 **Быстрая статистика:**
-👥 ��ользоват��лей: ${stats.total_users}
+👥 ���ользоват��лей: ${stats.total_users}
 💰 Общий баланс: ${stats.total_balance} ⭐
 
 Выберите действие:`;
@@ -431,7 +450,7 @@ bot.onText(/\/create_lottery (.+)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error creating lottery:', error);
-        bot.sendMessage(chatId, '❌ Ошибка создания ло��ереи.');
+        bot.sendMessage(chatId, '❌ Ошибка создани�� ло��ереи.');
     }
 });
 
@@ -474,13 +493,15 @@ bot.on('callback_query', async (callbackQuery) => {
     const userId = callbackQuery.from.id;
     const data = callbackQuery.data;
 
+    console.log(`[CALLBACK] Received: ${data} from userId: ${userId}`);
+
     try {
         // Get user data
         const user = await db.getUser(userId);
         
         if (!user && !data.startsWith('admin_') && data !== 'main_menu') {
             await bot.editMessageText(
-                '❌ Пользователь не найден. Нажмите /start для регистрации.',
+                '❌ Пользователь не на��ден. Нажмите /start для регистрации.',
                 {
                     chat_id: chatId,
                     message_id: msg.message_id
@@ -552,29 +573,65 @@ bot.on('callback_query', async (callbackQuery) => {
             case 'admin_tasks':
                 console.log(`[MAIN] Admin tasks called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
                 if (isAdmin(userId)) {
-                    console.log('[MAIN] Calling adminHandlers.handleAdminTasks...');
-                    await adminHandlers.handleAdminTasks(bot, chatId, msg.message_id);
+                    try {
+                        console.log('[MAIN] Calling adminHandlers.handleAdminTasks...');
+                        await adminHandlers.handleAdminTasks(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminTasks:', error);
+                        await bot.editMessageText('❌ Ошибка загрузки управления заданиями.', {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
+                        });
+                    }
                 }
                 break;
             case 'admin_channels':
                 console.log(`[MAIN] Admin channels called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
                 if (isAdmin(userId)) {
-                    console.log('[MAIN] Calling adminHandlers.handleAdminChannels...');
-                    await adminHandlers.handleAdminChannels(bot, chatId, msg.message_id);
+                    try {
+                        console.log('[MAIN] Calling adminHandlers.handleAdminChannels...');
+                        await adminHandlers.handleAdminChannels(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminChannels:', error);
+                        await bot.editMessageText('❌ Ошибка загрузки управления каналами.', {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
+                        });
+                    }
                 }
                 break;
             case 'admin_lottery':
                 console.log(`[MAIN] Admin lottery called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
                 if (isAdmin(userId)) {
-                    console.log('[MAIN] Calling adminHandlers.handleAdminLottery...');
-                    await adminHandlers.handleAdminLottery(bot, chatId, msg.message_id);
+                    try {
+                        console.log('[MAIN] Calling adminHandlers.handleAdminLottery...');
+                        await adminHandlers.handleAdminLottery(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminLottery:', error);
+                        await bot.editMessageText('❌ Ошибка загрузки управления лотереями.', {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
+                        });
+                    }
                 }
                 break;
             case 'admin_promocodes':
                 console.log(`[MAIN] Admin promocodes called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
                 if (isAdmin(userId)) {
-                    console.log('[MAIN] Calling adminHandlers.handleAdminPromocodes...');
-                    await adminHandlers.handleAdminPromocodes(bot, chatId, msg.message_id);
+                    try {
+                        console.log('[MAIN] Calling adminHandlers.handleAdminPromocodes...');
+                        await adminHandlers.handleAdminPromocodes(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminPromocodes:', error);
+                        await bot.editMessageText('❌ Ошибка загрузки управления промокодами.', {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
+                        });
+                    }
                 }
                 break;
             case 'admin_broadcast':
@@ -600,6 +657,16 @@ bot.on('callback_query', async (callbackQuery) => {
                 break;
             case 'admin_menu':
                 if (isAdmin(userId)) await handleAdminMenu(chatId, msg.message_id);
+                break;
+            case 'test_admin_direct':
+                if (isAdmin(userId)) {
+                    console.log('[TEST] Direct admin test called');
+                    await bot.editMessageText('✅ Прямой тест админ-функции работает!', {
+                        chat_id: chatId,
+                        message_id: msg.message_id,
+                        reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
+                    });
+                }
                 break;
             
             default:
@@ -863,7 +930,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
 🔗 **Ссылка:** [Откры��ь профиль](tg://user?id=${user.id})
 
 💰 **Сумма:** ${amount} ⭐
-📦 **Тип:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}`;
+📦 **Ти��:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}`;
 
     const adminKeyboard = {
         reply_markup: {
@@ -1045,7 +1112,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 }
 
 async function handleInstruction(chatId, messageId) {
-    const message = `📖 **Инструкция по боту**
+    const message = `📖 **��нструкция по боту**
 
 🎯 **Как зарабатывать звёзды:**
 
@@ -1188,7 +1255,7 @@ async function handleCases(chatId, messageId, user) {
 
 ⏰ **Вы уже открыли ��ейс сегодня!**
 
-Возвращайтесь завтра за новым кейсом!`;
+Возвращайтесь завтра за новым кей��ом!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -1395,7 +1462,7 @@ async function handlePromocodeInput(chatId, messageId, userId) {
     // Set temp action for user
     await db.updateUserField(userId, 'temp_action', 'awaiting_promocode');
     
-    await bot.editMessageText('🎁 Введите промокод:', {
+    await bot.editMessageText('🎁 ��ведите промокод:', {
         chat_id: chatId,
         message_id: messageId,
         ...getBackToMainKeyboard()
