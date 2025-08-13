@@ -2,5 +2,5 @@ node_modules/
 *.db
 .env
 .DS_Store
-Downloads/
-city-holder-*/
+.config/
+builder.config.json
