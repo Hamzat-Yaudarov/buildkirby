@@ -302,7 +302,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 💰 **Ваш персональный помощник для заработка Telegram Stars**
 
 🎯 **Доступные возможности:**
-• Ежедневные награды в кликере
+• Ежедневные на��рады в кликере
 • Выполнение заданий за вознаграждение
 • Реферальная программа (3⭐ за друга)
 • Участие в лотереях и розыгрышах
@@ -426,7 +426,7 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
             [channelId.trim(), `${type} ${channelId}`.trim(), parseFloat(reward)]
         );
 
-        bot.sendMessage(chatId, `✅ Задание создано!\n📺 Канал: ${channelId}\n💰 Награда: ${reward} ⭐`);
+        bot.sendMessage(chatId, `✅ Задание с��здано!\n📺 Канал: ${channelId}\n💰 Награда: ${reward} ⭐`);
 
     } catch (error) {
         console.error('Error creating task:', error);
@@ -667,7 +667,7 @@ bot.on('callback_query', async (callbackQuery) => {
                         await adminHandlers.handleAdminLottery(bot, chatId, msg.message_id);
                     } catch (error) {
                         console.error('[MAIN] Error in handleAdminLottery:', error);
-                        await bot.editMessageText('❌ Ошибка загрузки управления лотереями.', {
+                        await bot.editMessageText('❌ Ошибка загрузки управ��ения лотереями.', {
                             chat_id: chatId,
                             message_id: msg.message_id,
                             reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
@@ -759,6 +759,76 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
+// Lottery reward distribution
+async function distributeLotteryRewards(lotteryId, lottery) {
+    try {
+        console.log(`[LOTTERY] Starting reward distribution for lottery ${lotteryId}`);
+
+        // Get all participants
+        const participants = await db.executeQuery(
+            'SELECT user_id FROM lottery_tickets WHERE lottery_id = $1',
+            [lotteryId]
+        );
+
+        if (participants.rows.length === 0) {
+            console.log('[LOTTERY] No participants found');
+            return;
+        }
+
+        // Select random winners
+        const winnersCount = Math.min(lottery.winners_count, participants.rows.length);
+        const shuffled = [...participants.rows].sort(() => 0.5 - Math.random());
+        const winners = shuffled.slice(0, winnersCount);
+
+        // Calculate reward per winner
+        const totalPrizePool = lottery.ticket_price * lottery.max_tickets;
+        const rewardPerWinner = Math.floor(totalPrizePool / winnersCount * 100) / 100; // Round to 2 decimals
+
+        console.log(`[LOTTERY] Prize pool: ${totalPrizePool} ⭐, ${winnersCount} winners, ${rewardPerWinner} ⭐ each`);
+
+        // Distribute rewards
+        for (const winner of winners) {
+            await db.updateUserBalance(winner.user_id, rewardPerWinner);
+
+            // Notify winner
+            try {
+                const user = await db.getUser(winner.user_id);
+                const message = `🎉 **Поздравляем! Вы выиграли в лотерее!**
+
+🎰 Лотерея: **${lottery.name}**
+💰 Ваш выигрыш: **${rewardPerWinner} ⭐**
+🏆 Всего победителей: ${winnersCount}
+
+✨ Награда зачислена на ваш баланс!`;
+
+                await bot.sendMessage(winner.user_id, message, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '👤 Мой профиль', callback_data: 'profile' }],
+                            [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                        ]
+                    }
+                });
+                console.log(`[LOTTERY] Winner ${winner.user_id} notified`);
+            } catch (notifyError) {
+                console.error(`[LOTTERY] Failed to notify winner ${winner.user_id}:`, notifyError);
+            }
+        }
+
+        // Mark lottery as inactive
+        await db.executeQuery(
+            'UPDATE lotteries SET is_active = FALSE WHERE id = $1',
+            [lotteryId]
+        );
+
+        console.log(`[LOTTERY] Lottery ${lotteryId} completed successfully`);
+
+    } catch (error) {
+        console.error('[LOTTERY] Error distributing rewards:', error);
+    }
+}
+
 // Menu handlers
 async function handleMainMenu(chatId, messageId) {
     const welcomeMessage = `🌟 **Главное меню StarBot**
@@ -768,7 +838,7 @@ async function handleMainMenu(chatId, messageId) {
 🎯 **Доступные возможности:**
 • 🎯 **Кликер** - ежедневная награда 0.1 ⭐
 • 📋 **Задания** - выполняйте задачи за вознаграждение
-• 👥 **Рефералы** - приглаша��те друзей (3 ⭐ за каждого)
+• 👥 **Рефералы** - п��иглаша��те друзей (3 ⭐ за каждого)
 • 🎁 **Кейсы** - призы от 1 до 10 ⭐
 • 🎰 **Лотерея** - участвуйте в розыгрышах
 
@@ -987,7 +1057,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
 🔗 **Ссылка:** [Откры��ь профиль](tg://user?id=${user.id})
 
 💰 **Сумма:** ${amount} ⭐
-📦 **Ти��:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}`;
+📦 **Ти��:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Зв��зды'}`;
 
     const adminKeyboard = {
         reply_markup: {
@@ -1025,7 +1095,7 @@ async function handleTasks(chatId, messageId, user) {
         const availableTasks = allTasks.filter(task => !completedTaskIds.includes(task.id));
 
         if (availableTasks.length === 0) {
-            await bot.editMessageText('✅ Все задания выполнены! Ожидайте новых заданий.', {
+            await bot.editMessageText('✅ Все задания выполнены! Ожидайт�� новых заданий.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -1094,7 +1164,7 @@ async function handleTaskExecute(chatId, messageId, userId, taskId) {
             }
         };
 
-        await bot.editMessageText(`📋 Подпишитесь на канал и нажмите "Проверить"`, {
+        await bot.editMessageText(`📋 Подпишитесь на ��анал и нажмите "Проверить"`, {
             chat_id: chatId,
             message_id: messageId,
             ...keyboard
@@ -1330,7 +1400,7 @@ async function handleCases(chatId, messageId, user) {
 
     const message = `🎁 **Кейсы**
 
-🎉 **Поздравляем!** Вы открыли кейс и получили **${reward} ⭐**
+🎉 **Поздра��ляем!** Вы открыли кейс и получили **${reward} ⭐**
 
 💰 **Ваш баланс:** ${user.balance + reward} ⭐
 
@@ -1484,8 +1554,8 @@ async function handleLotteryBuy(chatId, messageId, userId, lotteryId) {
             );
 
             // Update lottery count
-            await db.executeQuery(
-                'UPDATE lotteries SET current_tickets = current_tickets + 1 WHERE id = $1',
+            const updatedLottery = await db.executeQuery(
+                'UPDATE lotteries SET current_tickets = current_tickets + 1 WHERE id = $1 RETURNING current_tickets, max_tickets',
                 [lotteryId]
             );
 
@@ -1493,6 +1563,15 @@ async function handleLotteryBuy(chatId, messageId, userId, lotteryId) {
             await db.updateUserBalance(userId, -lottery.ticket_price);
 
             await db.executeQuery('COMMIT');
+
+            // Check if lottery is now full and distribute rewards
+            const newTicketCount = updatedLottery.rows[0].current_tickets;
+            const maxTickets = updatedLottery.rows[0].max_tickets;
+
+            if (newTicketCount >= maxTickets) {
+                console.log(`[LOTTERY] Lottery ${lotteryId} is full, distributing rewards...`);
+                await distributeLotteryRewards(lotteryId, lottery);
+            }
 
             await bot.editMessageText(`✅ Билет успешно куплен за ${lottery.ticket_price} ⭐!`, {
                 chat_id: chatId,
@@ -1616,7 +1695,7 @@ async function handleAdminMenu(chatId, messageId) {
 
         const message = `🔧 **Админ-панель**
 
-�� **Быстрая статистика:**
+�� **Б��страя статистика:**
 👥 Пользователей: ${stats.total_users}
 💰 Общий баланс: ${stats.total_balance} ⭐
 
@@ -1665,6 +1744,113 @@ bot.on('polling_error', (error) => {
         }, 5000);
     } else {
         console.error('Polling error:', error.message);
+    }
+});
+
+// Admin delete commands
+bot.onText(/\/delete_task (\d+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const taskId = parseInt(match[1]);
+        const result = await db.executeQuery('DELETE FROM tasks WHERE id = $1', [taskId]);
+
+        if (result.rowCount > 0) {
+            bot.sendMessage(chatId, `✅ Задание с ID ${taskId} удалено!`);
+        } else {
+            bot.sendMessage(chatId, `❌ Задание с ID ${taskId} не найдено.`);
+        }
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        bot.sendMessage(chatId, '❌ Ошибка удаления задания.');
+    }
+});
+
+bot.onText(/\/delete_channel (\d+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const channelId = parseInt(match[1]);
+        const result = await db.executeQuery('DELETE FROM required_channels WHERE id = $1', [channelId]);
+
+        if (result.rowCount > 0) {
+            bot.sendMessage(chatId, `✅ Канал с ID ${channelId} удален!`);
+        } else {
+            bot.sendMessage(chatId, `❌ Канал с ID ${channelId} не найден.`);
+        }
+    } catch (error) {
+        console.error('Error deleting channel:', error);
+        bot.sendMessage(chatId, '❌ Ошибка удаления канала.');
+    }
+});
+
+bot.onText(/\/delete_lottery (\d+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const lotteryId = parseInt(match[1]);
+
+        // Check if lottery has participants
+        const ticketsResult = await db.executeQuery('SELECT COUNT(*) as count FROM lottery_tickets WHERE lottery_id = $1', [lotteryId]);
+        const hasTickets = ticketsResult.rows[0].count > 0;
+
+        if (hasTickets) {
+            bot.sendMessage(chatId, `❌ Нельзя удалить лотерею с ID ${lotteryId} - в ней есть участники! Сначала завершите лотерею.`);
+            return;
+        }
+
+        const result = await db.executeQuery('DELETE FROM lotteries WHERE id = $1', [lotteryId]);
+
+        if (result.rowCount > 0) {
+            bot.sendMessage(chatId, `✅ Лотерея с ID ${lotteryId} удалена!`);
+        } else {
+            bot.sendMessage(chatId, `❌ Лотерея с ID ${lotteryId} не найдена.`);
+        }
+    } catch (error) {
+        console.error('Error deleting lottery:', error);
+        bot.sendMessage(chatId, '❌ Ошибка удаления лотереи.');
+    }
+});
+
+bot.onText(/\/delete_promo (\d+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const promoId = parseInt(match[1]);
+        const result = await db.executeQuery('DELETE FROM promocodes WHERE id = $1', [promoId]);
+
+        if (result.rowCount > 0) {
+            bot.sendMessage(chatId, `✅ Промокод с ID ${promoId} удален!`);
+        } else {
+            bot.sendMessage(chatId, `❌ Промокод с ID ${promoId} не найден.`);
+        }
+    } catch (error) {
+        console.error('Error deleting promocode:', error);
+        bot.sendMessage(chatId, '❌ Ошибка удаления промокода.');
     }
 });
 

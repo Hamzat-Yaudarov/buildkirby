@@ -1,6 +1,53 @@
+# Node modules
 node_modules/
-*.db
+
+# Environment variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+
+# Database files (if using SQLite locally)
+*.db
+*.sqlite
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
 .DS_Store
-Downloads/
-city-holder-*/
+Thumbs.db
+
+# Old backup files (we'll keep these for reference but exclude from git)
+*-backup.js
+*-improved.js
+*-postgresql.js
+
+# Test and debug files
+test-db.js
+admin-test.js
+admin-tools.js
+
+# Old documentation files
+ADMIN_COMMANDS.md
+CHANGELOG.md
+DEBUG_SOLUTION.md
+FINAL_FIX_REPORT.md
+FINAL_STATUS_REPORT.md
+FIXES_SUMMARY.md
+ISSUE_FIXES.md
+STATUS_REPORT.md
+SUCCESS_REPORT.md
