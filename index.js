@@ -3,10 +3,11 @@ const sqlite3 = require('sqlite3').verbose();
 const cron = require('node-cron');
 
 // Bot token - should be set via environment variable
-const token = process.env.BOT_TOKEN || 'YOUR_BOT_TOKEN_HERE';
+const token = process.env.BOT_TOKEN || '8155190346:AAEjkRihVsGkndNhmBN5ptYnz2GUT6qScnM';
 const bot = new TelegramBot(token, { polling: true });
 
-// Admin channel for withdrawal requests
+// Admin configuration
+const ADMIN_ID = 6910097562;
 const ADMIN_CHANNEL = process.env.ADMIN_CHANNEL || '@kirbyvivodstars';
 
 // Required channels/chats for registration
@@ -83,14 +84,58 @@ db.serialize(() => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         processed_at DATETIME
     )`);
+
+    // Promocodes table
+    db.run(`CREATE TABLE IF NOT EXISTS promocodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE,
+        reward REAL,
+        max_uses INTEGER,
+        current_uses INTEGER DEFAULT 0,
+        is_active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Promocode usage tracking
+    db.run(`CREATE TABLE IF NOT EXISTS promocode_usage (
+        user_id INTEGER,
+        promocode_id INTEGER,
+        used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, promocode_id)
+    )`);
+
+    // Required channels for registration
+    db.run(`CREATE TABLE IF NOT EXISTS required_channels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT UNIQUE,
+        channel_name TEXT,
+        is_active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 });
+
+// Helper function to check if user is admin
+function isAdmin(userId) {
+    return userId === ADMIN_ID;
+}
+
+// Helper function to get required channels from database
+function getRequiredChannels() {
+    return new Promise((resolve, reject) => {
+        db.all('SELECT channel_id FROM required_channels WHERE is_active = 1', [], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows.map(row => row.channel_id));
+        });
+    });
+}
 
 // Helper function to check if user is subscribed to required channels
 async function checkSubscriptions(userId) {
-    if (REQUIRED_CHANNELS.length === 0) return true;
+    const requiredChannels = await getRequiredChannels();
+    if (requiredChannels.length === 0) return true;
     
     try {
-        for (const channel of REQUIRED_CHANNELS) {
+        for (const channel of requiredChannels) {
             const member = await bot.getChatMember(channel, userId);
             if (member.status === 'left' || member.status === 'kicked') {
                 return false;
@@ -175,7 +220,7 @@ const mainKeyboard = {
     reply_markup: {
         keyboard: [
             ['👤 Профиль', '👥 Пригласить друзей'],
-            ['🎯 Кликер', '💰 Вывод звёзд'],
+            ['🎯 ��ликер', '💰 Вывод звёзд'],
             ['📋 Задания', '📖 Инструкция'],
             ['🏆 Рейтинги', '🎁 Кейсы'],
             ['🎰 Лотерея']
@@ -191,6 +236,36 @@ const backToMainKeyboard = {
         resize_keyboard: true
     }
 };
+
+// Admin command handler
+bot.onText(/\/admin/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа к админ-панели.');
+        return;
+    }
+
+    const adminMessage = `🔧 Админ-панель
+
+Добро пожаловать в панель администратора!
+Выберите действие:`;
+
+    const adminKeyboard = {
+        reply_markup: {
+            keyboard: [
+                ['📊 Статистика', '📋 Управление заданиями'],
+                ['📺 Обязательные каналы', '🎰 Управление лотереями'],
+                ['🎫 Промокоды', '📢 Рассылка'],
+                ['🏠 В главное меню']
+            ],
+            resize_keyboard: true
+        }
+    };
+
+    bot.sendMessage(chatId, adminMessage, adminKeyboard);
+});
 
 // Start command handler
 bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
@@ -219,17 +294,26 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         
         // Check subscriptions
         const isSubscribed = await checkSubscriptions(userId);
-        
-        if (!isSubscribed && REQUIRED_CHANNELS.length > 0) {
+        const requiredChannels = await getRequiredChannels();
+
+        if (!isSubscribed && requiredChannels.length > 0) {
             let message = '🔔 Для использования бота необходимо подписаться на все каналы:\n\n';
-            
-            REQUIRED_CHANNELS.forEach((channel, index) => {
-                message += `${index + 1}. ${channel}\n`;
+
+            // Get channel names from database
+            db.all('SELECT channel_id, channel_name FROM required_channels WHERE is_active = 1', [], (err, channels) => {
+                if (!err && channels.length > 0) {
+                    channels.forEach((channel, index) => {
+                        message += `${index + 1}. ${channel.channel_name || channel.channel_id}\n`;
+                    });
+                } else {
+                    requiredChannels.forEach((channel, index) => {
+                        message += `${index + 1}. ${channel}\n`;
+                    });
+                }
+
+                message += '\nПосле подписки нажмите /start снова';
+                bot.sendMessage(chatId, message);
             });
-            
-            message += '\nПосле подписки нажмите /start снова';
-            
-            bot.sendMessage(chatId, message);
             return;
         }
         
@@ -256,6 +340,86 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     }
 });
 
+// Admin statistics handler
+bot.onText(/📊 Статистика/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        // Get comprehensive statistics
+        db.all(`
+            SELECT
+                COUNT(*) as total_users,
+                SUM(balance) as total_balance,
+                SUM(referrals_count) as total_referrals,
+                COUNT(CASE WHEN datetime(registered_at) >= datetime('now', '-7 days') THEN 1 END) as new_users_week,
+                COUNT(CASE WHEN datetime(registered_at) >= datetime('now', '-1 day') THEN 1 END) as new_users_day,
+                COUNT(CASE WHEN is_subscribed = 1 AND datetime(registered_at) >= datetime('now', '-7 days') THEN 1 END) as active_week,
+                COUNT(CASE WHEN is_subscribed = 1 AND datetime(registered_at) >= datetime('now', '-1 day') THEN 1 END) as active_day
+            FROM users
+        `, [], (err, stats) => {
+            if (err) {
+                console.error('Stats error:', err);
+                bot.sendMessage(chatId, '❌ Ошибка получения статистики.');
+                return;
+            }
+
+            const stat = stats[0];
+
+            // Get additional statistics
+            db.all(`
+                SELECT
+                    (SELECT COUNT(*) FROM tasks WHERE is_active = 1) as active_tasks,
+                    (SELECT COUNT(*) FROM lotteries WHERE is_active = 1) as active_lotteries,
+                    (SELECT COUNT(*) FROM promocodes WHERE is_active = 1) as active_promos,
+                    (SELECT COUNT(*) FROM withdrawal_requests WHERE status = 'pending') as pending_withdrawals
+            `, [], (err, additional) => {
+                if (err) {
+                    console.error('Additional stats error:', err);
+                    return;
+                }
+
+                const add = additional[0];
+
+                const statsMessage = `📊 Статистика бота
+
+👥 **Пользователи:**
+• Всего пользователей: ${stat.total_users}
+• Активные за неделю: ${stat.active_week}
+• Активные за день: ${stat.active_day}
+• Новые за неделю: ${stat.new_users_week}
+• Новые за день: ${stat.new_users_day}
+
+💰 **Финансы:**
+• Общий баланс: ${(stat.total_balance || 0).toFixed(1)} ⭐️
+• Всего рефералов: ${stat.total_referrals || 0}
+
+🎯 **Контент:**
+• Активных заданий: ${add.active_tasks}
+• Активных лотерей: ${add.active_lotteries}
+• Активных промокодов: ${add.active_promos}
+• Заявок на вывод: ${add.pending_withdrawals}`;
+
+                bot.sendMessage(chatId, statsMessage, {
+                    reply_markup: {
+                        keyboard: [['🔧 Админ-панель']],
+                        resize_keyboard: true
+                    }
+                });
+            });
+        });
+
+    } catch (error) {
+        console.error('Error in admin stats:', error);
+        bot.sendMessage(chatId, '❌ Произошла ошибка при получении статистики.');
+    }
+});
+
 // Profile handler
 bot.onText(/👤 Профиль/, async (msg) => {
     const chatId = msg.chat.id;
@@ -269,7 +433,7 @@ bot.onText(/👤 Профиль/, async (msg) => {
             return;
         }
         
-        const profileMessage = `👤 Ваш профиль:
+        const profileMessage = `👤 Ваш проф��ль:
 
 👋 Имя: ${user.first_name || 'Не указано'}
 🆔 ID: ${user.id}
@@ -295,6 +459,231 @@ bot.onText(/👤 Профиль/, async (msg) => {
     }
 });
 
+// Admin task management handler
+bot.onText(/📋 Управление заданиями/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    // Get current tasks
+    db.all('SELECT * FROM tasks WHERE is_active = 1 ORDER BY id DESC', [], (err, tasks) => {
+        if (err) {
+            bot.sendMessage(chatId, '❌ Ошибка загрузки заданий.');
+            return;
+        }
+
+        let message = '📋 **Управление заданиями**\n\n';
+
+        if (tasks.length === 0) {
+            message += 'Активных заданий нет.\n\n';
+        } else {
+            message += '**Активные задания:**\n';
+            tasks.forEach((task, index) => {
+                message += `${index + 1}. ${task.channel_name}\n`;
+                message += `   Канал: ${task.channel_id}\n`;
+                message += `   Награда: ${task.reward} ⭐️\n\n`;
+            });
+        }
+
+        message += '**Команды:**\n';
+        message += '• Добавить: /add_task канал|название|награда\n';
+        message += '• Удалить: /delete_task [ID]\n';
+        message += '• Пример: /add_task @mychannel|Мой канал|2';
+
+        bot.sendMessage(chatId, message, {
+            reply_markup: {
+                keyboard: [['🔧 Админ-панель']],
+                resize_keyboard: true
+            },
+            parse_mode: 'Markdown'
+        });
+    });
+});
+
+// Add task command
+bot.onText(/\/add_task (.+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    const params = match[1].split('|');
+    if (params.length !== 3) {
+        bot.sendMessage(chatId, '❌ Неверный формат. Используйте: /add_task канал|название|награда');
+        return;
+    }
+
+    const [channelId, channelName, rewardStr] = params;
+    const reward = parseFloat(rewardStr);
+
+    if (isNaN(reward) || reward <= 0) {
+        bot.sendMessage(chatId, '❌ Награда должна быть положительным числом.');
+        return;
+    }
+
+    db.run(
+        'INSERT INTO tasks (channel_id, channel_name, reward) VALUES (?, ?, ?)',
+        [channelId.trim(), channelName.trim(), reward],
+        function(err) {
+            if (err) {
+                console.error('Add task error:', err);
+                bot.sendMessage(chatId, '❌ Ошибка добавления задания.');
+                return;
+            }
+
+            bot.sendMessage(chatId, `✅ Задание добавлено!\n\nКанал: ${channelName.trim()}\nНаграда: ${reward} ⭐️`);
+        }
+    );
+});
+
+// Delete task command
+bot.onText(/\/delete_task (\d+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    const taskId = parseInt(match[1]);
+
+    db.run(
+        'UPDATE tasks SET is_active = 0 WHERE id = ?',
+        [taskId],
+        function(err) {
+            if (err) {
+                console.error('Delete task error:', err);
+                bot.sendMessage(chatId, '❌ Ошибка удаления задания.');
+                return;
+            }
+
+            if (this.changes === 0) {
+                bot.sendMessage(chatId, '❌ Задание с таким ID не найдено.');
+                return;
+            }
+
+            bot.sendMessage(chatId, `✅ Задание #${taskId} удалено.`);
+        }
+    );
+});
+
+// Admin required channels management
+bot.onText(/📺 Обязательные каналы/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    // Get current required channels
+    db.all('SELECT * FROM required_channels WHERE is_active = 1 ORDER BY id DESC', [], (err, channels) => {
+        if (err) {
+            bot.sendMessage(chatId, '❌ Ошибка загрузки каналов.');
+            return;
+        }
+
+        let message = '📺 **Обязательные каналы**\n\n';
+
+        if (channels.length === 0) {
+            message += 'Обязательных каналов нет.\n\n';
+        } else {
+            message += '**Активные каналы:**\n';
+            channels.forEach((channel, index) => {
+                message += `${index + 1}. ${channel.channel_name}\n`;
+                message += `   ID: ${channel.channel_id}\n\n`;
+            });
+        }
+
+        message += '**Команды:**\n';
+        message += '• Добавить: /add_channel канал|название\n';
+        message += '• Удалить: /delete_channel [ID]\n';
+        message += '• Пример: /add_channel @mychannel|Мой канал';
+
+        bot.sendMessage(chatId, message, {
+            reply_markup: {
+                keyboard: [['🔧 Админ-панель']],
+                resize_keyboard: true
+            },
+            parse_mode: 'Markdown'
+        });
+    });
+});
+
+// Add required channel command
+bot.onText(/\/add_channel (.+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    const params = match[1].split('|');
+    if (params.length !== 2) {
+        bot.sendMessage(chatId, '❌ Неверный формат. Используйте: /add_channel канал|название');
+        return;
+    }
+
+    const [channelId, channelName] = params;
+
+    db.run(
+        'INSERT OR REPLACE INTO required_channels (channel_id, channel_name, is_active) VALUES (?, ?, 1)',
+        [channelId.trim(), channelName.trim()],
+        function(err) {
+            if (err) {
+                console.error('Add channel error:', err);
+                bot.sendMessage(chatId, '❌ Ошибка добавления канала.');
+                return;
+            }
+
+            bot.sendMessage(chatId, `✅ Обязательный канал добавлен!\n\nКанал: ${channelName.trim()}\nID: ${channelId.trim()}`);
+        }
+    );
+});
+
+// Delete required channel command
+bot.onText(/\/delete_channel (\d+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    const channelDbId = parseInt(match[1]);
+
+    db.run(
+        'UPDATE required_channels SET is_active = 0 WHERE id = ?',
+        [channelDbId],
+        function(err) {
+            if (err) {
+                console.error('Delete channel error:', err);
+                bot.sendMessage(chatId, '❌ Ошибка удаления канала.');
+                return;
+            }
+
+            if (this.changes === 0) {
+                bot.sendMessage(chatId, '❌ Канал с таким ID не найден.');
+                return;
+            }
+
+            bot.sendMessage(chatId, `✅ Обязательный канал #${channelDbId} удален.`);
+        }
+    );
+});
+
 // Invite friends handler
 bot.onText(/👥 Пригласить друзей/, async (msg) => {
     const chatId = msg.chat.id;
@@ -310,6 +699,237 @@ ${referralLink}
 Поделись этой ссылкой с друзьями, и когда они зарегистрируются через неё, ты получишь бонус!`;
     
     bot.sendMessage(chatId, inviteMessage, backToMainKeyboard);
+});
+
+// Admin lottery management
+bot.onText(/🎰 Управление лотереями/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    // Get current lotteries
+    db.all('SELECT * FROM lotteries WHERE is_active = 1 ORDER BY id DESC', [], (err, lotteries) => {
+        if (err) {
+            bot.sendMessage(chatId, '❌ Ошибка загрузки лотерей.');
+            return;
+        }
+
+        let message = '🎰 **Управление лотереями**\n\n';
+
+        if (lotteries.length === 0) {
+            message += 'Активных лотерей нет.\n\n';
+        } else {
+            message += '**Активные лотереи:**\n';
+            lotteries.forEach((lottery, index) => {
+                message += `${index + 1}. ${lottery.name}\n`;
+                message += `   Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
+                message += `   Цена: ${lottery.ticket_price} ⭐️\n`;
+                message += `   Победителей: ${lottery.winners_count}\n\n`;
+            });
+        }
+
+        message += '**Команды:**\n';
+        message += '• Создать: /add_lottery название|билеты|цена|победители|%\n';
+        message += '• Пример: /add_lottery Супер лотерея|100|5|10|10';
+
+        bot.sendMessage(chatId, message, {
+            reply_markup: {
+                keyboard: [['🔧 Админ-панель']],
+                resize_keyboard: true
+            },
+            parse_mode: 'Markdown'
+        });
+    });
+});
+
+// Add lottery command
+bot.onText(/\/add_lottery (.+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    const params = match[1].split('|');
+    if (params.length !== 5) {
+        bot.sendMessage(chatId, '❌ Неверный формат. Используйте: /add_lottery название|билеты|цена|победители|%');
+        return;
+    }
+
+    const [name, maxTicketsStr, priceStr, winnersStr, percentStr] = params;
+    const maxTickets = parseInt(maxTicketsStr);
+    const price = parseFloat(priceStr);
+    const winners = parseInt(winnersStr);
+    const percent = parseFloat(percentStr);
+
+    if (isNaN(maxTickets) || isNaN(price) || isNaN(winners) || isNaN(percent) ||
+        maxTickets <= 0 || price <= 0 || winners <= 0 || percent < 0 || percent > 100) {
+        bot.sendMessage(chatId, '❌ Неверные числовые значения.');
+        return;
+    }
+
+    db.run(
+        'INSERT INTO lotteries (name, ticket_price, max_tickets, winners_count) VALUES (?, ?, ?, ?)',
+        [name.trim(), price, maxTickets, winners],
+        function(err) {
+            if (err) {
+                console.error('Add lottery error:', err);
+                bot.sendMessage(chatId, '❌ Ошибка создания лотереи.');
+                return;
+            }
+
+            bot.sendMessage(chatId, `✅ Лотерея создана!\n\nНазвание: ${name.trim()}\nБилетов: ${maxTickets}\nЦена: ${price} ⭐️\nПобедителей: ${winners}\nПроцент боту: ${percent}%`);
+        }
+    );
+});
+
+// Admin promocodes management
+bot.onText(/🎫 Промокоды/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    // Get current promocodes
+    db.all('SELECT * FROM promocodes WHERE is_active = 1 ORDER BY id DESC', [], (err, promos) => {
+        if (err) {
+            bot.sendMessage(chatId, '❌ Ошибка загрузки промокодов.');
+            return;
+        }
+
+        let message = '🎫 **Управление промокодами**\n\n';
+
+        if (promos.length === 0) {
+            message += 'Активных промокодов нет.\n\n';
+        } else {
+            message += '**Активные промокоды:**\n';
+            promos.forEach((promo, index) => {
+                message += `${index + 1}. **${promo.code}**\n`;
+                message += `   Награда: ${promo.reward} ⭐️\n`;
+                message += `   Использований: ${promo.current_uses}/${promo.max_uses}\n\n`;
+            });
+        }
+
+        message += '**Команды:**\n';
+        message += '• Создать: /add_promo код|звёзды|активации\n';
+        message += '• Пример: /add_promo STARS50|0.5|100';
+
+        bot.sendMessage(chatId, message, {
+            reply_markup: {
+                keyboard: [['🔧 Админ-панель']],
+                resize_keyboard: true
+            },
+            parse_mode: 'Markdown'
+        });
+    });
+});
+
+// Add promocode command
+bot.onText(/\/add_promo (.+)/, (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    const params = match[1].split('|');
+    if (params.length !== 3) {
+        bot.sendMessage(chatId, '❌ Неверный формат. Используйте: /add_promo код|звёзды|активации');
+        return;
+    }
+
+    const [code, rewardStr, maxUsesStr] = params;
+    const reward = parseFloat(rewardStr);
+    const maxUses = parseInt(maxUsesStr);
+
+    if (isNaN(reward) || isNaN(maxUses) || reward <= 0 || maxUses <= 0) {
+        bot.sendMessage(chatId, '❌ Неверные числовые значения.');
+        return;
+    }
+
+    db.run(
+        'INSERT INTO promocodes (code, reward, max_uses) VALUES (?, ?, ?)',
+        [code.trim().toUpperCase(), reward, maxUses],
+        function(err) {
+            if (err) {
+                if (err.code === 'SQLITE_CONSTRAINT') {
+                    bot.sendMessage(chatId, '❌ Промокод уже существует.');
+                } else {
+                    console.error('Add promo error:', err);
+                    bot.sendMessage(chatId, '❌ Ошибка создания промокода.');
+                }
+                return;
+            }
+
+            bot.sendMessage(chatId, `✅ Промокод создан!\n\nКод: **${code.trim().toUpperCase()}**\nНаграда: ${reward} ⭐️\nАктиваций: ${maxUses}`, {parse_mode: 'Markdown'});
+        }
+    );
+});
+
+// Promocode usage handler
+bot.onText(/🎫 Промокод/, (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    bot.sendMessage(chatId, '🎫 Введите промокод:', {
+        reply_markup: {
+            force_reply: true
+        }
+    });
+});
+
+// Handle promocode input
+bot.on('message', (msg) => {
+    if (msg.reply_to_message && msg.reply_to_message.text === '🎫 Введите промокод:') {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        const code = msg.text.trim().toUpperCase();
+
+        // Check if promocode exists and is active
+        db.get('SELECT * FROM promocodes WHERE code = ? AND is_active = 1', [code], (err, promo) => {
+            if (err || !promo) {
+                bot.sendMessage(chatId, '❌ Промокод не найден или неактивен.');
+                return;
+            }
+
+            // Check if user already used this promocode
+            db.get('SELECT * FROM promocode_usage WHERE user_id = ? AND promocode_id = ?', [userId, promo.id], (err, usage) => {
+                if (err) {
+                    bot.sendMessage(chatId, '❌ Ошибка проверки промокода.');
+                    return;
+                }
+
+                if (usage) {
+                    bot.sendMessage(chatId, '❌ Вы уже использовали этот промокод.');
+                    return;
+                }
+
+                // Check if promocode has uses left
+                if (promo.current_uses >= promo.max_uses) {
+                    bot.sendMessage(chatId, '❌ Промокод исчерпан.');
+                    return;
+                }
+
+                // Use promocode
+                db.run('INSERT INTO promocode_usage (user_id, promocode_id) VALUES (?, ?)', [userId, promo.id]);
+                db.run('UPDATE promocodes SET current_uses = current_uses + 1 WHERE id = ?', [promo.id]);
+                db.run('UPDATE users SET balance = balance + ? WHERE id = ?', [promo.reward, userId]);
+
+                bot.sendMessage(chatId, `✅ Промокод активирован!\n\nВы получили ${promo.reward} ⭐️!`);
+            });
+        });
+    }
 });
 
 // Clicker handler
@@ -352,7 +972,7 @@ bot.onText(/🎯 Кликер/, async (msg) => {
         
     } catch (error) {
         console.error('Error in clicker:', error);
-        bot.sendMessage(chatId, '�� Произошла ошибка.');
+        bot.sendMessage(chatId, '❌ Произошла ошибка.');
     }
 });
 
@@ -639,7 +1259,7 @@ bot.on('callback_query', async (callbackQuery) => {
             LIMIT 10
         `, [], (err, rows) => {
             if (err) {
-                bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка загрузки рейтинга');
+                bot.answerCallbackQuery(callbackQuery.id, '�� Ошибка загрузки рейтинга');
                 return;
             }
 
@@ -1141,13 +1761,180 @@ bot.onText(/📖 Инструкция/, (msg) => {
 - Доступные суммы: 15, 25, 50, 100 ⭐️
 - Telegram Premium за 1300 ⭐️
 
-🏆 Рейтинги:
+🏆 Рейтин��и:
 - Общий рейтинг по количеству рефералов
 - Рейтинг за неделю
 
 ❓ Вопросы? Обратитесь к администратору.`;
 
     bot.sendMessage(chatId, instruction, backToMainKeyboard);
+});
+
+// Admin broadcast management
+bot.onText(/📢 Рассылка/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    const broadcastMessage = `📢 **Управление рассылкой**
+
+Выберите тип рассылки:`;
+
+    const broadcastKeyboard = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '📋 Новые задания', callback_data: 'broadcast_tasks' },
+                    { text: '🏆 Топ рефералов', callback_data: 'broadcast_top' }
+                ],
+                [
+                    { text: '✍️ Своё сообщение', callback_data: 'broadcast_custom' }
+                ]
+            ]
+        }
+    };
+
+    bot.sendMessage(chatId, broadcastMessage, broadcastKeyboard);
+});
+
+// Handle broadcast callbacks
+bot.on('callback_query', async (callbackQuery) => {
+    const message = callbackQuery.message;
+    const userId = callbackQuery.from.id;
+    const data = callbackQuery.data;
+
+    if (data.startsWith('broadcast_')) {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        if (data === 'broadcast_tasks') {
+            // Broadcast about new tasks
+            const broadcastMsg = '🎯 Новые задания ждут тебя!\n\nЗаходи и выполняй задания, чтобы заработать больше звёзд!';
+            const broadcastKeyboard = {
+                reply_markup: {
+                    keyboard: [
+                        ['📋 Задания', '🏠 Главное меню']
+                    ],
+                    resize_keyboard: true
+                }
+            };
+
+            sendBroadcast(broadcastMsg, broadcastKeyboard, message.chat.id);
+            bot.answerCallbackQuery(callbackQuery.id, '📢 Рассылка запущена!');
+
+        } else if (data === 'broadcast_top') {
+            // Broadcast about top referrals
+            const broadcastMsg = '🏆 Попади в топ 5 по рефералам и получи еженедельные призы!\n\nПриглашай друзей и зарабатывай больше!';
+            const broadcastKeyboard = {
+                reply_markup: {
+                    keyboard: [
+                        ['👥 Пригласить друга', '🏠 Главное меню']
+                    ],
+                    resize_keyboard: true
+                }
+            };
+
+            sendBroadcast(broadcastMsg, broadcastKeyboard, message.chat.id);
+            bot.answerCallbackQuery(callbackQuery.id, '📢 Рассылка запущена!');
+
+        } else if (data === 'broadcast_custom') {
+            bot.sendMessage(message.chat.id, '✍️ Введите текст для рассылки:', {
+                reply_markup: { force_reply: true }
+            });
+            bot.answerCallbackQuery(callbackQuery.id);
+        }
+    }
+});
+
+// Handle custom broadcast input
+bot.on('message', (msg) => {
+    if (msg.reply_to_message && msg.reply_to_message.text === '✍️ Введите текст для рассылки:') {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+
+        if (!isAdmin(userId)) {
+            bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        const customMessage = msg.text;
+        sendBroadcast(customMessage, null, chatId);
+        bot.sendMessage(chatId, '📢 Рассылка запущена!');
+    }
+});
+
+// Function to send broadcast to all users
+function sendBroadcast(message, keyboard, adminChatId) {
+    db.all('SELECT id FROM users WHERE is_subscribed = 1', [], (err, users) => {
+        if (err) {
+            bot.sendMessage(adminChatId, '❌ Ошибка получения списка пользователей.');
+            return;
+        }
+
+        let sent = 0;
+        let failed = 0;
+
+        bot.sendMessage(adminChatId, `📤 Начинаю рассылку для ${users.length} пользователей...`);
+
+        users.forEach((user, index) => {
+            setTimeout(() => {
+                const options = keyboard ? keyboard : {};
+
+                bot.sendMessage(user.id, message, options)
+                    .then(() => {
+                        sent++;
+                    })
+                    .catch((error) => {
+                        failed++;
+                        console.error(`Broadcast failed for user ${user.id}:`, error.message);
+                    })
+                    .finally(() => {
+                        // Report progress every 50 users or at the end
+                        if ((index + 1) % 50 === 0 || index === users.length - 1) {
+                            bot.sendMessage(adminChatId,
+                                `📊 Прогресс рассылки: ${index + 1}/${users.length}\n✅ Отправлено: ${sent}\n❌ Ошибок: ${failed}`
+                            );
+                        }
+                    });
+            }, index * 100); // 100ms delay between messages to avoid rate limits
+        });
+    });
+}
+
+// Admin panel shortcut
+bot.onText(/🔧 Админ-панель/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа к админ-панели.');
+        return;
+    }
+
+    const adminMessage = `🔧 Админ-панель
+
+Добро пожаловать в панель администратора!
+Выберите действие:`;
+
+    const adminKeyboard = {
+        reply_markup: {
+            keyboard: [
+                ['📊 Статистика', '📋 Управление заданиями'],
+                ['📺 Обязательные каналы', '🎰 Управление лотереями'],
+                ['🎫 Промокоды', '📢 Рассылка'],
+                ['🏠 В главное меню']
+            ],
+            resize_keyboard: true
+        }
+    };
+
+    bot.sendMessage(chatId, adminMessage, adminKeyboard);
 });
 
 // Back to main menu handler
