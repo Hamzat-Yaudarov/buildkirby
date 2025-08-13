@@ -32,11 +32,12 @@ async function initializeDatabase() {
                 referrals_count INTEGER DEFAULT 0,
                 referrals_today INTEGER DEFAULT 0,
                 invited_by BIGINT,
+                pending_referrer BIGINT,
                 last_click TIMESTAMP,
                 last_case_open TIMESTAMP,
                 registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_subscribed BOOLEAN DEFAULT FALSE,
-                temp_action VARCHAR(50),
+                temp_action VARCHAR(100),
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -66,6 +67,7 @@ async function initializeDatabase() {
                 max_tickets INTEGER NOT NULL,
                 winners_count INTEGER NOT NULL,
                 current_tickets INTEGER DEFAULT 0,
+                bot_percent INTEGER DEFAULT 20,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 ends_at TIMESTAMP
@@ -122,6 +124,23 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+
+        // Add missing columns if they don't exist
+        try {
+            await pool.query(`
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS pending_referrer BIGINT;
+            `);
+
+            await pool.query(`
+                ALTER TABLE lotteries
+                ADD COLUMN IF NOT EXISTS bot_percent INTEGER DEFAULT 20;
+            `);
+
+            console.log('✅ Database columns updated');
+        } catch (error) {
+            console.log('ℹ️ Column update attempt (may already exist):', error.message);
+        }
 
         console.log('✅ PostgreSQL database initialized successfully');
         return true;

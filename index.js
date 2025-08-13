@@ -542,23 +542,28 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
 
     try {
         const params = match[1].split('|');
-        if (params.length !== 4) {
-            bot.sendMessage(chatId, '❌ Неверный формат! Используйте: /create_task тип|название|награда|лимит');
+        if (params.length < 3) {
+            bot.sendMessage(chatId, '❌ Неверный формат! Используйте: /create_task канал|название|награда');
             return;
         }
 
-        const [type, channelId, reward, limit] = params;
+        const [channelId, channelName, reward] = params;
+        const rewardAmount = parseFloat(reward) || 1.0;
+
+        console.log('[CREATE-TASK] Creating task:', { channelId, channelName, rewardAmount });
 
         await db.executeQuery(
-            'INSERT INTO tasks (channel_id, channel_name, reward) VALUES ($1, $2, $3)',
-            [channelId.trim(), `${type} ${channelId}`.trim(), parseFloat(reward)]
+            'INSERT INTO tasks (channel_id, channel_name, reward) VALUES ($1, $2, $3) ON CONFLICT (channel_id) DO UPDATE SET channel_name = $2, reward = $3',
+            [channelId.trim(), channelName.trim(), rewardAmount]
         );
 
-        bot.sendMessage(chatId, `✅ Задание создано!\n📺 Канал: ${channelId}\n💰 Награда: ${reward} ⭐`);
+        bot.sendMessage(chatId, `✅ Задание создано!\n📺 Канал: ${channelId.trim()}\n📝 Название: ${channelName.trim()}\n💰 Награда: ${rewardAmount} ⭐`);
+        console.log('[CREATE-TASK] Task created successfully');
 
     } catch (error) {
         console.error('Error creating task:', error);
-        bot.sendMessage(chatId, '❌ Ошибка создания задания.');
+        console.error('Full error:', error.stack);
+        bot.sendMessage(chatId, `❌ Ошибка создания задания: ${error.message}`);
     }
 });
 
@@ -608,17 +613,26 @@ bot.onText(/\/create_lottery (.+)/, async (msg, match) => {
         }
 
         const [name, maxTickets, ticketPrice, winnersCount, botPercent] = params;
+        const lotteryName = name.trim();
+        const maxTicketsNum = parseInt(maxTickets);
+        const ticketPriceNum = parseFloat(ticketPrice);
+        const winnersCountNum = parseInt(winnersCount);
+        const botPercentNum = parseInt(botPercent);
+
+        console.log('[CREATE-LOTTERY] Creating lottery:', { lotteryName, maxTicketsNum, ticketPriceNum, winnersCountNum, botPercentNum });
 
         await db.executeQuery(
-            'INSERT INTO lotteries (name, ticket_price, max_tickets, winners_count, bot_percent) VALUES ($1, $2, $3, $4, $5)',
-            [name.trim(), parseFloat(ticketPrice), parseInt(maxTickets), parseInt(winnersCount), parseInt(botPercent)]
+            'INSERT INTO lotteries (name, ticket_price, max_tickets, winners_count, bot_percent, current_tickets) VALUES ($1, $2, $3, $4, $5, 0)',
+            [lotteryName, ticketPriceNum, maxTicketsNum, winnersCountNum, botPercentNum]
         );
 
-        bot.sendMessage(chatId, `✅ Лотерея создана!\n🎰 ${name}\n🎫 ${maxTickets} билетов по ${ticketPrice} ⭐\n🏆 ${winnersCount} победителей\n💰 Процент бота: ${botPercent}%`);
+        bot.sendMessage(chatId, `✅ Лотерея создана!\n🎰 ${lotteryName}\n🎫 ${maxTicketsNum} билетов по ${ticketPriceNum} ⭐\n🏆 ${winnersCountNum} победителей\n💰 Процент бота: ${botPercentNum}%`);
+        console.log('[CREATE-LOTTERY] Lottery created successfully');
 
     } catch (error) {
         console.error('Error creating lottery:', error);
-        bot.sendMessage(chatId, '❌ Ошибка создания лотереи.');
+        console.error('Full error:', error.stack);
+        bot.sendMessage(chatId, `❌ Ошибка создания лотереи: ${error.message}`);
     }
 });
 
@@ -1814,10 +1828,13 @@ async function handlePromocodeInput(chatId, messageId, userId) {
 // Withdrawal approval handler
 async function handleWithdrawalApproval(chatId, messageId, callbackData) {
     try {
+        console.log('[WITHDRAWAL] Processing approval:', callbackData);
         const parts = callbackData.split('_');
         const targetUserId = parseInt(parts[2]);
         const amount = parseInt(parts[3]);
         const type = parts[4];
+
+        console.log('[WITHDRAWAL] Parsed data:', { targetUserId, amount, type });
 
         // Get user info
         const user = await db.getUser(targetUserId);
@@ -1829,11 +1846,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
             return;
         }
 
-        // Mark withdrawal as completed
-        await db.executeQuery(
-            'UPDATE withdrawal_requests SET status = $1, processed_at = NOW() WHERE user_id = $2 AND amount = $3 AND type = $4 AND status = $5',
-            ['approved', targetUserId, amount, type, 'pending']
-        );
+        console.log('[WITHDRAWAL] User found:', user.first_name);
 
         // Send congratulations to user
         const congratsMessage = `🎉 **Поздравляем!**
@@ -1848,6 +1861,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
 👥 Продолжайте приглашать друзей и зарабатывать еще больше!`;
 
         await bot.sendMessage(targetUserId, congratsMessage, { parse_mode: 'Markdown' });
+        console.log('[WITHDRAWAL] Congratulations sent to user');
 
         // Update admin message
         await bot.editMessageText(`✅ **Заявка одобрена**
@@ -1862,9 +1876,12 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
             parse_mode: 'Markdown'
         });
 
+        console.log('[WITHDRAWAL] Admin message updated');
+
     } catch (error) {
         console.error('Error in withdrawal approval:', error);
-        await bot.editMessageText('❌ Ошибка обработки заявки.', {
+        console.error('Full error:', error.stack);
+        await bot.editMessageText(`❌ Ошибка обработки заявки: ${error.message}`, {
             chat_id: chatId,
             message_id: messageId
         });
@@ -1947,26 +1964,26 @@ bot.on('message', async (msg) => {
                         bot.sendMessage(chatId, '❌ Промокод уже использован или недействителен!');
                     }
                 } else if (user.temp_action.startsWith('rejecting_withdrawal_')) {
+                    console.log('[REJECTION] Processing rejection reason:', msg.text);
                     const rejectionReason = msg.text.trim();
                     const actionParts = user.temp_action.split('_');
                     const targetUserId = parseInt(actionParts[2]);
                     const amount = parseInt(actionParts[3]);
                     const type = actionParts[4];
 
+                    console.log('[REJECTION] Parsed data:', { targetUserId, amount, type, rejectionReason });
+
                     // Clear temp action
                     await db.updateUserField(userId, 'temp_action', null);
+                    console.log('[REJECTION] Temp action cleared');
 
                     // Return money to user
                     await db.updateUserBalance(targetUserId, amount);
-
-                    // Mark withdrawal as rejected
-                    await db.executeQuery(
-                        'UPDATE withdrawal_requests SET status = $1, rejection_reason = $2, processed_at = NOW() WHERE user_id = $3 AND amount = $4 AND type = $5 AND status = $6',
-                        ['rejected', rejectionReason, targetUserId, amount, type, 'pending']
-                    );
+                    console.log('[REJECTION] Money returned to user');
 
                     // Get target user info
                     const targetUser = await db.getUser(targetUserId);
+                    console.log('[REJECTION] Target user found:', targetUser.first_name);
 
                     // Send rejection notice to user
                     const rejectionMessage = `❌ **Заявка на вывод отклонена**
@@ -1982,9 +1999,11 @@ ${rejectionReason}
 Если у вас есть вопросы, обратитесь к администрации.`;
 
                     await bot.sendMessage(targetUserId, rejectionMessage, { parse_mode: 'Markdown' });
+                    console.log('[REJECTION] Rejection message sent to user');
 
                     // Confirm to admin
-                    bot.sendMessage(chatId, `✅ Заявка отклонена.\n👤 Пользователю ${targetUser.first_name} отправлено уведомление.\n💸 Средства (${amount} ⭐) возвращены на баланс.`);
+                    await bot.sendMessage(chatId, `✅ Заявка отклонена.\n👤 Пользователю ${targetUser.first_name} отправлено уведомление.\n💸 Средства (${amount} ⭐) возвращены на баланс.`);
+                    console.log('[REJECTION] Confirmation sent to admin');
                 }
             }
         } catch (error) {
@@ -2051,7 +2070,7 @@ async function handleAdminMenu(chatId, messageId) {
 
 **Дополнительные команды:**
 🎰 **/endlottery [ID]** - завершить лотерею вручную
-👥 **/refupplayer [ID] [число]** - добавить рефералов пользователю
+👥 **/refupplayer [ID] [число]** - добавить рефералов ��ользователю
 ⭐ **/starsupplayer [ID] [число]** - добавить звёзды пользователю
 
 Выберите действие:`;
@@ -2187,6 +2206,70 @@ cron.schedule('0 0 * * *', async () => {
     } catch (error) {
         console.error('Error in daily reset:', error);
     }
+});
+
+// Weekly rewards for top 5 users (Sundays at 20:00 MSK)
+cron.schedule('0 20 * * 0', async () => {
+    console.log('🏆 Running weekly top-5 rewards...');
+    try {
+        // Get top 5 users by referrals this week
+        const result = await db.executeQuery(`
+            SELECT id, first_name, referrals_today
+            FROM users
+            WHERE referrals_today > 0
+            ORDER BY referrals_today DESC
+            LIMIT 5
+        `);
+
+        if (result.rows.length === 0) {
+            console.log('[WEEKLY-REWARDS] No users with referrals this week');
+            return;
+        }
+
+        const rewards = [100, 75, 50, 25, 15]; // Stars for positions 1-5
+        const positions = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+
+        let rewardMessage = '🏆 **Еженедельные награды!**\n\n📅 **Топ-5 пользователей по рефералам за неделю:**\n\n';
+
+        for (let i = 0; i < result.rows.length; i++) {
+            const user = result.rows[i];
+            const reward = rewards[i];
+            const position = positions[i];
+
+            // Give reward to user
+            await db.updateUserBalance(user.id, reward);
+
+            // Add to message
+            rewardMessage += `${position} **${user.first_name}** - ${user.referrals_today} рефералов (+${reward} ⭐)\n`;
+
+            // Send personal congratulations
+            try {
+                const personalMessage = `🎉 **Поздравляем!**\n\n${position} **Вы заняли ${i + 1} место в недельном рейтинге!**\n\n👥 **Рефералов за неделю:** ${user.referrals_today}\n💰 **Награда:** +${reward} ⭐\n\n🎯 Отличная работа! Продолжайте приглашать друзей!`;
+
+                await bot.sendMessage(user.id, personalMessage, { parse_mode: 'Markdown' });
+                console.log(`[WEEKLY-REWARDS] Reward sent to ${user.first_name}: ${reward} stars`);
+            } catch (error) {
+                console.error(`[WEEKLY-REWARDS] Failed to notify user ${user.id}:`, error);
+            }
+        }
+
+        rewardMessage += '\n🎯 **Увидимся на следующей неделе!**';
+
+        // Send summary to admin channel
+        try {
+            await bot.sendMessage(ADMIN_CHANNEL, rewardMessage, { parse_mode: 'Markdown' });
+            console.log('[WEEKLY-REWARDS] Summary sent to admin channel');
+        } catch (error) {
+            console.error('[WEEKLY-REWARDS] Failed to send summary to admin:', error);
+        }
+
+        console.log('[WEEKLY-REWARDS] Weekly rewards completed successfully');
+
+    } catch (error) {
+        console.error('Error in weekly rewards:', error);
+    }
+}, {
+    timezone: 'Europe/Moscow'
 });
 
 // Error handling with 409 conflict management
