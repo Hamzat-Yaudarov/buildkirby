@@ -20,13 +20,109 @@ const pool = new Pool({
 async function initializeDatabase() {
     try {
         console.log('🔄 Initializing PostgreSQL database...');
-        
-        // Read and execute schema file
-        const schemaPath = path.join(__dirname, 'database-schema.sql');
-        const schema = fs.readFileSync(schemaPath, 'utf8');
-        
-        await pool.query(schema);
-        
+
+        // Create tables without constraints to avoid conflicts
+        await pool.query(`
+            -- Users table
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGINT PRIMARY KEY,
+                username VARCHAR(32),
+                first_name VARCHAR(64),
+                balance DECIMAL(10,2) DEFAULT 0.00,
+                referrals_count INTEGER DEFAULT 0,
+                referrals_today INTEGER DEFAULT 0,
+                invited_by BIGINT,
+                last_click TIMESTAMP,
+                last_case_open TIMESTAMP,
+                registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_subscribed BOOLEAN DEFAULT FALSE,
+                temp_action VARCHAR(50),
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Tasks table
+            CREATE TABLE IF NOT EXISTS tasks (
+                id SERIAL PRIMARY KEY,
+                channel_id VARCHAR(100) UNIQUE NOT NULL,
+                channel_name VARCHAR(100),
+                reward DECIMAL(10,2) DEFAULT 1.00,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- User tasks completion
+            CREATE TABLE IF NOT EXISTS user_tasks (
+                user_id BIGINT,
+                task_id INTEGER,
+                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, task_id)
+            );
+
+            -- Lotteries table
+            CREATE TABLE IF NOT EXISTS lotteries (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                ticket_price DECIMAL(10,2) NOT NULL,
+                max_tickets INTEGER NOT NULL,
+                winners_count INTEGER NOT NULL,
+                current_tickets INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ends_at TIMESTAMP
+            );
+
+            -- Lottery tickets
+            CREATE TABLE IF NOT EXISTS lottery_tickets (
+                id SERIAL PRIMARY KEY,
+                lottery_id INTEGER,
+                user_id BIGINT,
+                purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Withdrawal requests
+            CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                amount DECIMAL(10,2) NOT NULL,
+                type VARCHAR(20) NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                admin_notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed_at TIMESTAMP,
+                processed_by BIGINT
+            );
+
+            -- Promocodes table
+            CREATE TABLE IF NOT EXISTS promocodes (
+                id SERIAL PRIMARY KEY,
+                code VARCHAR(20) UNIQUE NOT NULL,
+                reward DECIMAL(10,2) NOT NULL,
+                max_uses INTEGER,
+                current_uses INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_by BIGINT
+            );
+
+            -- Promocode usage tracking
+            CREATE TABLE IF NOT EXISTS promocode_usage (
+                user_id BIGINT,
+                promocode_id INTEGER,
+                used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, promocode_id)
+            );
+
+            -- Required channels for registration
+            CREATE TABLE IF NOT EXISTS required_channels (
+                id SERIAL PRIMARY KEY,
+                channel_id VARCHAR(100) UNIQUE NOT NULL,
+                channel_name VARCHAR(100),
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
         console.log('✅ PostgreSQL database initialized successfully');
         return true;
     } catch (error) {
