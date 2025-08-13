@@ -668,8 +668,9 @@ bot.onText(/\/delete_channel (\d+)/, (msg, match) => {
     );
 });
 
-// Invite friends handler
+// Invite friends handler (DEPRECATED - using inline buttons)
 bot.onText(/👥 Пригласить друзей/, async (msg) => {
+    return; // Disabled - using inline buttons
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     
@@ -680,9 +681,10 @@ bot.onText(/👥 Пригласить друзей/, async (msg) => {
 🔗 Твоя реферальная ссылка:
 ${referralLink}
 
-Поделись этой ссылкой с друзьями, и когда они зарегистрируются через неё, ты получишь бонус!`;
+Поделись этой ссылкой с друзьями, и когда они зареги��трируются через неё, ты получишь бонус!`;
     
-    bot.sendMessage(chatId, inviteMessage, backToMainKeyboard);
+    // DEPRECATED: using inline buttons instead
+    return;
 });
 
 // Universal callback handler
@@ -985,7 +987,7 @@ bot.on('callback_query', async (callbackQuery) => {
     else if (data === 'menu_ratings') {
         const ratingsMessage = `🏆 **Система рейтингов**
 
-📊 Выберите тип рейтинга для просмотра:
+📊 Вы��ерите тип рейтинга для просмотра:
 
 💡 *Участвуйте в соревнованиях и становитесь лидером!*`;
 
@@ -1020,7 +1022,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
 📝 Просто отправьте код одним сообщением в ответ на это уведомление.
 
-💡 *Промокоды дают дополнительные звёзды и бонусы!*`;
+💡 *Промокоды дают до��олнительные звёзды и бонусы!*`;
 
         const promoKeyboard = {
             reply_markup: {
@@ -1049,7 +1051,7 @@ bot.on('callback_query', async (callbackQuery) => {
     // Admin menu handlers
     else if (data === 'admin_stats') {
         if (!isAdmin(userId)) {
-            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            bot.answerCallbackQuery(callbackQuery.id, '��� У вас нет прав доступа.');
             return;
         }
 
@@ -1102,7 +1104,7 @@ bot.on('callback_query', async (callbackQuery) => {
 • Общий баланс пользователей: **${(stat.total_balance || 0).toFixed(1)} ⭐️**
 • Всего привлечено рефералов: **${stat.total_referrals || 0}**
 
-🎯 **Контент и активность:**
+🎯 **Контент и активно��ть:**
 • Активных заданий: **${add.active_tasks}**
 • Активных лотерей: **${add.active_lotteries}**
 • Активных промокодов: **${add.active_promos}**
@@ -1179,7 +1181,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 tasks.forEach((task, index) => {
                     message += `${index + 1}. **${task.channel_name}**\n`;
                     message += `   📺 Канал: \`${task.channel_id}\`\n`;
-                    message += `   💰 Награда: ${task.reward} ⭐️\n`;
+                    message += `   ��� Награда: ${task.reward} ⭐️\n`;
                     message += `   🆔 ID: \`${task.id}\`\n\n`;
                 });
             }
@@ -1456,7 +1458,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     return;
                 }
 
-                const taskMessage = `📋 **Доступное задание**
+                const taskMessage = `📋 **Доступное з��дание**
 
 📺 **Подпишитесь на канал:** ${task.channel_name}
 💰 **Награда за выполнение:** ${task.reward} ⭐️
@@ -2004,7 +2006,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 return;
             }
 
-            let ratingText = '📅 Рейтинг за сегодня:\n\n';
+            let ratingText = '��� Рейтинг за сегодня:\n\n';
 
             if (rows.length === 0) {
                 ratingText += 'Сегодня никто не пригласил рефералов 😔';
@@ -2245,7 +2247,7 @@ bot.on('callback_query', async (callbackQuery) => {
     // Handle broadcast callbacks
     else if (data.startsWith('broadcast_')) {
         if (!isAdmin(userId)) {
-            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            bot.answerCallbackQuery(callbackQuery.id, '❌ �� вас нет прав доступа.');
             return;
         }
 
@@ -2309,7 +2311,8 @@ bot.onText(/📋 Задания/, async (msg) => {
             }
 
             if (!task) {
-                bot.sendMessage(chatId, '🎉 Вы выполнили все доступные задания!\n\nЗаходите позже, возможно появятся новые.', backToMainKeyboard);
+                // DEPRECATED
+return;
                 return;
             }
 
@@ -2324,7 +2327,7 @@ bot.onText(/📋 Задания/, async (msg) => {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '📺 Выполнить', url: `https://t.me/${task.channel_id.replace('@', '')}` },
+                            { text: '�� Выполнить', url: `https://t.me/${task.channel_id.replace('@', '')}` },
                             { text: '✅ Проверить', callback_data: `check_task_${task.id}` }
                         ],
                         [
@@ -2463,7 +2466,7 @@ bot.onText(/🎰 Лотерея/, async (msg) => {
             });
 
             if (lotteryKeyboard.reply_markup.inline_keyboard.length === 0) {
-                lotteryMessage += '❌ Все билеты проданы. Ожидайте результатов!';
+                lotteryMessage += '❌ Все билеты проданы. Ожидайте результа��ов!';
             }
 
             bot.sendMessage(chatId, lotteryMessage, lotteryKeyboard);
@@ -2514,7 +2517,7 @@ function drawLotteryWinners(lotteryId) {
                 if (!isWinner) {
                     bot.sendMessage(ticket.user_id, `🎰 Результаты лотереи "${lottery.name}" объявлены!
 
-К сожалению, вы не выиграли в этот раз.
+К сожалению, вы не выигра��и в этот раз.
 Но не расстраивайтесь - скоро будут новые лотереи!`);
                 }
             });
@@ -3093,11 +3096,17 @@ bot.onText(/🔧 Админ-панель/, async (msg) => {
     bot.sendMessage(chatId, adminMessage, adminKeyboard);
 });
 
-// Back to main menu handler
+// Back to main menu handler (DEPRECATED - using inline buttons)
 bot.onText(/🏠 В главное меню/, (msg) => {
     const chatId = msg.chat.id;
 
-    bot.sendMessage(chatId, '🏠 Главное меню:', mainKeyboard);
+    const welcomeMessage = `🌟 **Главное меню**
+
+💫 Добро пожаловать в центр управления вашим заработком!
+
+⬇️ **Выберите действие из меню ниже:**`;
+
+    bot.sendMessage(chatId, welcomeMessage, getMainMenuKeyboard());
 });
 
 // Reset daily referrals at midnight
