@@ -5,17 +5,36 @@ const adminHandlers = require('./admin-handlers');
 
 // Bot token - should be set via environment variable
 const token = process.env.BOT_TOKEN || '8379368723:AAEnG133OZ4qMrb5vQfM7VdEFSuLiWydsyM';
-const bot = new TelegramBot(token, { polling: true });
+
+// First, try to delete webhook and then use polling
+const bot = new TelegramBot(token, { polling: false });
+
+// Clear any existing webhook and enable polling
+async function initializeBotMode() {
+    try {
+        console.log('🔄 Clearing any existing webhook...');
+        await bot.deleteWebHook();
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+
+        console.log('🔄 Starting polling mode...');
+        await bot.startPolling({ restart: true });
+        console.log('✅ Bot polling started successfully!');
+    } catch (error) {
+        console.error('❌ Error initializing bot mode:', error);
+        throw error;
+    }
+}
 
 // Admin configuration
 const ADMIN_ID = 6910097562;
 const ADMIN_CHANNEL = process.env.ADMIN_CHANNEL || '@kirbyvivodstars';
 
-// Initialize database
+// Initialize database and bot
 async function startBot() {
     try {
         console.log('🚀 Starting Telegram bot with PostgreSQL...');
         await db.initializeDatabase();
+        await initializeBotMode();
         console.log('✅ Bot started successfully!');
     } catch (error) {
         console.error('❌ Error starting bot:', error);
@@ -440,7 +459,7 @@ bot.onText(/\/create_promo (.+)/, async (msg, match) => {
             [code.trim().toUpperCase(), parseFloat(reward), parseInt(maxUses), userId]
         );
 
-        bot.sendMessage(chatId, `✅ Промокод создан!\n🎁 Код: ${code.toUpperCase()}\n💰 Награда: ${reward} ⭐\n📊 Использований: ${maxUses}`);
+        bot.sendMessage(chatId, `✅ Промокод с��здан!\n🎁 Код: ${code.toUpperCase()}\n💰 Награда: ${reward} ⭐\n📊 Использований: ${maxUses}`);
 
     } catch (error) {
         console.error('Error creating promocode:', error);
@@ -663,7 +682,7 @@ async function handleInvite(chatId, messageId, user) {
     const message = `🌟 **Реферальная программа**
 
 💰 **Зарабатывайте вместе с друзьями!**
-Приглашайте друзей и получайте **3 ⭐** за каждого нового пользователя!
+Приглашайте друзей и получайте **3 ⭐** за каждого ново��о пользователя!
 
 🔗 **Ваша персональная ссылка:**
 \`${inviteLink}\`
@@ -816,7 +835,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
     // Send notification to admin channel
     const adminMessage = `🔔 **Новая заявка на вывод**
 
-👤 **Пользователь:** ${user.first_name}
+��� **Пользователь:** ${user.first_name}
 🆔 **ID:** ${user.id}
 ${user.username ? `📱 **Username:** @${user.username}` : ''}
 🔗 **Ссылка:** [Откры��ь профиль](tg://user?id=${user.id})
@@ -1145,7 +1164,7 @@ async function handleCases(chatId, messageId, user) {
     if (!canOpen) {
         const message = `🎁 **Кейсы**
 
-⏰ **Вы уже открыли кейс сегодня!**
+⏰ **Вы уже открыли ��ейс сегодня!**
 
 Возвращайтесь завтра за новым кейсом!`;
 
