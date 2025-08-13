@@ -13,13 +13,21 @@ const adminHandlers = require('./admin-handlers-final');
 console.log('[MAIN] admin-test imported, type:', typeof adminHandlers);
 console.log('[MAIN] adminHandlers.handleAdminTasks type:', typeof adminHandlers.handleAdminTasks);
 
-// Bot token - MUST be set via environment variable for security
-if (!process.env.BOT_TOKEN) {
-    console.error('❌ CRITICAL: BOT_TOKEN environment variable not set!');
-    console.error('Please set BOT_TOKEN in your environment variables.');
-    process.exit(1);
+// Bot token - should be set via environment variable for security
+let token = process.env.BOT_TOKEN;
+
+if (!token) {
+    console.warn('⚠️  WARNING: BOT_TOKEN environment variable not set!');
+    console.warn('🔓 Using fallback token for development - NOT SECURE FOR PRODUCTION!');
+    console.warn('📝 Please set BOT_TOKEN in your environment variables for production.');
+
+    // Fallback for development (replace with your actual token)
+    token = '8379368723:AAEnG133OZ4qMrb5vQfM7VdEFSuLiWydsyM';
+
+    console.log('🚀 Bot starting with fallback token...');
+} else {
+    console.log('✅ Bot starting with environment token (secure)');
 }
-const token = process.env.BOT_TOKEN;
 
 // First, try to delete webhook and then use polling
 const bot = new TelegramBot(token, { polling: false });
@@ -374,7 +382,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error in start command:', error);
-        bot.sendMessage(chatId, '��� Произошла ошибка. Попробуйте позже.');
+        bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте позже.');
     }
 });
 
@@ -1069,7 +1077,7 @@ async function handleProfile(chatId, messageId, user) {
     const registrationDate = new Date(user.registered_at).toLocaleDateString('ru-RU');
     const totalEarned = user.referrals_count * 3; // From referrals
 
-    const message = `👤 **Личный про��иль**
+    const message = `👤 **Личный профиль**
 
 🆔 **Информа��ия о пользователе:**
 • Имя: **${user.first_name}**
@@ -1164,7 +1172,7 @@ async function handleClicker(chatId, messageId, user) {
 
 💎 **Текущий баланс:** ${user.balance + reward} ⭐
 
-⏰ **Следу��щая награда:** завтра в это же время
+⏰ **Следующая награда:** завтра в это же время
 🕐 Не забудьте вернуться за новой наградой!`;
 
         await bot.editMessageText(message, {
@@ -1321,7 +1329,7 @@ async function handleTasks(chatId, messageId, user) {
 
         // Show first available task
         const task = availableTasks[0];
-        const message = `📋 **А��тивные задания**
+        const message = `📋 **Активные задания**
 
 🎯 **Текущее задание:**
 Подписка на канал **${task.channel_name || task.channel_id}**
@@ -1483,7 +1491,7 @@ async function handleInstruction(chatId, messageId) {
 
 🎯 **Как зарабатывать звёзды:**
 
-1️⃣ **Кликер** - нажимайте каждый день и получайте 0.1 ⭐
+1️⃣ **Кликер** - нажимайте каждый день и ��олучайте 0.1 ⭐
 2️⃣ **Задания** - подписывайтесь на каналы за награды
 3️⃣ **Рефералы** - приглашайте друзей и получайте 3 ⭐ за каждого
 4️⃣ **Кейсы** - открывайте кейсы с призами (нужно 3+ рефералов в день)
@@ -1723,7 +1731,7 @@ async function handleLottery(chatId, messageId, userId = null) {
 
     } catch (error) {
         console.error('Error in lottery:', error);
-        await bot.editMessageText('❌ Ошибка загрузки лотерей.', {
+        await bot.editMessageText('❌ Ошибка загрузки ��отерей.', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -1933,7 +1941,7 @@ async function handleWithdrawalRejection(chatId, messageId, callbackData, adminI
         // Update message to ask for reason
         await bot.editMessageText(`❌ **Отклонение заявки**
 
-👤 ��ользователь: ${user.first_name}
+👤 Пользователь: ${user.first_name}
 💰 Сумма: ${amount} ⭐
 📦 Тип: ${type === 'premium' ? 'Telegram Premium' : 'Звёзды'}
 
