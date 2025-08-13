@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "admin": "node admin-tools.js"
+    "admin": "node admin-tools.js",
+    "migrate": "node migrate-data.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",
@@ -14,7 +15,8 @@
   "dependencies": {
     "node-telegram-bot-api": "^0.64.0",
     "sqlite3": "^5.1.6",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "pg": "^8.11.3"
   },
   "engines": {
     "node": ">=16.0.0"
