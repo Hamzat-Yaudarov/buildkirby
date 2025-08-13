@@ -34,7 +34,8 @@ db.serialize(() => {
         last_click DATE,
         last_case_open DATE,
         registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        is_subscribed BOOLEAN DEFAULT 0
+        is_subscribed BOOLEAN DEFAULT 0,
+        temp_action TEXT
     )`);
 
     // Tasks table
@@ -215,27 +216,59 @@ function addReferralBonus(referrerId) {
     );
 }
 
-// Keyboard layouts
-const mainKeyboard = {
-    reply_markup: {
-        keyboard: [
-            ['👤 Профиль', '👥 Пригласить друзей'],
-            ['🎯 Кликер', '💰 Вывод звёзд'],
-            ['📋 Задания', '📖 Инструкция'],
-            ['🏆 Рейтинги', '🎁 Кейсы'],
-            ['🎰 Лотерея']
-        ],
-        resize_keyboard: true,
-        one_time_keyboard: false
-    }
-};
+// Helper function to create main menu inline keyboard
+function getMainMenuKeyboard() {
+    return {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '👤 Профиль', callback_data: 'menu_profile' },
+                    { text: '👥 Пригласить друзей', callback_data: 'menu_invite' }
+                ],
+                [
+                    { text: '🎯 Кликер', callback_data: 'menu_clicker' },
+                    { text: '�� Вывод звёзд', callback_data: 'menu_withdraw' }
+                ],
+                [
+                    { text: '📋 Задания', callback_data: 'menu_tasks' },
+                    { text: '📖 Инструкция', callback_data: 'menu_instruction' }
+                ],
+                [
+                    { text: '🏆 Рейтинги', callback_data: 'menu_ratings' },
+                    { text: '🎁 Кейсы', callback_data: 'menu_cases' }
+                ],
+                [
+                    { text: '🎰 Лотерея', callback_data: 'menu_lottery' }
+                ]
+            ]
+        }
+    };
+}
 
-const backToMainKeyboard = {
-    reply_markup: {
-        keyboard: [['🏠 В главное меню']],
-        resize_keyboard: true
-    }
-};
+// Helper function to create admin menu inline keyboard
+function getAdminMenuKeyboard() {
+    return {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '📊 Статистика', callback_data: 'admin_stats' },
+                    { text: '📋 Управление заданиями', callback_data: 'admin_tasks' }
+                ],
+                [
+                    { text: '📺 Обязательные каналы', callback_data: 'admin_channels' },
+                    { text: '🎰 Управление лотереями', callback_data: 'admin_lotteries' }
+                ],
+                [
+                    { text: '🎫 П��омокоды', callback_data: 'admin_promos' },
+                    { text: '📢 Рассылка', callback_data: 'admin_broadcast' }
+                ],
+                [
+                    { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                ]
+            ]
+        }
+    };
+}
 
 // Admin command handler
 bot.onText(/\/admin/, async (msg) => {
@@ -247,24 +280,12 @@ bot.onText(/\/admin/, async (msg) => {
         return;
     }
 
-    const adminMessage = `🔧 Админ-панель
+    const adminMessage = `🔧 **Панель администратора**
 
-Добро пожаловать в панель администратора!
-Выберите действие:`;
+✨ Добро пожаловать в центр управления ботом!
+Выберите необходимое действие:`;
 
-    const adminKeyboard = {
-        reply_markup: {
-            keyboard: [
-                ['📊 Статистика', '📋 Управление заданиями'],
-                ['📺 Обязательные каналы', '🎰 Управление лотереями'],
-                ['🎫 Промокоды', '📢 Рассылка'],
-                ['🏠 В главное меню']
-            ],
-            resize_keyboard: true
-        }
-    };
-
-    bot.sendMessage(chatId, adminMessage, adminKeyboard);
+    bot.sendMessage(chatId, adminMessage, getAdminMenuKeyboard());
 });
 
 // Start command handler
@@ -321,18 +342,18 @@ bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         db.run('UPDATE users SET is_subscribed = 1 WHERE id = ?', [userId]);
         
         // Send welcome message with main menu
-        const welcomeMessage = `🌟 Добро пожаловать в бот для заработка звёзд!
+        const welcomeMessage = `🌟 **Добро пожаловать в официальный бот для заработка звёзд!**
 
-Здесь вы можете:
-• Приглашать друзей и получать награды
-• Выполнять задания
-• Участвовать в лотереях
-• Открывать кейсы
-• И многое другое!
+💎 **Доступные возможности:**
+• 👥 Приглашайте друзей и получайте награды
+• 📋 Выполняйте интересные задания
+• 🎰 Участвуйте в захватывающих лотереях
+• 🎁 Открывайте ценные кейсы
+• 💰 Выводите заработанные звёз��ы
 
-Выберите действие в меню ниже:`;
+⬇️ **Выберите действие из меню ниже:**`;
 
-        bot.sendMessage(chatId, welcomeMessage, mainKeyboard);
+        bot.sendMessage(chatId, welcomeMessage, getMainMenuKeyboard());
         
     } catch (error) {
         console.error('Error in /start:', error);
@@ -421,43 +442,6 @@ bot.onText(/📊 Статистика/, async (msg) => {
 });
 
 // Profile handler
-bot.onText(/👤 Профиль/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    
-    try {
-        const user = await getUser(userId);
-        
-        if (!user) {
-            bot.sendMessage(chatId, '❌ Пользователь не найден. Используйте /start');
-            return;
-        }
-        
-        const profileMessage = `👤 Ваш профиль:
-
-👋 Имя: ${user.first_name || 'Не указано'}
-🆔 ID: ${user.id}
-👥 Всего рефералов: ${user.referrals_count}
-📈 Рефералов за день: ${user.referrals_today}
-⭐️ Баланс: ${user.balance.toFixed(1)} звёзд`;
-
-        const profileKeyboard = {
-            reply_markup: {
-                keyboard: [
-                    ['🎫 Промокод', '👥 Пригласить друзей'],
-                    ['🏠 В главное меню']
-                ],
-                resize_keyboard: true
-            }
-        };
-        
-        bot.sendMessage(chatId, profileMessage, profileKeyboard);
-        
-    } catch (error) {
-        console.error('Error in profile:', error);
-        bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке профиля.');
-    }
-});
 
 // Admin task management handler
 bot.onText(/📋 Управление заданиями/, async (msg) => {
@@ -489,7 +473,7 @@ bot.onText(/📋 Управление заданиями/, async (msg) => {
             });
         }
 
-        message += '**Команды:**\n';
+        message += '**К��манды:**\n';
         message += '• Добавить: /add_task канал|название|награда\n';
         message += '• Удалить: /delete_task [ID]\n';
         message += '• Пример: /add_task @mychannel|Мой канал|2';
@@ -707,6 +691,1098 @@ bot.on('callback_query', async (callbackQuery) => {
     const userId = callbackQuery.from.id;
     const data = callbackQuery.data;
 
+    // Main menu handlers
+    if (data === 'back_to_main') {
+        const welcomeMessage = `🌟 **Гла��ное меню**
+
+💫 Добро пожаловать обратно в центр управления вашим заработком!
+
+⬇️ **Выберите действие из меню ниже:**`;
+
+        bot.editMessageText(welcomeMessage, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            parse_mode: 'Markdown',
+            ...getMainMenuKeyboard()
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'menu_profile') {
+        try {
+            const user = await getUser(userId);
+
+            if (!user) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Пользователь не найден. Используйте /start');
+                return;
+            }
+
+            const profileMessage = `👤 **Ваш личный профиль**
+
+👋 **Имя:** ${user.first_name || 'Не указано'}
+🆔 **ID:** \`${user.id}\`
+👥 **Всего рефералов:** ${user.referrals_count}
+📈 **Рефералов за сег��дня:** ${user.referrals_today}
+⭐️ **Текущий баланс:** ${user.balance.toFixed(1)} звёзд
+
+💡 *Приглашайте больше друзей для увеличения заработка!*`;
+
+            const profileKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🎫 Активировать промокод', callback_data: 'profile_promo' },
+                            { text: '👥 Пригласить друзей', callback_data: 'menu_invite' }
+                        ],
+                        [
+                            { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(profileMessage, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...profileKeyboard
+            });
+
+        } catch (error) {
+            console.error('Error in profile:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка при загрузке профиля.');
+        }
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'menu_invite') {
+        const referralLink = `https://t.me/${(await bot.getMe()).username}?start=${userId}`;
+
+        const inviteMessage = `👥 **Программа реферальных вознаграждений**
+
+�� Приглашайте друзей и получайте по **3 ⭐️** за каждого зарегистрированного пользователя!
+
+🔗 **Ваша персональная реферальная ссылка:**
+\`${referralLink}\`
+
+📋 **Как это работает:**
+1. Поделитесь ссылкой с друзьями
+2. Когда они регистрируются через вашу ссылку
+3. Вы автоматически получаете б��нус!
+
+💡 *Чем больше друзей - тем больше заработок!*`;
+
+        const inviteKeyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📤 Поделиться ссылкой', switch_inline_query: referralLink }
+                    ],
+                    [
+                        { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                    ]
+                ]
+            }
+        };
+
+        bot.editMessageText(inviteMessage, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            parse_mode: 'Markdown',
+            ...inviteKeyboard
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'menu_instruction') {
+        const instruction = `📖 **Подробная инструкция по использованию бота**
+
+🌟 **Способы заработка звёзд:**
+
+1️⃣ **Реферальная про��рамма** - Приглашайте друзей и получайте по **3 ⭐️** за каждого
+2️⃣ **В��полнение заданий** - Подписывайтесь на каналы и получайте награды
+3️⃣ **Ежедневный кликер** - Получайте **0.1 ⭐️** каждый день
+4️⃣ **Кейсы для активных пользователей** - При 3+ рефералах в день
+5️⃣ **Участие в лотереях** - Шанс выиграть крупные призы
+
+💰 **Условия вывода средств:**
+- Минимум **5 рефералов** для разблокировки вывода
+- Доступные суммы: 15, 25, 50, 100 ⭐️
+- Специальное предложение: **Telegram Premium** за 1300 ⭐️
+
+🏆 **Система рейтингов:**
+- Общий рейтинг по количеству рефералов
+- Еженедельный рейтинг
+
+❓ **Возникли вопросы?** Обратитесь к администратору.`;
+
+        const instructionKeyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                    ]
+                ]
+            }
+        };
+
+        bot.editMessageText(instruction, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            parse_mode: 'Markdown',
+            ...instructionKeyboard
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'menu_clicker') {
+        try {
+            const user = await getUser(userId);
+
+            if (!user) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Пользователь не найден. Используйте /start');
+                return;
+            }
+
+            const today = new Date().toDateString();
+            const lastClick = user.last_click ? new Date(user.last_click).toDateString() : null;
+
+            if (lastClick === today) {
+                const clickerMessage = `🎯 **Ежедневный кликер**
+
+⏰ **Статус:** Уже использован сегодня
+💰 **Награда:** 0.1 ⭐️ в день
+⏳ **Следующее использование:** Завтра
+
+💡 *Возвращайтесь каждый день за новой наградой!*`;
+
+                const clickerKeyboard = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                            ]
+                        ]
+                    }
+                };
+
+                bot.editMessageText(clickerMessage, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    parse_mode: 'Markdown',
+                    ...clickerKeyboard
+                });
+                bot.answerCallbackQuery(callbackQuery.id);
+                return;
+            }
+
+            const clickerMessage = `🎯 **Ежедневный кликер**
+
+💰 **Доступная награда:** 0.1 ⭐️
+⏳ **Период:** Один раз в сутки
+📊 **Текущий баланс:** ${user.balance.toFixed(1)} ⭐️
+
+💡 *Нажмите кнопку ниже, чтобы получить награду!*`;
+
+            const clickerKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🎯 Получить награду', callback_data: 'clicker_claim' }
+                        ],
+                        [
+                            { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(clickerMessage, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...clickerKeyboard
+            });
+
+        } catch (error) {
+            console.error('Error in clicker:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка.');
+        }
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'clicker_claim') {
+        try {
+            const user = await getUser(userId);
+
+            if (!user) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Пользователь не найден');
+                return;
+            }
+
+            const today = new Date().toDateString();
+            const lastClick = user.last_click ? new Date(user.last_click).toDateString() : null;
+
+            if (lastClick === today) {
+                bot.answerCallbackQuery(callbackQuery.id, '⏰ Уже использовано сегодня!');
+                return;
+            }
+
+            // Add clicker reward
+            const reward = 0.1;
+
+            db.run(
+                'UPDATE users SET balance = balance + ?, last_click = CURRENT_TIMESTAMP WHERE id = ?',
+                [reward, userId],
+                function(err) {
+                    if (err) {
+                        console.error('Clicker error:', err);
+                        bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка.');
+                        return;
+                    }
+
+                    const successMessage = `🎯 **Награда получена!**
+
+✅ **Начислено:** +${reward} ⭐️
+💰 **Новый баланс:** ${(user.balance + reward).toFixed(1)} ⭐️
+⏳ **Следующая награда:** Завтра
+
+🎉 *Отлично! Возвращайтесь завтра за новой наградой!*`;
+
+                    const successKeyboard = {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                                ]
+                            ]
+                        }
+                    };
+
+                    bot.editMessageText(successMessage, {
+                        chat_id: message.chat.id,
+                        message_id: message.message_id,
+                        parse_mode: 'Markdown',
+                        ...successKeyboard
+                    });
+
+                    bot.answerCallbackQuery(callbackQuery.id, '🎉 Поздравляем! +0.1 ⭐️');
+                }
+            );
+
+        } catch (error) {
+            console.error('Error in clicker claim:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка.');
+        }
+        return;
+    }
+
+    else if (data === 'menu_ratings') {
+        const ratingsMessage = `🏆 **Система рейтингов**
+
+📊 Выберите тип рейтинга для просмотра:
+
+💡 *Участвуйте в соревнованиях и становитесь лидером!*`;
+
+        const ratingsKeyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🏆 Общий рейтинг', callback_data: 'rating_all' },
+                        { text: '📅 Рейтинг за сегодня', callback_data: 'rating_week' }
+                    ],
+                    [
+                        { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                    ]
+                ]
+            }
+        };
+
+        bot.editMessageText(ratingsMessage, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            parse_mode: 'Markdown',
+            ...ratingsKeyboard
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'profile_promo') {
+        const promoMessage = `🎫 **Активация промокода**
+
+💫 Введите промокод для получения бонуса.
+
+📝 Просто отправьте код одним сообщением в ответ на это уведомление.
+
+💡 *Промокоды дают дополнительные звёзды и бонусы!*`;
+
+        const promoKeyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                    ]
+                ]
+            }
+        };
+
+        bot.editMessageText(promoMessage, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            parse_mode: 'Markdown',
+            ...promoKeyboard
+        });
+
+        // Set flag for promo code input
+        db.run('UPDATE users SET temp_action = "awaiting_promo" WHERE id = ?', [userId]);
+
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    // Admin menu handlers
+    else if (data === 'admin_stats') {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        try {
+            // Get comprehensive statistics
+            db.all(`
+                SELECT
+                    COUNT(*) as total_users,
+                    SUM(balance) as total_balance,
+                    SUM(referrals_count) as total_referrals,
+                    COUNT(CASE WHEN datetime(registered_at) >= datetime('now', '-7 days') THEN 1 END) as new_users_week,
+                    COUNT(CASE WHEN datetime(registered_at) >= datetime('now', '-1 day') THEN 1 END) as new_users_day,
+                    COUNT(CASE WHEN is_subscribed = 1 AND datetime(registered_at) >= datetime('now', '-7 days') THEN 1 END) as active_week,
+                    COUNT(CASE WHEN is_subscribed = 1 AND datetime(registered_at) >= datetime('now', '-1 day') THEN 1 END) as active_day
+                FROM users
+            `, [], (err, stats) => {
+                if (err) {
+                    console.error('Stats error:', err);
+                    bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка получения статистики.');
+                    return;
+                }
+
+                const stat = stats[0];
+
+                // Get additional statistics
+                db.all(`
+                    SELECT
+                        (SELECT COUNT(*) FROM tasks WHERE is_active = 1) as active_tasks,
+                        (SELECT COUNT(*) FROM lotteries WHERE is_active = 1) as active_lotteries,
+                        (SELECT COUNT(*) FROM promocodes WHERE is_active = 1) as active_promos,
+                        (SELECT COUNT(*) FROM withdrawal_requests WHERE status = 'pending') as pending_withdrawals
+                `, [], (err, additional) => {
+                    if (err) {
+                        console.error('Additional stats error:', err);
+                        return;
+                    }
+
+                    const add = additional[0];
+
+                    const statsMessage = `📊 **Детальная статистика бота**
+
+👥 **Пользователи:**
+• Всего зарегистрировано: **${stat.total_users}**
+• Активные за ��еделю: **${stat.active_week}**
+• Активные за день: **${stat.active_day}**
+• Новые за неделю: **${stat.new_users_week}**
+• Новые за день: **${stat.new_users_day}**
+
+💰 **Финансовые показатели:**
+• Общий баланс пользователей: **${(stat.total_balance || 0).toFixed(1)} ⭐️**
+• Всего привлечено рефералов: **${stat.total_referrals || 0}**
+
+🎯 **Контент и активность:**
+• Активных заданий: **${add.active_tasks}**
+• Активных лотерей: **${add.active_lotteries}**
+• Активных промокодов: **${add.active_promos}**
+• Заявок на вывод в ожидании: **${add.pending_withdrawals}**`;
+
+                    const statsKeyboard = {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '🔧 Админ-панель', callback_data: 'back_to_admin' }
+                                ]
+                            ]
+                        }
+                    };
+
+                    bot.editMessageText(statsMessage, {
+                        chat_id: message.chat.id,
+                        message_id: message.message_id,
+                        parse_mode: 'Markdown',
+                        ...statsKeyboard
+                    });
+                });
+            });
+
+        } catch (error) {
+            console.error('Error in admin stats:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка при получении статистики.');
+        }
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'back_to_admin') {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        const adminMessage = `🔧 **Панель администратора**
+
+⚡ Добро пожаловать обратно в центр управления ботом!
+
+⬇️ **Выберите необходимое действие:**`;
+
+        bot.editMessageText(adminMessage, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            parse_mode: 'Markdown',
+            ...getAdminMenuKeyboard()
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'admin_tasks') {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У ва�� нет прав доступа.');
+            return;
+        }
+
+        // Get current tasks
+        db.all('SELECT * FROM tasks WHERE is_active = 1 ORDER BY id DESC', [], (err, tasks) => {
+            if (err) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка загрузки заданий.');
+                return;
+            }
+
+            let message = `📋 **Управление заданиями**\n\n`;
+
+            if (tasks.length === 0) {
+                message += '📭 Активных заданий пока нет.\n\n';
+            } else {
+                message += '**📋 Активные задания:**\n';
+                tasks.forEach((task, index) => {
+                    message += `${index + 1}. **${task.channel_name}**\n`;
+                    message += `   📺 Канал: \`${task.channel_id}\`\n`;
+                    message += `   💰 Награда: ${task.reward} ⭐️\n`;
+                    message += `   🆔 ID: \`${task.id}\`\n\n`;
+                });
+            }
+
+            message += '**⚙️ Доступные команды:**\n';
+            message += '• `/add_task канал|название|награда`\n';
+            message += '• `/delete_task [ID]`\n\n';
+            message += '**📝 Пример:**\n\`/add_task @mychannel|Мой канал|2\`';
+
+            const tasksKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🔧 Админ-панель', callback_data: 'back_to_admin' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(message, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...tasksKeyboard
+            });
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'admin_channels') {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        // Get current required channels
+        db.all('SELECT * FROM required_channels WHERE is_active = 1 ORDER BY id DESC', [], (err, channels) => {
+            if (err) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка загрузки каналов.');
+                return;
+            }
+
+            let message = `📺 **Управление обязательными каналами**\n\n`;
+
+            if (channels.length === 0) {
+                message += '📭 Обязательных каналов пока нет.\n\n';
+            } else {
+                message += '**📺 Активные каналы:**\n';
+                channels.forEach((channel, index) => {
+                    message += `${index + 1}. **${channel.channel_name}**\n`;
+                    message += `   📺 ID: \`${channel.channel_id}\`\n`;
+                    message += `   🆔 DB ID: \`${channel.id}\`\n\n`;
+                });
+            }
+
+            message += '**⚙️ Доступные команды:**\n';
+            message += '• `/add_channel канал|название`\n';
+            message += '• `/delete_channel [ID]`\n\n';
+            message += '**📝 Пример:**\n\`/add_channel @mychannel|Мой канал\`';
+
+            const channelsKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🔧 Админ-панель', callback_data: 'back_to_admin' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(message, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...channelsKeyboard
+            });
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'admin_lotteries') {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        // Get current lotteries
+        db.all('SELECT * FROM lotteries WHERE is_active = 1 ORDER BY id DESC', [], (err, lotteries) => {
+            if (err) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка загрузки лотерей.');
+                return;
+            }
+
+            let message = `🎰 **Управление лотереями**\n\n`;
+
+            if (lotteries.length === 0) {
+                message += '📭 Активных лотерей пока нет.\n\n';
+            } else {
+                message += '**🎰 Активные лотереи:**\n';
+                lotteries.forEach((lottery, index) => {
+                    message += `${index + 1}. **${lottery.name}**\n`;
+                    message += `   🎫 Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
+                    message += `   �� Цена: ${lottery.ticket_price} ⭐️\n`;
+                    message += `   🏆 Победителей: ${lottery.winners_count}\n`;
+                    message += `   🆔 ID: \`${lottery.id}\`\n\n`;
+                });
+            }
+
+            message += '**⚙️ Доступные команды:**\n';
+            message += '• `/add_lottery название|билеты|цена|победители|%`\n\n';
+            message += '**📝 Пример:**\n\`/add_lottery Супер лотерея|100|5|10|10\`';
+
+            const lotteriesKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🔧 Админ-панель', callback_data: 'back_to_admin' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(message, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...lotteriesKeyboard
+            });
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'admin_promos') {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        // Get current promocodes
+        db.all('SELECT * FROM promocodes WHERE is_active = 1 ORDER BY id DESC', [], (err, promos) => {
+            if (err) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка загрузки промокодов.');
+                return;
+            }
+
+            let message = `🎫 **Управление промокодами**\n\n`;
+
+            if (promos.length === 0) {
+                message += '📭 Активных промокодов пока нет.\n\n';
+            } else {
+                message += '**🎫 Активные промокоды:**\n';
+                promos.forEach((promo, index) => {
+                    message += `${index + 1}. **${promo.code}**\n`;
+                    message += `   💰 Награда: ${promo.reward} ⭐️\n`;
+                    message += `   📊 Использований: ${promo.current_uses}/${promo.max_uses}\n`;
+                    message += `   🆔 ID: \`${promo.id}\`\n\n`;
+                });
+            }
+
+            message += '**⚙️ Доступные команды:**\n';
+            message += '• `/add_promo код|звёзды|активации`\n\n';
+            message += '**📝 Пример:**\n\`/add_promo STARS50|0.5|100\`';
+
+            const promosKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🔧 Админ-панель', callback_data: 'back_to_admin' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(message, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...promosKeyboard
+            });
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'admin_broadcast') {
+        if (!isAdmin(userId)) {
+            bot.answerCallbackQuery(callbackQuery.id, '❌ У вас нет прав доступа.');
+            return;
+        }
+
+        const broadcastMessage = `📢 **Управление рассылкой**
+
+🚀 Выберите тип рассылки для отправки сообщений всем пользователям:
+
+💡 *Рассылка будет отправлена всем активным пользователям бота*`;
+
+        const broadcastKeyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📋 Новые ��адания', callback_data: 'broadcast_tasks' },
+                        { text: '🏆 Топ рефералов', callback_data: 'broadcast_top' }
+                    ],
+                    [
+                        { text: '✍️ Своё сообщение', callback_data: 'broadcast_custom' }
+                    ],
+                    [
+                        { text: '🔧 Админ-панель', callback_data: 'back_to_admin' }
+                    ]
+                ]
+            }
+        };
+
+        bot.editMessageText(broadcastMessage, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            parse_mode: 'Markdown',
+            ...broadcastKeyboard
+        });
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    // User menu handlers continued
+    else if (data === 'menu_tasks') {
+        try {
+            // Get available task for user
+            db.get(`
+                SELECT t.* FROM tasks t
+                LEFT JOIN user_tasks ut ON t.id = ut.task_id AND ut.user_id = ?
+                WHERE t.is_active = 1 AND ut.task_id IS NULL
+                ORDER BY t.id ASC
+                LIMIT 1
+            `, [userId], async (err, task) => {
+                if (err) {
+                    console.error('Tasks error:', err);
+                    bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка загрузки заданий.');
+                    return;
+                }
+
+                if (!task) {
+                    const completedMessage = `🎉 **Все задания выполнены!**
+
+✅ Поздравляем! Вы выполнили все доступные задания.
+
+🔄 Заходите позже - возможно появятся новые интересные задания с ещё большими наградами!
+
+💡 *Пока что можете воспользоваться другими способами заработка.*`;
+
+                    const completedKeyboard = {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '👥 Пригласить друзей', callback_data: 'menu_invite' },
+                                    { text: '🎯 Кликер', callback_data: 'menu_clicker' }
+                                ],
+                                [
+                                    { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                                ]
+                            ]
+                        }
+                    };
+
+                    bot.editMessageText(completedMessage, {
+                        chat_id: message.chat.id,
+                        message_id: message.message_id,
+                        parse_mode: 'Markdown',
+                        ...completedKeyboard
+                    });
+                    bot.answerCallbackQuery(callbackQuery.id);
+                    return;
+                }
+
+                const taskMessage = `📋 **Доступное задание**
+
+📺 **Подпишитесь на канал:** ${task.channel_name}
+💰 **Награда за выполнение:** ${task.reward} ⭐️
+
+🔍 После подписки нажмите "Проверить" для получения награды.
+
+💡 *Подписка должна быть активной на момент проверки.*`;
+
+                const taskKeyboard = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '📺 Выполнить', url: `https://t.me/${task.channel_id.replace('@', '')}` }
+                            ],
+                            [
+                                { text: '✅ Проверить', callback_data: `check_task_${task.id}` }
+                            ],
+                            [
+                                { text: '⏭️ Пропустить задание', callback_data: `skip_task_${task.id}` }
+                            ],
+                            [
+                                { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                            ]
+                        ]
+                    }
+                };
+
+                bot.editMessageText(taskMessage, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    parse_mode: 'Markdown',
+                    ...taskKeyboard
+                });
+            });
+
+        } catch (error) {
+            console.error('Error in tasks:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка.');
+        }
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'menu_cases') {
+        try {
+            const user = await getUser(userId);
+
+            if (!user) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Пользователь не найден. Используйте /start');
+                return;
+            }
+
+            const today = new Date().toDateString();
+            const lastCaseOpen = user.last_case_open ? new Date(user.last_case_open).toDateString() : null;
+
+            if (lastCaseOpen === today) {
+                const usedMessage = `🎁 **Кейсы**
+
+📦 **Статус:** Уже открыт сегодня
+⏰ **Следующий кейс:** Завтра
+👥 **Рефералов сегодня:** ${user.referrals_today}
+
+💡 *Возвращайтесь завтра за новым кейсом!*`;
+
+                const usedKeyboard = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '👥 Пригласить друзей', callback_data: 'menu_invite' }
+                            ],
+                            [
+                                { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                            ]
+                        ]
+                    }
+                };
+
+                bot.editMessageText(usedMessage, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    parse_mode: 'Markdown',
+                    ...usedKeyboard
+                });
+                bot.answerCallbackQuery(callbackQuery.id);
+                return;
+            }
+
+            if (user.referrals_today < 3) {
+                const casesMessage = `🎁 **Кейсы**
+
+📦 **Требование:** Минимум 3 рефералов за день
+👥 **Приглашено сегодня:** ${user.referrals_today}/3
+⭕ **Нужно ещё:** ${3 - user.referrals_today} рефералов
+
+💡 *Пригласите ещё друзей, чтобы открыть кейс!*`;
+
+                const casesKeyboard = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '👥 Пригласить друзей', callback_data: 'menu_invite' }
+                            ],
+                            [
+                                { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                            ]
+                        ]
+                    }
+                };
+
+                bot.editMessageText(casesMessage, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    parse_mode: 'Markdown',
+                    ...casesKeyboard
+                });
+                bot.answerCallbackQuery(callbackQuery.id);
+                return;
+            }
+
+            const casesMessage = `🎁 **Кейс доступен!**
+
+📦 Вы можете открыть кейс и получить от **1 до 10 ⭐���**!
+👥 **Рефералов сегодня:** ${user.referrals_today}
+
+🎲 **Готовы испытать удачу?**`;
+
+            const casesKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🎁 Открыть кейс', callback_data: 'open_case' }
+                        ],
+                        [
+                            { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(casesMessage, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...casesKeyboard
+            });
+
+        } catch (error) {
+            console.error('Error in cases:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка.');
+        }
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'menu_lottery') {
+        try {
+            // Get active lotteries
+            db.all('SELECT * FROM lotteries WHERE is_active = 1', [], (err, lotteries) => {
+                if (err) {
+                    console.error('Lottery error:', err);
+                    bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка загрузки лотерей.');
+                    return;
+                }
+
+                if (lotteries.length === 0) {
+                    const noLotteryMessage = `🎰 **Лотереи**
+
+📭 **Статус:** Нет активных лотерей
+👀 **Рекомендация:** Следите за обновлениями
+
+💡 *Скоро появятся новые захватывающие лотереи!*`;
+
+                    const noLotteryKeyboard = {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                                ]
+                            ]
+                        }
+                    };
+
+                    bot.editMessageText(noLotteryMessage, {
+                        chat_id: message.chat.id,
+                        message_id: message.message_id,
+                        parse_mode: 'Markdown',
+                        ...noLotteryKeyboard
+                    });
+                    bot.answerCallbackQuery(callbackQuery.id);
+                    return;
+                }
+
+                let lotteryMessage = `🎰 **Доступные лотереи**\n\n`;
+                const lotteryKeyboard = {
+                    reply_markup: {
+                        inline_keyboard: []
+                    }
+                };
+
+                lotteries.forEach((lottery, index) => {
+                    const remainingTickets = lottery.max_tickets - lottery.current_tickets;
+                    lotteryMessage += `${index + 1}. **${lottery.name}**\n`;
+                    lotteryMessage += `💰 Цена билета: ${lottery.ticket_price} ⭐️\n`;
+                    lotteryMessage += `🎫 Осталось билетов: ${remainingTickets}/${lottery.max_tickets}\n`;
+                    lotteryMessage += `🏆 Победителей: ${lottery.winners_count}\n\n`;
+
+                    if (remainingTickets > 0) {
+                        lotteryKeyboard.reply_markup.inline_keyboard.push([
+                            { text: `🎫 Купить билет "${lottery.name}" (${lottery.ticket_price} ⭐️)`, callback_data: `buy_ticket_${lottery.id}` }
+                        ]);
+                    }
+                });
+
+                lotteryKeyboard.reply_markup.inline_keyboard.push([
+                    { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                ]);
+
+                if (lotteries.every(lottery => lottery.current_tickets >= lottery.max_tickets)) {
+                    lotteryMessage += '❌ **Все билеты проданы. Ожидайте результатов!**';
+                }
+
+                bot.editMessageText(lotteryMessage, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    parse_mode: 'Markdown',
+                    ...lotteryKeyboard
+                });
+            });
+
+        } catch (error) {
+            console.error('Error in lottery:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка.');
+        }
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
+    else if (data === 'menu_withdraw') {
+        try {
+            const user = await getUser(userId);
+
+            if (!user) {
+                bot.answerCallbackQuery(callbackQuery.id, '❌ Пользователь не найден. Используйте /start');
+                return;
+            }
+
+            if (user.referrals_count < 5) {
+                const withdrawalMessage = `💰 **Вывод звёзд**
+
+⭐️ **Ваш баланс:** ${user.balance.toFixed(1)} звёзд
+👥 **Рефералов:** ${user.referrals_count}/5
+
+❌ **Требование:** Минимум 5 рефералов для разблокировки вывода!
+
+🎯 **Нужно пригласить ещё:** ${5 - user.referrals_count} друзей
+
+💡 *Используйте реферальную программу для быстрого набора рефералов.*`;
+
+                const withdrawalKeyboard = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '👥 Пригласить друзей', callback_data: 'menu_invite' }
+                            ],
+                            [
+                                { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                            ]
+                        ]
+                    }
+                };
+
+                bot.editMessageText(withdrawalMessage, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    parse_mode: 'Markdown',
+                    ...withdrawalKeyboard
+                });
+                bot.answerCallbackQuery(callbackQuery.id);
+                return;
+            }
+
+            const withdrawalMessage = `💰 **Вывод звёзд**
+
+⭐️ **Ваш баланс:** ${user.balance.toFixed(1)} звёзд
+👥 **Рефералов:** ${user.referrals_count}
+
+✅ **Статус:** Вывод разблокирован!
+
+💎 **Выберите сумму для вывода:**`;
+
+            const withdrawalKeyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '15 ⭐️', callback_data: 'withdraw_15' },
+                            { text: '25 ⭐️', callback_data: 'withdraw_25' }
+                        ],
+                        [
+                            { text: '50 ⭐️', callback_data: 'withdraw_50' },
+                            { text: '100 ⭐️', callback_data: 'withdraw_100' }
+                        ],
+                        [
+                            { text: '🎖️ Telegram Premium (1300 ⭐️)', callback_data: 'withdraw_premium' }
+                        ],
+                        [
+                            { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                        ]
+                    ]
+                }
+            };
+
+            bot.editMessageText(withdrawalMessage, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'Markdown',
+                ...withdrawalKeyboard
+            });
+
+        } catch (error) {
+            console.error('Error in withdrawal:', error);
+            bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка.');
+        }
+        bot.answerCallbackQuery(callbackQuery.id);
+        return;
+    }
+
     if (data.startsWith('withdraw_')) {
         const withdrawalType = data.replace('withdraw_', '');
         let amount;
@@ -727,7 +1803,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 break;
             case '100':
                 amount = 100;
-                displayName = '100 ⭐️';
+                displayName = '100 ��️';
                 break;
             case 'premium':
                 amount = 1300;
@@ -765,7 +1841,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     const requestId = this.lastID;
 
                     // Send request to admin channel
-                    const adminMessage = `💰 Новая заявка на вывод #${requestId}
+                    const adminMessage = `💰 Новая заявка на ��ывод #${requestId}
 
 👤 Пользователь: ${user.first_name || 'Неизвестно'}
 🆔 ID: ${user.id}
@@ -774,7 +1850,7 @@ bot.on('callback_query', async (callbackQuery) => {
 💰 Сумма: ${displayName}
 ⭐️ Баланс до вывода: ${user.balance.toFixed(1)}
 
-Выберите действие:`;
+Выберите ��ействие:`;
 
                     const adminKeyboard = {
                         reply_markup: {
@@ -863,7 +1939,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 );
 
                 // Notify user (TODO: add reason input)
-                bot.sendMessage(request.user_id, `❌ К сожалению, ваша заявка на вывод ${request.type} была отклонена.
+                bot.sendMessage(request.user_id, `��� К сожалению, ваша заявка на вывод ${request.type} была отклонена.
 
 Если у вас есть вопросы, обратитесь к администратору.`);
 
@@ -901,7 +1977,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 ratingText += 'Пока никто не пригласил рефералов 😔';
             } else {
                 rows.forEach((user, index) => {
-                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '����' : `${index + 1}.`;
                     ratingText += `${medal} ${user.first_name || 'Неизвестно'} - ${user.referrals_count} рефералов\n`;
                 });
             }
@@ -935,7 +2011,7 @@ bot.on('callback_query', async (callbackQuery) => {
             } else {
                 rows.forEach((user, index) => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-                    ratingText += `${medal} ${user.first_name || 'Неизвестно'} - ${user.referrals_today} рефералов\n`;
+                    ratingText += `${medal} ${user.first_name || 'Неи��вестно'} - ${user.referrals_today} рефералов\n`;
                 });
             }
 
@@ -1068,7 +2144,7 @@ bot.on('callback_query', async (callbackQuery) => {
                         bot.editMessageText(
                             `🎫 Билет куплен!
 
-Вы купили билет на лотерею "${lottery.name}"
+Вы купили билет на ло��ерею "${lottery.name}"
 Потрачено: ${lottery.ticket_price} ⭐️
 
 Результаты будут объявлены когда закончатся все билеты.`,
@@ -1123,9 +2199,9 @@ bot.on('callback_query', async (callbackQuery) => {
                             [task.reward, userId]
                         );
 
-                        bot.answerCallbackQuery(callbackQuery.id, `✅ Задание выполнено! +${task.reward} ⭐️`);
+                        bot.answerCallbackQuery(callbackQuery.id, `✅ Задание ��ыполнено! +${task.reward} ⭐️`);
                         bot.editMessageText(
-                            `✅ Задание выполнено!\n\nВы получили ${task.reward} ⭐️\n\nДля следующего задания нажмите "Задания" в меню.`,
+                            `✅ Задание выполнено!\n\nВы получили ${task.reward} ⭐️\n\nДля следующего задания нажмите "Задан��я" в меню.`,
                             {
                                 chat_id: message.chat.id,
                                 message_id: message.message_id
@@ -1154,7 +2230,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     return;
                 }
 
-                bot.answerCallbackQuery(callbackQuery.id, '⏭️ Задание пропущено');
+                bot.answerCallbackQuery(callbackQuery.id, '⏭️ Задание про��ущено');
                 bot.editMessageText(
                     `⏭️ Задание пропущено\n\nДля следующего задания нажмите "Задания" в меню.`,
                     {
@@ -1268,7 +2344,7 @@ bot.onText(/📋 Задания/, async (msg) => {
 });
 
 // Ratings handler
-bot.onText(/🏆 Рейтинги/, (msg) => {
+bot.onText(/���� Рейтинги/, (msg) => {
     const chatId = msg.chat.id;
 
     const ratingsMessage = `🏆 Рейтинги
@@ -1306,7 +2382,7 @@ bot.onText(/🎁 Кейсы/, async (msg) => {
         const lastCaseOpen = user.last_case_open ? new Date(user.last_case_open).toDateString() : null;
 
         if (lastCaseOpen === today) {
-            bot.sendMessage(chatId, '📦 Вы уже открывали кейс сегодня!\n\nПриходите завтра за новым кейсом.', backToMainKeyboard);
+            bot.sendMessage(chatId, '📦 Вы уже открывали кейс сегодня!\n\nПриходите завтра за новым кейсо��.', backToMainKeyboard);
             return;
         }
 
@@ -1361,7 +2437,7 @@ bot.onText(/🎰 Лотерея/, async (msg) => {
             }
 
             if (lotteries.length === 0) {
-                bot.sendMessage(chatId, '🎰 В данный момент нет активных лотерей.\n\nСледите за обновлениями!', backToMainKeyboard);
+                bot.sendMessage(chatId, '🎰 В данный момент нет активных лотерей.\n\nСледите за обнов��ениями!', backToMainKeyboard);
                 return;
             }
 
@@ -1471,9 +2547,9 @@ bot.onText(/🎰 Управление лотереями/, async (msg) => {
             message += '**Активные лотереи:**\n';
             lotteries.forEach((lottery, index) => {
                 message += `${index + 1}. ${lottery.name}\n`;
-                message += `   Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
+                message += `   Бил��тов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
                 message += `   Цена: ${lottery.ticket_price} ⭐️\n`;
-                message += `   Победителей: ${lottery.winners_count}\n\n`;
+                message += `   По��едителей: ${lottery.winners_count}\n\n`;
             });
         }
 
@@ -1535,7 +2611,7 @@ bot.onText(/\/add_lottery (.+)/, (msg, match) => {
 });
 
 // Admin promocodes management
-bot.onText(/🎫 Промокоды/, async (msg) => {
+bot.onText(/🎫 Промо��оды/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
@@ -1599,7 +2675,7 @@ bot.onText(/\/add_promo (.+)/, (msg, match) => {
     const maxUses = parseInt(maxUsesStr);
 
     if (isNaN(reward) || isNaN(maxUses) || reward <= 0 || maxUses <= 0) {
-        bot.sendMessage(chatId, '❌ Неверные числовые значения.');
+        bot.sendMessage(chatId, '❌ Неверны�� числовые значения.');
         return;
     }
 
@@ -1617,7 +2693,7 @@ bot.onText(/\/add_promo (.+)/, (msg, match) => {
                 return;
             }
 
-            bot.sendMessage(chatId, `✅ Промокод создан!\n\nКод: **${code.trim().toUpperCase()}**\nНаграда: ${reward} ⭐️\nАктиваций: ${maxUses}`, {parse_mode: 'Markdown'});
+            bot.sendMessage(chatId, `✅ Пром��код создан!\n\nКод: **${code.trim().toUpperCase()}**\nНаграда: ${reward} ⭐️\nАктиваций: ${maxUses}`, {parse_mode: 'Markdown'});
         }
     );
 });
@@ -1634,11 +2710,105 @@ bot.onText(/🎫 Промокод/, (msg) => {
     });
 });
 
-// Handle promocode input and custom broadcast input
+// Handle all message inputs (promocodes, broadcasts, etc.)
 bot.on('message', (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    // Skip commands and callback queries
+    if (msg.text && msg.text.startsWith('/')) return;
+
+    // Check user's current action
+    db.get('SELECT temp_action FROM users WHERE id = ?', [userId], (err, user) => {
+        if (err || !user) return;
+
+        // Handle promocode input
+        if (user.temp_action === 'awaiting_promo') {
+            const code = msg.text.trim().toUpperCase();
+
+            // Clear temp action
+            db.run('UPDATE users SET temp_action = NULL WHERE id = ?', [userId]);
+
+            // Check if promocode exists and is active
+            db.get('SELECT * FROM promocodes WHERE code = ? AND is_active = 1', [code], (err, promo) => {
+                if (err || !promo) {
+                    const errorKeyboard = {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                                ]
+                            ]
+                        }
+                    };
+                    bot.sendMessage(chatId, '❌ **Промокод не найден или неактивен.**\n\n💡 *Проверьте правильность написания и попробуйте снова.*', errorKeyboard);
+                    return;
+                }
+
+                // Check if user already used this promocode
+                db.get('SELECT * FROM promocode_usage WHERE user_id = ? AND promocode_id = ?', [userId, promo.id], (err, usage) => {
+                    if (err) {
+                        bot.sendMessage(chatId, '❌ Ошибка проверки промокода.');
+                        return;
+                    }
+
+                    if (usage) {
+                        const usedKeyboard = {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                                    ]
+                                ]
+                            }
+                        };
+                        bot.sendMessage(chatId, '❌ **Промокод уже использован**\n\n💡 *Каждый промокод можно использовать только один раз.*', usedKeyboard);
+                        return;
+                    }
+
+                    // Check if promocode has uses left
+                    if (promo.current_uses >= promo.max_uses) {
+                        const exhaustedKeyboard = {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                                    ]
+                                ]
+                            }
+                        };
+                        bot.sendMessage(chatId, '❌ **Промокод исчерпан**\n\n💡 *Вс�� активации данного промокода уже использованы.*', exhaustedKeyboard);
+                        return;
+                    }
+
+                    // Use promocode
+                    db.run('INSERT INTO promocode_usage (user_id, promocode_id) VALUES (?, ?)', [userId, promo.id]);
+                    db.run('UPDATE promocodes SET current_uses = current_uses + 1 WHERE id = ?', [promo.id]);
+                    db.run('UPDATE users SET balance = balance + ? WHERE id = ?', [promo.reward, userId]);
+
+                    const successKeyboard = {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '👤 Мой профиль', callback_data: 'menu_profile' },
+                                    { text: '🏠 В главное меню', callback_data: 'back_to_main' }
+                                ]
+                            ]
+                        }
+                    };
+
+                    bot.sendMessage(chatId, `🎉 **Промокод успешно активирован!**\n\n💰 **Получено:** +${promo.reward} ⭐️\n\n✨ *Бонус зачислен на ваш баланс*`, {
+                        parse_mode: 'Markdown',
+                        ...successKeyboard
+                    });
+                });
+            });
+            return;
+        }
+    });
+
+    // Handle old-style promocode input for backward compatibility
     if (msg.reply_to_message && msg.reply_to_message.text === '🎫 Введите промокод:') {
-        const chatId = msg.chat.id;
-        const userId = msg.from.id;
         const code = msg.text.trim().toUpperCase();
 
         // Check if promocode exists and is active
@@ -1701,7 +2871,7 @@ bot.onText(/🎯 Кликер/, async (msg) => {
         const user = await getUser(userId);
         
         if (!user) {
-            bot.sendMessage(chatId, '❌ Пользователь не найден. Используйте /start');
+            bot.sendMessage(chatId, '❌ Пользователь не найден. Испол��зуйте /start');
             return;
         }
         
@@ -1709,7 +2879,7 @@ bot.onText(/🎯 Кликер/, async (msg) => {
         const lastClick = user.last_click ? new Date(user.last_click).toDateString() : null;
         
         if (lastClick === today) {
-            bot.sendMessage(chatId, '⏰ Вы уже использовали кликер сегодня! Приходите завтра.', backToMainKeyboard);
+            bot.sendMessage(chatId, '⏰ Вы уже использовали кликер сегодн��! Приходите завтра.', backToMainKeyboard);
             return;
         }
         
@@ -1804,11 +2974,11 @@ bot.onText(/📖 Инструкция/, (msg) => {
 
 🌟 Как заработать звёзды:
 
-1️⃣ Приглашайте друзей - получайте по 3 ⭐️ за каждого
+1️⃣ Приглашайте друзей - получайте по 3 ⭐️ з�� каждого
 2️⃣ Выполняйте задания - подписывайтесь на каналы
 3️⃣ Используйте ежедневный кликер - получайте 0.1 ⭐️ в день
 4️⃣ Открывайте кейсы (при 3+ рефералах в день)
-5️⃣ Участвуйте в лотереях
+5️⃣ Участв��йте в лотереях
 
 💰 Вывод средств:
 - Минимум 5 рефералов для вывода
