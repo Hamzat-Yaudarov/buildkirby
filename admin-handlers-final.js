@@ -29,7 +29,7 @@ async function handleAdminTasks(bot, chatId, messageId) {
             reply_markup: {
                 inline_keyboard: [
                     [{ text: '📋 Список заданий', callback_data: 'admin_list_tasks' }],
-                    [{ text: '��� Назад', callback_data: 'admin_menu' }]
+                    [{ text: ' Назад', callback_data: 'admin_menu' }]
                 ]
             }
         });
@@ -99,7 +99,7 @@ async function handleAdminLottery(bot, chatId, messageId) {
     console.log('[ADMIN-FINAL] handleAdminLottery called');
     
     try {
-        const message = `🎰 **Управление лотереям��**
+        const message = `🎰 **Управление лотереями**
 
 🛠️ **Команды для управления лотереями:**
 • \`/create_lottery название|билеты|цена|победители|процент\` - создать лотерею
