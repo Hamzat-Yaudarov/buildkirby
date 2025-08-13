@@ -9,7 +9,7 @@ console.log('[MAIN] cron imported');
 const db = require('./database');
 console.log('[MAIN] database imported');
 
-const adminHandlers = require('./admin-test');
+const adminHandlers = require('./admin-handlers-final');
 console.log('[MAIN] admin-test imported, type:', typeof adminHandlers);
 console.log('[MAIN] adminHandlers.handleAdminTasks type:', typeof adminHandlers.handleAdminTasks);
 
@@ -328,7 +328,7 @@ bot.onText(/\/test_version/, async (msg) => {
 
     const testMessage = `🔧 **Тест версии бота**
 
-📅 Версия: ИСПРАВЛЕННАЯ v2.2
+📅 Версия: ФИНАЛЬНАЯ v3.0 - АДМИН-ПАНЕЛЬ РАБОТАЕТ!
 🕒 Время: ${new Date().toLocaleString('ru-RU')}
 👤 Ваш ID: ${userId}
 🔧 Admin ID: ${isAdmin(userId) ? 'ВЫ АДМИН' : 'НЕ АДМИН'}
@@ -376,7 +376,7 @@ bot.onText(/\/admin/, async (msg) => {
     console.log(`[ADMIN] /admin command called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа к панели администратора.');
+        bot.sendMessage(chatId, '�� У вас нет прав доступа к панели администратора.');
         return;
     }
 
@@ -522,7 +522,7 @@ bot.onText(/\/create_promo (.+)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error creating promocode:', error);
-        bot.sendMessage(chatId, '❌ Ошибка создания промокода (возможно, код уже существует).');
+        bot.sendMessage(chatId, '❌ Ошибка созда��ия промокода (возможно, код уже существует).');
     }
 });
 
@@ -803,7 +803,7 @@ async function handleProfile(chatId, messageId, user) {
 
 🎯 **Игровая статистика:**
 ${user.last_click ? `• Последний клик: ${new Date(user.last_click).toLocaleDateString('ru-RU')}` : '• Кликер еще не использовался'}
-${user.last_case_open ? `• Последний к��йс: ${new Date(user.last_case_open).toLocaleDateString('ru-RU')}` : '• Кейсы еще не открывались'}`;
+${user.last_case_open ? `• Последний к����с: ${new Date(user.last_case_open).toLocaleDateString('ru-RU')}` : '• Кейсы еще не открывались'}`;
 
     await bot.editMessageText(message, {
         chat_id: chatId,
@@ -1171,7 +1171,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 async function handleInstruction(chatId, messageId) {
     const message = `📖 **��нструкция по боту**
 
-🎯 **Как зарабатывать звёзды:**
+🎯 **Как зарабатывать зв��зды:**
 
 1️⃣ **Кликер** - нажимайте каждый день и получайте 0.1 ⭐
 2️⃣ **З��дания** - подписывайтесь на каналы за награды
@@ -1225,7 +1225,7 @@ async function handleRatingsAll(chatId, messageId) {
             message += 'Пока нет данных для рейтинга.';
         } else {
             result.rows.forEach((user, index) => {
-                const medal = index === 0 ? '🥇' : index === 1 ? '���' : index === 2 ? '🥉' : `${index + 1}.`;
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
                 message += `${medal} **${user.first_name}** - ${user.referrals_count} рефералов\n`;
             });
         }
@@ -1648,9 +1648,24 @@ cron.schedule('0 0 * * *', async () => {
     }
 });
 
-// Error handling
+// Error handling with 409 conflict management
 bot.on('polling_error', (error) => {
-    console.error('Polling error:', error);
+    if (error.code === 'ETELEGRAM' && error.response?.body?.error_code === 409) {
+        console.log('⚠️ 409 Conflict detected - another bot instance is running');
+        console.log('🔄 This is normal when deploying updates');
+
+        // Try to clear webhook just in case
+        setTimeout(async () => {
+            try {
+                await bot.deleteWebHook();
+                console.log('🧹 Webhook cleared due to 409 conflict');
+            } catch (e) {
+                console.log('ℹ️ Webhook clear attempt (may fail, that\'s ok)');
+            }
+        }, 5000);
+    } else {
+        console.error('Polling error:', error.message);
+    }
 });
 
 process.on('SIGINT', async () => {
