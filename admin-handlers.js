@@ -2,7 +2,8 @@ const db = require('./database');
 
 // Admin callback handler additions for index.js
 async function handleAdminTasks(bot, chatId, messageId) {
-    const message = `📋 **Управление заданиями**
+    try {
+        const message = `📋 **Управление заданиями**
 
 Для создания задания отправьте сообщение в формате:
 \`тип|название|награда|лимит\`
@@ -14,21 +15,34 @@ async function handleAdminTasks(bot, chatId, messageId) {
 • /delete_task ID - удалить задание
 • /list_tasks - список заданий`;
 
-    await bot.editMessageText(message, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '📋 ��писок заданий', callback_data: 'admin_list_tasks' }],
-                [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-            ]
-        }
-    });
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📋 ��писок заданий', callback_data: 'admin_list_tasks' }],
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('Error in handleAdminTasks:', error);
+        await bot.editMessageText('❌ Ошибка загрузки управления заданиями.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    }
 }
 
 async function handleAdminChannels(bot, chatId, messageId) {
-    const message = `📺 **Управление обязательными каналами**
+    try {
+        const message = `📺 **Управление обязательными каналами**
 
 Для добавления канала отправьте сообщение в формате:
 \`@channel_name|Название канала\`
@@ -38,24 +52,37 @@ async function handleAdminChannels(bot, chatId, messageId) {
 • /remove_channel ID - удалить канал
 • /list_channels - список каналов`;
 
-    await bot.editMessageText(message, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '📺 Список каналов', callback_data: 'admin_list_channels' }],
-                [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-            ]
-        }
-    });
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📺 Список каналов', callback_data: 'admin_list_channels' }],
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('Error in handleAdminChannels:', error);
+        await bot.editMessageText('❌ Ошибка загрузки управления каналами.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    }
 }
 
 async function handleAdminLottery(bot, chatId, messageId) {
-    const message = `🎰 **Управление лотереями**
+    try {
+        const message = `🎰 **Управление лотереями**
 
 Для создания лотереи отправьте сообщение в формате:
-\`название|количество_билет��в|цена_билета|количество_победителей|процент_боту\`
+\`название|количество_билетов|цена_билета|количество_победителей|процент_боту\`
 
 Пример: \`Еженедельная|100|5|10|20\`
 
@@ -64,21 +91,34 @@ async function handleAdminLottery(bot, chatId, messageId) {
 • /end_lottery ID - завершить лотерею
 • /list_lotteries - список лотерей`;
 
-    await bot.editMessageText(message, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '🎰 Список лотерей', callback_data: 'admin_list_lotteries' }],
-                [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-            ]
-        }
-    });
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🎰 Список лотерей', callback_data: 'admin_list_lotteries' }],
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('Error in handleAdminLottery:', error);
+        await bot.editMessageText('❌ Ошибка загрузки управления лотереями.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    }
 }
 
 async function handleAdminPromocodes(bot, chatId, messageId) {
-    const message = `🎁 **Управление промокодами**
+    try {
+        const message = `🎁 **Управление промокодами**
 
 Для создания промокода отправьте сообщение в формате:
 \`КОД|количество_звезд|количество_активаций\`
@@ -86,41 +126,66 @@ async function handleAdminPromocodes(bot, chatId, messageId) {
 Пример: \`WELCOME|0.5|100\`
 
 Доступные команды:
-• /create_promo - создать промокод
+• /create_promo - создать ��ромокод
 • /deactivate_promo КОД - деактивировать
 • /list_promos - список промокодов`;
 
-    await bot.editMessageText(message, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '🎁 Список промокодов', callback_data: 'admin_list_promos' }],
-                [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-            ]
-        }
-    });
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🎁 Список промокодов', callback_data: 'admin_list_promos' }],
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('Error in handleAdminPromocodes:', error);
+        await bot.editMessageText('❌ Ошибка загрузки управления промокодами.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    }
 }
 
 async function handleAdminBroadcast(bot, chatId, messageId) {
-    const message = `📢 **Рассылка сообщений**
+    try {
+        const message = `📢 **Рассылка сообщений**
 
 Выберите тип рассылки:`;
 
-    await bot.editMessageText(message, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '📋 Новые задания ждут тебя', callback_data: 'broadcast_tasks' }],
-                [{ text: '🏆 Попади в топ 5 по рефералам', callback_data: 'broadcast_referrals' }],
-                [{ text: '✏️ Написать своё сообщение', callback_data: 'broadcast_custom' }],
-                [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-            ]
-        }
-    });
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📋 Новые задания ждут тебя', callback_data: 'broadcast_tasks' }],
+                    [{ text: '🏆 Попади в топ 5 по рефералам', callback_data: 'broadcast_referrals' }],
+                    [{ text: '✏️ Написать своё сообщение', callback_data: 'broadcast_custom' }],
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('Error in handleAdminBroadcast:', error);
+        await bot.editMessageText('❌ Ошибка загрузки рассылки.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    }
 }
 
 // Broadcast handlers
@@ -169,7 +234,12 @@ async function handleBroadcastTasks(bot, chatId, messageId) {
         console.error('Error in broadcast tasks:', error);
         await bot.editMessageText('❌ Ошибка рассылки.', {
             chat_id: chatId,
-            message_id: messageId
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_broadcast' }]
+                ]
+            }
         });
     }
 }
@@ -219,7 +289,12 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
         console.error('Error in broadcast referrals:', error);
         await bot.editMessageText('❌ Ошибка рассылки.', {
             chat_id: chatId,
-            message_id: messageId
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_broadcast' }]
+                ]
+            }
         });
     }
 }
@@ -258,7 +333,12 @@ async function handleAdminListTasks(bot, chatId, messageId) {
         console.error('Error listing tasks:', error);
         await bot.editMessageText('❌ Ошибка загрузки заданий.', {
             chat_id: chatId,
-            message_id: messageId
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_tasks' }]
+                ]
+            }
         });
     }
 }
@@ -295,7 +375,12 @@ async function handleAdminListChannels(bot, chatId, messageId) {
         console.error('Error listing channels:', error);
         await bot.editMessageText('❌ Ошибка загрузки каналов.', {
             chat_id: chatId,
-            message_id: messageId
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_channels' }]
+                ]
+            }
         });
     }
 }
@@ -315,7 +400,7 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
                 message += `   Цена билета: ${lottery.ticket_price} ⭐\n`;
                 message += `   Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
                 message += `   Победителей: ${lottery.winners_count}\n`;
-                message += `   Статус: ${lottery.is_active ? '✅ Активно' : '❌ Завершено'}\n\n`;
+                message += `   Статус: ${lottery.is_active ? '✅ Акти��но' : '❌ Завершено'}\n\n`;
             });
         }
 
@@ -334,7 +419,12 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
         console.error('Error listing lotteries:', error);
         await bot.editMessageText('❌ Ошибка загрузки лотерей.', {
             chat_id: chatId,
-            message_id: messageId
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_lottery' }]
+                ]
+            }
         });
     }
 }
@@ -372,7 +462,12 @@ async function handleAdminListPromos(bot, chatId, messageId) {
         console.error('Error listing promocodes:', error);
         await bot.editMessageText('❌ Ошибка загрузки промокодов.', {
             chat_id: chatId,
-            message_id: messageId
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_promocodes' }]
+                ]
+            }
         });
     }
 }

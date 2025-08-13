@@ -196,19 +196,26 @@ async function createOrUpdateUser(user, invitedBy = null) {
     }
 }
 
-async function addReferralBonus(referrerId) {
+async function addReferralBonus(referrerId, newUserName = 'Новый пользователь') {
     const bonus = 3; // 3 stars for each referral
-    
+
     try {
         await executeQuery(
-            `UPDATE users SET 
-             balance = balance + $1, 
+            `UPDATE users SET
+             balance = balance + $1,
              referrals_count = referrals_count + 1,
              referrals_today = referrals_today + 1,
              updated_at = CURRENT_TIMESTAMP
              WHERE id = $2`,
             [bonus, referrerId]
         );
+
+        // Return referrer and bonus info for notification
+        return {
+            referrerId,
+            bonus,
+            newUserName
+        };
     } catch (error) {
         console.error('Error adding referral bonus:', error);
         throw error;
