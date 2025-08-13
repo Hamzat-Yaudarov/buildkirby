@@ -3,9 +3,11 @@ const db = require('./database');
 // Admin callback handler additions for index.js
 async function handleAdminTasks(bot, chatId, messageId) {
     try {
+        console.log(`[ADMIN] handleAdminTasks called - chatId: ${chatId}, messageId: ${messageId}`);
+
         const message = `📋 **Управление заданиями**
 
-Для создания задания отправьте сообщение в формате:
+Для создания задания отправьте сообще��ие в формате:
 \`тип|название|награда|лимит\`
 
 Пример: \`канал|@example|1|100\`
@@ -15,33 +17,42 @@ async function handleAdminTasks(bot, chatId, messageId) {
 • /delete_task ID - удалить задание
 • /list_tasks - список заданий`;
 
+        console.log('[ADMIN] Sending admin tasks message...');
         await bot.editMessageText(message, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '📋 ��писок заданий', callback_data: 'admin_list_tasks' }],
+                    [{ text: '📋 Список заданий', callback_data: 'admin_list_tasks' }],
                     [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
                 ]
             }
         });
+        console.log('[ADMIN] Admin tasks message sent successfully');
     } catch (error) {
-        console.error('Error in handleAdminTasks:', error);
-        await bot.editMessageText('❌ Ошибка загрузки управления заданиями.', {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-                ]
-            }
-        });
+        console.error('[ADMIN] Error in handleAdminTasks:', error.message);
+        console.error('[ADMIN] Full error:', error);
+        try {
+            await bot.editMessageText('❌ Ошибка загрузки управления заданиями.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                    ]
+                }
+            });
+        } catch (secondError) {
+            console.error('[ADMIN] Error sending error message:', secondError);
+        }
     }
 }
 
 async function handleAdminChannels(bot, chatId, messageId) {
     try {
+        console.log(`[ADMIN] handleAdminChannels called - chatId: ${chatId}, messageId: ${messageId}`);
+
         const message = `📺 **Управление обязательными каналами**
 
 Для добавления канала отправьте сообщение в формате:
@@ -52,6 +63,7 @@ async function handleAdminChannels(bot, chatId, messageId) {
 • /remove_channel ID - удалить канал
 • /list_channels - список каналов`;
 
+        console.log('[ADMIN] Sending admin channels message...');
         await bot.editMessageText(message, {
             chat_id: chatId,
             message_id: messageId,
@@ -63,22 +75,30 @@ async function handleAdminChannels(bot, chatId, messageId) {
                 ]
             }
         });
+        console.log('[ADMIN] Admin channels message sent successfully');
     } catch (error) {
-        console.error('Error in handleAdminChannels:', error);
-        await bot.editMessageText('❌ Ошибка загрузки управления каналами.', {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-                ]
-            }
-        });
+        console.error('[ADMIN] Error in handleAdminChannels:', error.message);
+        console.error('[ADMIN] Full error:', error);
+        try {
+            await bot.editMessageText('❌ Ошибка загрузки управления каналами.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                    ]
+                }
+            });
+        } catch (secondError) {
+            console.error('[ADMIN] Error sending error message:', secondError);
+        }
     }
 }
 
 async function handleAdminLottery(bot, chatId, messageId) {
     try {
+        console.log(`[ADMIN] handleAdminLottery called - chatId: ${chatId}, messageId: ${messageId}`);
+
         const message = `🎰 **Управление лотереями**
 
 Для создания лотереи отправьте сообщение в формате:
@@ -86,11 +106,12 @@ async function handleAdminLottery(bot, chatId, messageId) {
 
 Пример: \`Еженедельная|100|5|10|20\`
 
-Доступные команды:
+Доступные к��манды:
 • /create_lottery - создать лотерею
 • /end_lottery ID - завершить лотерею
 • /list_lotteries - список лотерей`;
 
+        console.log('[ADMIN] Sending admin lottery message...');
         await bot.editMessageText(message, {
             chat_id: chatId,
             message_id: messageId,
@@ -102,17 +123,23 @@ async function handleAdminLottery(bot, chatId, messageId) {
                 ]
             }
         });
+        console.log('[ADMIN] Admin lottery message sent successfully');
     } catch (error) {
-        console.error('Error in handleAdminLottery:', error);
-        await bot.editMessageText('❌ Ошибка загрузки управления лотереями.', {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
-                ]
-            }
-        });
+        console.error('[ADMIN] Error in handleAdminLottery:', error.message);
+        console.error('[ADMIN] Full error:', error);
+        try {
+            await bot.editMessageText('❌ Ошибка загрузки управления лотереями.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                    ]
+                }
+            });
+        } catch (secondError) {
+            console.error('[ADMIN] Error sending error message:', secondError);
+        }
     }
 }
 
@@ -249,7 +276,7 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
         const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
         let successCount = 0;
         
-        const message = `🏆 **Попади в топ 5 по рефералам и получи еженедельные призы!**
+        const message = `🏆 **Поп��ди в топ 5 по рефералам и получи еженедельные призы!**
 
 Приглашай друзей и зарабатывай больше звёзд!`;
 
@@ -392,7 +419,7 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
         let message = '🎰 **Список лотерей**\n\n';
         
         if (lotteries.rows.length === 0) {
-            message += 'Лотерей пока нет.';
+            message += 'Лотерей по��а нет.';
         } else {
             lotteries.rows.forEach((lottery, index) => {
                 message += `${index + 1}. **${lottery.name}**\n`;

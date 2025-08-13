@@ -193,7 +193,7 @@ function getAdminMenuKeyboard() {
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: '📊 Статистика', callback_data: 'admin_stats' },
+                    { text: '��� Статистика', callback_data: 'admin_stats' },
                     { text: '📋 Управление заданиями', callback_data: 'admin_tasks' }
                 ],
                 [
@@ -307,7 +307,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error in start command:', error);
-        bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте позже.');
+        bot.sendMessage(chatId, '❌ Произошла ош��бка. Попробуйте позже.');
     }
 });
 
@@ -327,7 +327,7 @@ bot.onText(/\/admin/, async (msg) => {
         const message = `🔧 **Админ-панель**
 
 📊 **Быстрая статистика:**
-👥 ��ользователей: ${stats.total_users}
+👥 ��ользоват��лей: ${stats.total_users}
 💰 Общий баланс: ${stats.total_balance} ⭐
 
 Выберите действие:`;
@@ -525,7 +525,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 await handleCases(chatId, msg.message_id, user);
                 break;
             case 'lottery':
-                await handleLottery(chatId, msg.message_id);
+                await handleLottery(chatId, msg.message_id, userId);
                 break;
             case 'promocode':
                 await handlePromocodeInput(chatId, msg.message_id, userId);
@@ -550,16 +550,32 @@ bot.on('callback_query', async (callbackQuery) => {
                 if (isAdmin(userId)) await handleAdminStats(chatId, msg.message_id);
                 break;
             case 'admin_tasks':
-                if (isAdmin(userId)) await adminHandlers.handleAdminTasks(bot, chatId, msg.message_id);
+                console.log(`[MAIN] Admin tasks called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
+                if (isAdmin(userId)) {
+                    console.log('[MAIN] Calling adminHandlers.handleAdminTasks...');
+                    await adminHandlers.handleAdminTasks(bot, chatId, msg.message_id);
+                }
                 break;
             case 'admin_channels':
-                if (isAdmin(userId)) await adminHandlers.handleAdminChannels(bot, chatId, msg.message_id);
+                console.log(`[MAIN] Admin channels called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
+                if (isAdmin(userId)) {
+                    console.log('[MAIN] Calling adminHandlers.handleAdminChannels...');
+                    await adminHandlers.handleAdminChannels(bot, chatId, msg.message_id);
+                }
                 break;
             case 'admin_lottery':
-                if (isAdmin(userId)) await adminHandlers.handleAdminLottery(bot, chatId, msg.message_id);
+                console.log(`[MAIN] Admin lottery called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
+                if (isAdmin(userId)) {
+                    console.log('[MAIN] Calling adminHandlers.handleAdminLottery...');
+                    await adminHandlers.handleAdminLottery(bot, chatId, msg.message_id);
+                }
                 break;
             case 'admin_promocodes':
-                if (isAdmin(userId)) await adminHandlers.handleAdminPromocodes(bot, chatId, msg.message_id);
+                console.log(`[MAIN] Admin promocodes called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
+                if (isAdmin(userId)) {
+                    console.log('[MAIN] Calling adminHandlers.handleAdminPromocodes...');
+                    await adminHandlers.handleAdminPromocodes(bot, chatId, msg.message_id);
+                }
                 break;
             case 'admin_broadcast':
                 if (isAdmin(userId)) await adminHandlers.handleAdminBroadcast(bot, chatId, msg.message_id);
@@ -597,6 +613,12 @@ bot.on('callback_query', async (callbackQuery) => {
                 } else if (data.startsWith('lottery_buy_')) {
                     const lotteryId = data.replace('lottery_buy_', '');
                     await handleLotteryBuy(chatId, msg.message_id, userId, lotteryId);
+                } else if (data === 'lottery_sold_out') {
+                    await bot.answerCallbackQuery(callbackQuery.id, {
+                        text: '🚫 Все билеты в эту лотерею проданы!',
+                        show_alert: true
+                    });
+                    return; // Don't process further
                 }
                 break;
         }
@@ -622,7 +644,7 @@ async function handleMainMenu(chatId, messageId) {
 🎯 **Доступные возможности:**
 • 🎯 **Кликер** - ежедневная награда 0.1 ⭐
 • 📋 **Задания** - выполняйте задачи за вознаграждение
-• 👥 **Рефералы** - приглашайте друзей (3 ⭐ за каждого)
+• 👥 **Рефералы** - приглаша��те друзей (3 ⭐ за каждого)
 • 🎁 **Кейсы** - призы от 1 до 10 ⭐
 • 🎰 **Лотерея** - участвуйте в розыгрышах
 
@@ -760,7 +782,7 @@ async function handleClicker(chatId, messageId, user) {
 ⏳ **До следующей награды:** ${hoursLeft}ч ${minutesLeft}м
 🎁 **Следующая награда:** 0.1 ⭐
 
-💡 **Совет:** Пр��глашайте друзей и получайте 3 ⭐ за каждого!`;
+💡 **Совет:** Пр��глашайте друзей и пол��чайте 3 ⭐ за каждого!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -1207,10 +1229,10 @@ async function handleCases(chatId, messageId, user) {
     });
 }
 
-async function handleLottery(chatId, messageId) {
+async function handleLottery(chatId, messageId, userId = null) {
     try {
         const result = await db.executeQuery('SELECT * FROM lotteries WHERE is_active = TRUE ORDER BY id');
-        
+
         if (result.rows.length === 0) {
             await bot.editMessageText('🎰 На данный момент нет активных лотерей.', {
                 chat_id: chatId,
@@ -1220,16 +1242,39 @@ async function handleLottery(chatId, messageId) {
             return;
         }
 
+        // Get user's tickets if userId provided
+        let userTickets = [];
+        if (userId) {
+            const ticketsResult = await db.executeQuery(
+                'SELECT lottery_id FROM lottery_tickets WHERE user_id = $1',
+                [userId]
+            );
+            userTickets = ticketsResult.rows.map(row => row.lottery_id);
+        }
+
         let message = '🎰 **Активные лотереи**\n\n';
         const keyboards = [];
 
         result.rows.forEach((lottery, index) => {
+            const hasPurchased = userTickets.includes(lottery.id);
+
             message += `**${lottery.name}**\n`;
             message += `💰 Цена билета: ${lottery.ticket_price} ⭐\n`;
             message += `🎫 Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
-            message += `🏆 Победителей: ${lottery.winners_count}\n\n`;
-            
-            keyboards.push([{ text: `🎫 Купить билет - ${lottery.name}`, callback_data: `lottery_buy_${lottery.id}` }]);
+            message += `🏆 Победителей: ${lottery.winners_count}\n`;
+
+            if (hasPurchased) {
+                message += `✅ **Ваш билет куплен!**\n\n`;
+                // Don't add button for purchased lottery
+            } else {
+                message += `\n`;
+                // Check if lottery is full
+                if (lottery.current_tickets >= lottery.max_tickets) {
+                    keyboards.push([{ text: `🚫 ${lottery.name} - ПРОДАНО`, callback_data: 'lottery_sold_out' }]);
+                } else {
+                    keyboards.push([{ text: `🎫 Купить билет - ${lottery.name}`, callback_data: `lottery_buy_${lottery.id}` }]);
+                }
+            }
         });
 
         keyboards.push([{ text: '🏠 В главное меню', callback_data: 'main_menu' }]);
