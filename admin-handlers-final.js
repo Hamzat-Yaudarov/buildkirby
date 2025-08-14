@@ -349,7 +349,7 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
         });
     } catch (error) {
         console.error('[ADMIN-FINAL] Error listing lotteries:', error);
-        await bot.editMessageText('❌ Ошибка загрузки списка лотерей.', {
+        await bot.editMessageText('❌ Ошибка загрузки списка лотере��.', {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {
@@ -517,55 +517,14 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
             message_id: messageId,
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
+                    [{ text: '🔙 Назад �� рассылке', callback_data: 'admin_broadcast' }]
                 ]
             }
         });
     }
 }
 
-// Custom broadcast handler
-async function handleBroadcastCustom(bot, chatId, messageId) {
-    console.log('[ADMIN-FINAL] handleBroadcastCustom called');
-
-    try {
-        const message = `✏️ **Создать свою рассылку**
-
-📝 **Инструкция:**
-1. Отправьте команду /custom_broadcast
-2. На следующей строке напишите ваше сообщение
-3. Бот разошлет его всем пользователям
-
-⚠️ **Внимание:** Рассылка будет отправлена сразу после ввода!
-
-💡 **Пример:**
-\`/custom_broadcast
-🎉 Новое обновление бота!
-Добавлены крутые функции!\``;
-
-        await bot.editMessageText(message, {
-            chat_id: chatId,
-            message_id: messageId,
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
-                ]
-            }
-        });
-    } catch (error) {
-        console.error('[ADMIN-FINAL] Error in broadcast custom:', error);
-        await bot.editMessageText('❌ Ошибка загрузки кастомной рассылки.', {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
-                ]
-            }
-        });
-    }
-}
+// Custom broadcast handler - теперь работает через inline interface в main file
 
 console.log('[ADMIN-FINAL] All functions defined, exporting...');
 
@@ -577,7 +536,6 @@ module.exports = {
     handleAdminBroadcast,
     handleBroadcastTasks,
     handleBroadcastReferrals,
-    handleBroadcastCustom,
     handleAdminListTasks,
     handleAdminListChannels,
     handleAdminListLotteries,

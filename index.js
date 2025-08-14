@@ -416,7 +416,7 @@ bot.onText(/\/test_version/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
-    const testMessage = `🔧 **Тест версии бота**
+    const testMessage = `🔧 **Тест версии б��та**
 
 📅 Версия: ОБНОВЛЕННАЯ v5.0 - С КНОПКАМИ И УЛУЧШЕНИЯМИ!
 🕒 Время: ${new Date().toLocaleString('ru-RU')}
@@ -576,7 +576,7 @@ bot.onText(/\/admin/, async (msg) => {
 
     } catch (error) {
         console.error('Error in admin command:', error);
-        bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке админ панели.');
+        bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке админ па��ели.');
     }
 });
 
@@ -676,7 +676,7 @@ bot.onText(/\/create_lottery (.+)/, async (msg, match) => {
             [lotteryName, ticketPriceNum, maxTicketsNum, winnersCountNum, botPercentNum]
         );
 
-        bot.sendMessage(chatId, `✅ Лотерея создана!\n🎰 ${lotteryName}\n🎫 ${maxTicketsNum} билетов по ${ticketPriceNum} ⭐\n🏆 ${winnersCountNum} победителей\n💰 Процент бота: ${botPercentNum}%`);
+        bot.sendMessage(chatId, `✅ Лотерея создана!\n🎰 ${lotteryName}\n🎫 ${maxTicketsNum} билетов по ${ticketPriceNum} ⭐\n🏆 ${winnersCountNum} ��обедителей\n💰 Процент бота: ${botPercentNum}%`);
         console.log('[CREATE-LOTTERY] Lottery created successfully');
 
     } catch (error) {
@@ -957,8 +957,8 @@ bot.on('callback_query', async (callbackQuery) => {
             case 'broadcast_custom':
                 if (isAdmin(userId)) {
                     try {
-                        console.log('[MAIN] Calling adminHandlers.handleBroadcastCustom...');
-                        await adminHandlers.handleBroadcastCustom(bot, chatId, msg.message_id);
+                        console.log('[MAIN] Calling handleBroadcastCustom...');
+                        await handleBroadcastCustom(chatId, msg.message_id, userId);
                         console.log('[MAIN] handleBroadcastCustom completed successfully');
                     } catch (error) {
                         console.error('[MAIN] Error in handleBroadcastCustom:', error);
@@ -985,7 +985,19 @@ bot.on('callback_query', async (callbackQuery) => {
             case 'admin_menu':
                 if (isAdmin(userId)) await handleAdminMenu(chatId, msg.message_id);
                 break;
-            
+            case 'cancel_broadcast':
+                if (isAdmin(userId)) {
+                    await db.updateUserField(userId, 'temp_action', null);
+                    await bot.editMessageText('❌ Создание рассылки отменено.', {
+                        chat_id: chatId,
+                        message_id: msg.message_id,
+                        reply_markup: {
+                            inline_keyboard: [[{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]]
+                        }
+                    });
+                }
+                break;
+
             default:
                 // Handle dynamic callback data
                 if (data.startsWith('task_execute_')) {
@@ -1060,7 +1072,7 @@ async function distributeLotteryRewards(lotteryId, lottery) {
             // Notify winner
             try {
                 const user = await db.getUser(winner.user_id);
-                const message = `🎉 **Поз��равляем! Вы выиграли в лотерее!**
+                const message = `🎉 **Поз��равляем! Вы выиграли в л��терее!**
 
 🎰 Лотерея: **${lottery.name}**
 💰 Ваш выигрыш: **${rewardPerWinner} ⭐**
@@ -1162,7 +1174,7 @@ async function handleInvite(chatId, messageId, user) {
 
     const inviteLink = `https://t.me/${botUsername}?start=${user.id}`;
 
-    const message = `🌟 **Реферальная программа**
+    const message = `🌟 **Реферальная програм��а**
 
 💰 **Зарабатывайте вместе с друзьями!**
 Приглашайте друзей и получайте **3 ⭐** за каждого нового пользователя!
@@ -1384,7 +1396,7 @@ async function handleTasks(chatId, messageId, user) {
 📊 **Прогресс:** ${completedTasks.length}/${allTasks.length} заданий выполнено
 
 📝 **Инструкция:**
-1. Нажмите "Выполнить" для перехода к каналу
+1. Нажмите "Выполнить" ��ля перехода к каналу
 2. Подпишитесь на канал
 3. Вернитесь и нажмите "Проверить"
 4. Получите награду!`;
@@ -1544,7 +1556,7 @@ async function handleInstruction(chatId, messageId) {
 5️⃣ **Лотерея** - участвуйте в розыгрышах
 
 💰 **Вывод средств:**
-• Минимум 5 рефералов для вывода
+• Минимум 5 рефер��лов для вывода
 • Доступны суммы: 15, 25, 50, 100 ⭐
 • Telegram Premium на 3 месяца за 1300 ⭐
 
@@ -1579,21 +1591,23 @@ async function handleRatings(chatId, messageId) {
 async function handleRatingsAll(chatId, messageId) {
     try {
         const result = await db.executeQuery(`
-            SELECT first_name, referrals_count 
-            FROM users 
-            ORDER BY referrals_count DESC 
+            SELECT first_name, referrals_count
+            FROM users
+            WHERE referrals_count > 0
+            ORDER BY referrals_count DESC
             LIMIT 10
         `);
-        
+
         let message = '🏆 **Общий рейтинг по рефералам**\n\n';
-        
+
         if (result.rows.length === 0) {
-            message += 'Пока нет данных для рейтинга.';
+            message += '📊 Пока нет пользователей с рефералами.\n\n��� Станьте первым - пригласите друзей и получайте 3 ⭐ за каждого!';
         } else {
             result.rows.forEach((user, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
                 message += `${medal} **${user.first_name}** - ${user.referrals_count} рефералов\n`;
             });
+            message += '\n💪 Приглашайте друзей и поднимайтесь в рейтинге!';
         }
 
         await bot.editMessageText(message, {
@@ -1614,22 +1628,23 @@ async function handleRatingsAll(chatId, messageId) {
 
 async function handleRatingsWeek(chatId, messageId) {
     try {
+        // Получаем рейтинг по рефералам за последние 7 дней
         const result = await db.executeQuery(`
-            SELECT first_name, referrals_today 
-            FROM users 
-            WHERE updated_at > CURRENT_DATE - INTERVAL '7 days'
-            ORDER BY referrals_today DESC 
+            SELECT first_name, referrals_count
+            FROM users
+            WHERE registered_at > NOW() - INTERVAL '7 days' OR updated_at > NOW() - INTERVAL '7 days'
+            ORDER BY referrals_count DESC
             LIMIT 10
         `);
-        
+
         let message = '📅 **Рейтинг за неделю по рефералам**\n\n';
-        
+
         if (result.rows.length === 0) {
-            message += 'Пока нет данных для рейтинга.';
+            message += 'Пока нет активных пользователей за эту неделю.';
         } else {
             result.rows.forEach((user, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-                message += `${medal} **${user.first_name}** - ${user.referrals_today} рефералов\n`;
+                message += `${medal} **${user.first_name}** - ${user.referrals_count} рефералов\n`;
             });
         }
 
@@ -1988,7 +2003,7 @@ async function handleWithdrawalRejection(chatId, messageId, callbackData, adminI
         await bot.editMessageText(`❌ **Отклонение заявки**
 
 👤 Пользователь: ${user.first_name}
-💰 Сумма: ${amount} ⭐
+💰 С��мма: ${amount} ⭐
 📦 Тип: ${type === 'premium' ? 'Telegram Premium' : 'Звёзды'}
 
 ✏️ **Напишите причину отклонения:**`, {
@@ -2077,7 +2092,7 @@ ${rejectionReason}
                     console.log('[REJECTION] Rejection message sent to user');
 
                     // Confirm to admin
-                    await bot.sendMessage(chatId, `✅ Заявка отклонена.\n👤 Пользовател�� ${targetUser.first_name} отправлено уведомление.\n💸 Средства (${amount} ⭐) возвращены на баланс.`);
+                    await bot.sendMessage(chatId, `✅ Заяв��а отклонена.\n👤 Пользовател�� ${targetUser.first_name} отправлено уведомление.\n💸 Средства (${amount} ⭐) возвращены на баланс.`);
                     console.log('[REJECTION] Confirmation sent to admin');
                 }
             }
@@ -2148,7 +2163,7 @@ async function handleAdminMenu(chatId, messageId) {
 👥 **/refupplayer [ID] [число]** - добавить рефералов ��ользователю
 ⭐ **/starsupplayer [ID] [число]** - добавить звёзды пользователю
 
-Выберите действие:`;
+Выбери��е действие:`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -2469,6 +2484,39 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
     }
 });
 
+// Handle broadcast custom (inline interface)
+async function handleBroadcastCustom(chatId, messageId, userId) {
+    try {
+        // Set user in broadcast mode
+        await db.updateUserField(userId, 'temp_action', 'waiting_broadcast_message');
+
+        const message = `✏️ **Создать свою рассылку**
+
+📝 **Отправьте ваше сообщение следующим сообщением.**
+
+Бот будет ждать ваше сообщение и разошлет его всем пользователям.
+
+⚠️ **Внимание:** Рассылка будет отправлена сразу после получения сообщения!
+
+💡 **Поддерживается Markdown-форматирование**`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '❌ Отменить', callback_data: 'cancel_broadcast' }],
+                    [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('Error in handleBroadcastCustom:', error);
+        throw error;
+    }
+}
+
 bot.onText(/\/delete_promo (\d+)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
@@ -2606,6 +2654,82 @@ process.on('SIGTERM', async () => {
     console.log('🛑 Shutting down bot...');
     await db.closeConnection();
     process.exit(0);
+});
+
+// Handle all messages for custom broadcast
+bot.on('message', async (msg) => {
+    // Skip commands and callback queries
+    if (msg.text && msg.text.startsWith('/')) return;
+    if (msg.from.is_bot) return;
+
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    try {
+        const user = await db.getUser(userId);
+
+        // Check if user is waiting to send broadcast message
+        if (user && user.temp_action === 'waiting_broadcast_message' && isAdmin(userId)) {
+            console.log('[BROADCAST] Admin sent custom broadcast message');
+
+            // Clear temp action
+            await db.updateUserField(userId, 'temp_action', null);
+
+            const broadcastMessage = msg.text || msg.caption || '📢 Сообщение от администрации';
+
+            // Get all users
+            const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
+            const totalUsers = users.rows.length;
+            let successCount = 0;
+            let failCount = 0;
+
+            // Send confirmation
+            const confirmMsg = await bot.sendMessage(chatId, `📤 **Начинаю рассылку...**\n\n👥 Пользователей: ${totalUsers}\n⏳ Прогресс: 0%`, { parse_mode: 'Markdown' });
+
+            // Send to all users
+            for (let i = 0; i < users.rows.length; i++) {
+                const targetUser = users.rows[i];
+                try {
+                    await bot.sendMessage(targetUser.id, `📢 **Сообщение от администрации**\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
+                    successCount++;
+                } catch (error) {
+                    failCount++;
+                    console.log(`Failed to send to user ${targetUser.id}: ${error.message}`);
+                }
+
+                // Update progress every 10 users
+                if (i % 10 === 0 || i === users.rows.length - 1) {
+                    const progress = Math.round((i + 1) / totalUsers * 100);
+                    try {
+                        await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Пользователей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ Прогресс: ${progress}%`, {
+                            chat_id: chatId,
+                            message_id: confirmMsg.message_id,
+                            parse_mode: 'Markdown'
+                        });
+                    } catch (e) {
+                        // Ignore edit errors
+                    }
+                }
+
+                // Small delay to avoid rate limits
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+
+            // Final report
+            await bot.editMessageText(`✅ **Рассылка завершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n📊 Успешность: ${Math.round(successCount/totalUsers*100)}%`, {
+                chat_id: chatId,
+                message_id: confirmMsg.message_id,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[{ text: '🔙 Н��зад к рассылке', callback_data: 'admin_broadcast' }]]
+                }
+            });
+
+            console.log(`[BROADCAST] Custom broadcast completed: ${successCount}/${totalUsers} successful`);
+        }
+    } catch (error) {
+        console.error('Error handling message for broadcast:', error);
+    }
 });
 
 // Start the bot
