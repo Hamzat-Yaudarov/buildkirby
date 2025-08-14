@@ -21,10 +21,10 @@ if (!token) {
     console.warn('🔓 Using fallback token for development - NOT SECURE FOR PRODUCTION!');
     console.warn('📝 Please set BOT_TOKEN in your environment variables for production.');
 
-    // Fallback for development (replace with your actual token)
-    token = '8379368723:AAEnG133OZ4qMrb5vQfM7VdEFSuLiWydsyM';
+    // Fake fallback token to prevent local conflicts (set real token in Railway Variables)
+    token = 'YOUR_BOT_TOKEN_HERE_FAKE_FOR_LOCAL_DEVELOPMENT';
 
-    console.log('🚀 Bot starting with fallback token...');
+    console.log('🚀 Bot starting with fallback token (will fail without real env token)...');
 } else {
     console.log('✅ Bot starting with environment token (secure)');
 }
@@ -138,7 +138,7 @@ async function getSubscriptionMessage() {
         console.error('Error getting channel data:', error);
     }
     
-    message += '\n📌 После подписки на все каналы нажмите кнопку проверки';
+    message += '\n📌 Посл�� подписки на все каналы нажмите кнопку проверки';
     buttons.push([{ text: '✅ Проверить подписки', callback_data: 'check_subscriptions' }]);
     
     return { message, buttons };
@@ -350,7 +350,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                     parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                            [{ text: '👥 Пригла��ить еще', callback_data: 'invite' }],
                             [{ text: '🏠 Главное ме��ю', callback_data: 'main_menu' }]
                         ]
                     }
@@ -382,7 +382,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error in start command:', error);
-        bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте позже.');
+        bot.sendMessage(chatId, '❌ Произ��шла ошибка. Попробуйте позже.');
     }
 });
 
@@ -449,7 +449,7 @@ bot.onText(/\/refupplayer (\d+) (\d+)/, async (msg, match) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У вас ��ет прав доступа.');
         return;
     }
 
@@ -923,6 +923,9 @@ bot.on('callback_query', async (callbackQuery) => {
                 break;
             case 'broadcast_referrals':
                 if (isAdmin(userId)) await adminHandlers.handleBroadcastReferrals(bot, chatId, msg.message_id);
+                break;
+            case 'broadcast_custom':
+                if (isAdmin(userId)) await adminHandlers.handleBroadcastCustom(bot, chatId, msg.message_id);
                 break;
             case 'admin_list_tasks':
                 if (isAdmin(userId)) await adminHandlers.handleAdminListTasks(bot, chatId, msg.message_id);
@@ -1454,7 +1457,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                 const completed = await db.completeTask(userId, taskId);
 
                 if (completed) {
-                    await bot.editMessageText(`✅ **Задание выполнено!**\n\nВы получили **${task.reward} ⭐**\n\n💰 Награда зачислена на баланс!\n\n⚠️ *Канал недоступен для проверки*`, {
+                    await bot.editMessageText(`✅ **Задание выполнено!**\n\nВы получили **${task.reward} ⭐**\n\n💰 Награда зачислена на баланс!\n\n⚠️ *Канал недоступен для п��оверки*`, {
                         chat_id: chatId,
                         message_id: messageId,
                         parse_mode: 'Markdown',
@@ -1491,7 +1494,7 @@ async function handleInstruction(chatId, messageId) {
 
 🎯 **Как зарабатывать звёзды:**
 
-1️⃣ **Кликер** - нажимайте каждый день и ��олучайте 0.1 ⭐
+1️⃣ **Кликер** - нажимайте каждый день и получайте 0.1 ⭐
 2️⃣ **Задания** - подписывайтесь на каналы за награды
 3️⃣ **Рефералы** - приглашайте друзей и получайте 3 ⭐ за каждого
 4️⃣ **Кейсы** - открывайте кейсы с призами (нужно 3+ рефералов в день)
@@ -1713,7 +1716,7 @@ async function handleLottery(chatId, messageId, userId = null) {
                 message += `\n`;
                 // Check if lottery is full
                 if (lottery.current_tickets >= lottery.max_tickets) {
-                    keyboards.push([{ text: `🚫 ${lottery.name} - ПРОДАНО`, callback_data: 'lottery_sold_out' }]);
+                    keyboards.push([{ text: `�� ${lottery.name} - ПРОДАНО`, callback_data: 'lottery_sold_out' }]);
                 } else {
                     keyboards.push([{ text: `🎫 Купить билет - ${lottery.name}`, callback_data: `lottery_buy_${lottery.id}` }]);
                 }
@@ -1731,7 +1734,7 @@ async function handleLottery(chatId, messageId, userId = null) {
 
     } catch (error) {
         console.error('Error in lottery:', error);
-        await bot.editMessageText('❌ Ошибка загрузки ��отерей.', {
+        await bot.editMessageText('❌ Ошибка загрузки лотерей.', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -2200,6 +2203,77 @@ bot.onText(/\/delete_lottery (\d+)/, async (msg, match) => {
     } catch (error) {
         console.error('Error deleting lottery:', error);
         bot.sendMessage(chatId, '❌ Ошибка удаления лотереи.');
+    }
+});
+
+// Custom broadcast command
+bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const broadcastMessage = match[1].trim();
+
+        if (!broadcastMessage) {
+            bot.sendMessage(chatId, '❌ Пустое сообщение! Используйте: /custom_broadcast Ваше сообщение');
+            return;
+        }
+
+        // Get all users
+        const users = await db.executeQuery('SELECT id FROM users');
+        const totalUsers = users.rows.length;
+        let successCount = 0;
+        let failCount = 0;
+
+        // Send confirmation
+        const confirmMsg = await bot.sendMessage(chatId, `📤 **Начинаю рассылку...**\n\n👥 Пользователей: ${totalUsers}\n⏳ Прогресс: 0%`);
+
+        // Send to all users
+        for (let i = 0; i < users.rows.length; i++) {
+            const user = users.rows[i];
+            try {
+                await bot.sendMessage(user.id, `📢 **Сообщение от администрации**\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
+                successCount++;
+            } catch (error) {
+                failCount++;
+                console.log(`Failed to send to user ${user.id}: ${error.message}`);
+            }
+
+            // Update progress every 10 users
+            if (i % 10 === 0 || i === users.rows.length - 1) {
+                const progress = Math.round((i + 1) / totalUsers * 100);
+                try {
+                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Пользователей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ Прогресс: ${progress}%`, {
+                        chat_id: chatId,
+                        message_id: confirmMsg.message_id,
+                        parse_mode: 'Markdown'
+                    });
+                } catch (e) {
+                    // Ignore edit errors
+                }
+            }
+
+            // Small delay to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        // Final report
+        await bot.editMessageText(`✅ **Рассылка завершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n📊 Успешность: ${Math.round(successCount/totalUsers*100)}%`, {
+            chat_id: chatId,
+            message_id: confirmMsg.message_id,
+            parse_mode: 'Markdown'
+        });
+
+        console.log(`[BROADCAST] Custom broadcast completed: ${successCount}/${totalUsers} successful`);
+
+    } catch (error) {
+        console.error('Error in custom broadcast:', error);
+        bot.sendMessage(chatId, `❌ Ошибка рассылки: ${error.message}`);
     }
 });
 

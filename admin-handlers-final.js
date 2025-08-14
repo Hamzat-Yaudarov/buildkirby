@@ -57,7 +57,7 @@ async function handleAdminChannels(bot, chatId, messageId) {
 
 🛠️ **Команды для управления каналами:**
 • \`/add_channel @channel|Название канала\` - добавить канал
-• \`/delete_channel ID\` - удалить канал
+• \`/delete_channel ID\` - удал��ть канал
 
 📺 **Доступные действия:**
 • Добавление обязательных каналов
@@ -65,7 +65,7 @@ async function handleAdminChannels(bot, chatId, messageId) {
 • Удаление ненужных каналов
 
 💡 **Примеры команд:**
-• \`/add_channel @myChannel|Мой крутой канал\`
+• \`/add_channel @myChannel|Мой крут��й канал\`
 • \`/delete_channel 3\` (где 3 - ID канала)`;
 
         await bot.editMessageText(message, {
@@ -192,7 +192,7 @@ async function handleAdminBroadcast(bot, chatId, messageId) {
     console.log('[ADMIN-FINAL] handleAdminBroadcast called');
     
     try {
-        const message = `📢 **Рассылка сообщений**
+        const message = `📢 **Рассыл��а сообщений**
 
 Выберите тип рассылки:`;
 
@@ -202,8 +202,9 @@ async function handleAdminBroadcast(bot, chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '📋 О новых заданиях', callback_data: 'broadcast_tasks' }],
+                    [{ text: '��� О новых заданиях', callback_data: 'broadcast_tasks' }],
                     [{ text: '🏆 О рефералах', callback_data: 'broadcast_referrals' }],
+                    [{ text: '✏️ Своя рассылка', callback_data: 'broadcast_custom' }],
                     [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
                 ]
             }
@@ -353,7 +354,7 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
             message_id: messageId,
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🔙 Назад к лотереям', callback_data: 'admin_lottery' }]
+                    [{ text: '���� Назад к лотереям', callback_data: 'admin_lottery' }]
                 ]
             }
         });
@@ -523,6 +524,49 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
     }
 }
 
+// Custom broadcast handler
+async function handleBroadcastCustom(bot, chatId, messageId) {
+    console.log('[ADMIN-FINAL] handleBroadcastCustom called');
+
+    try {
+        const message = `✏️ **Создать свою рассылку**
+
+📝 **Инструкция:**
+1. Отправьте команду /custom_broadcast
+2. На следующей строке напишите ваше сообщение
+3. Бот разошлет его всем пользователям
+
+⚠️ **Внимание:** Рассылка будет отправлена сразу после ввода!
+
+💡 **Пример:**
+\`/custom_broadcast
+🎉 Новое обновление бота!
+Добавлены крутые функции!\``;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('[ADMIN-FINAL] Error in broadcast custom:', error);
+        await bot.editMessageText('❌ Ошибка загрузки кастомной рассылки.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
+                ]
+            }
+        });
+    }
+}
+
 console.log('[ADMIN-FINAL] All functions defined, exporting...');
 
 module.exports = {
@@ -533,6 +577,7 @@ module.exports = {
     handleAdminBroadcast,
     handleBroadcastTasks,
     handleBroadcastReferrals,
+    handleBroadcastCustom,
     handleAdminListTasks,
     handleAdminListChannels,
     handleAdminListLotteries,
