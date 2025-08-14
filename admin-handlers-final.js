@@ -57,7 +57,7 @@ async function handleAdminChannels(bot, chatId, messageId) {
 
 🛠️ **Команды для управления каналами:**
 • \`/add_channel @channel|Название канала\` - добавить канал
-• \`/delete_channel ID\` - удал��ть канал
+• \`/delete_channel ID\` - удалить канал
 
 📺 **Доступные действия:**
 • Добавление обязательных каналов
@@ -65,7 +65,7 @@ async function handleAdminChannels(bot, chatId, messageId) {
 • Удаление ненужных каналов
 
 💡 **Примеры команд:**
-• \`/add_channel @myChannel|Мой крут��й канал\`
+• \`/add_channel @myChannel|Мой крутой канал\`
 • \`/delete_channel 3\` (где 3 - ID канала)`;
 
         await bot.editMessageText(message, {
@@ -192,7 +192,7 @@ async function handleAdminBroadcast(bot, chatId, messageId) {
     console.log('[ADMIN-FINAL] handleAdminBroadcast called');
     
     try {
-        const message = `📢 **Рассыл��а сообщений**
+        const message = `📢 **Рассылка сообщений**
 
 Выберите тип рассылки:`;
 
@@ -202,7 +202,7 @@ async function handleAdminBroadcast(bot, chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '��� О новых заданиях', callback_data: 'broadcast_tasks' }],
+                    [{ text: '📋 О новых заданиях', callback_data: 'broadcast_tasks' }],
                     [{ text: '🏆 О рефералах', callback_data: 'broadcast_referrals' }],
                     [{ text: '✏️ Своя рассылка', callback_data: 'broadcast_custom' }],
                     [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
@@ -349,12 +349,12 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
         });
     } catch (error) {
         console.error('[ADMIN-FINAL] Error listing lotteries:', error);
-        await bot.editMessageText('❌ Ошибка загрузки списка лотере��.', {
+        await bot.editMessageText('❌ Ошибка загрузки списка лотереи.', {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '���� Назад к лотереям', callback_data: 'admin_lottery' }]
+                    [{ text: '◀️ Назад к лотереям', callback_data: 'admin_lottery' }]
                 ]
             }
         });
@@ -517,7 +517,7 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
             message_id: messageId,
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🔙 Назад �� рассылке', callback_data: 'admin_broadcast' }]
+                    [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
                 ]
             }
         });
