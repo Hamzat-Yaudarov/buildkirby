@@ -123,6 +123,24 @@ async function initializeDatabase() {
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Tracking links for analytics
+            CREATE TABLE IF NOT EXISTS tracking_links (
+                id SERIAL PRIMARY KEY,
+                tracking_id VARCHAR(100) UNIQUE NOT NULL,
+                name VARCHAR(200) NOT NULL,
+                clicks_count INTEGER DEFAULT 0,
+                created_by BIGINT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Tracking clicks for detailed analytics
+            CREATE TABLE IF NOT EXISTS tracking_clicks (
+                id SERIAL PRIMARY KEY,
+                tracking_id VARCHAR(100) NOT NULL,
+                user_id BIGINT,
+                clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         `);
 
         // Add missing columns if they don't exist
