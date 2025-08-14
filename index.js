@@ -72,7 +72,7 @@ function isAdmin(userId) {
 
 // Helper function to clean text for safe display (no Markdown)
 function cleanDisplayText(text) {
-    if (!text) return 'Пользователь';
+    if (!text) return 'Пользовател��';
 
     // Remove all potentially problematic characters for clean display
     let cleanText = text
@@ -81,7 +81,7 @@ function cleanDisplayText(text) {
         // Remove control characters
         .replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
         // Remove specific problematic symbols that cause Telegram parsing errors
-        .replace(/[☭⧁⁣༒𓆩₦ł₦ℳ₳𓆪⭐]/g, '')
+        .replace(/[☭⧁⁣༒𓆩��ł₦ℳ₳𓆪⭐]/g, '')
         // Remove various unicode spaces, symbols, and special characters
         .replace(/[\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F]/g, '')
         // Remove other potentially problematic unicode ranges
@@ -213,7 +213,7 @@ function getProfileKeyboard() {
             inline_keyboard: [
                 [
                     { text: '🎁 Промокод', callback_data: 'promocode' },
-                    { text: '👥 Пригласить друзей', callback_data: 'invite' }
+                    { text: '👥 ��ригласить друзей', callback_data: 'invite' }
                 ],
                 [
                     { text: '🏠 В главное меню', callback_data: 'main_menu' }
@@ -233,12 +233,14 @@ function getBackToMainKeyboard() {
     };
 }
 
-function getTaskKeyboard(taskId) {
+function getTaskKeyboard(taskId, channelLink) {
     return {
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: '✅ Выполнить', callback_data: `task_execute_${taskId}` },
+                    { text: '📺 Подписаться', url: channelLink }
+                ],
+                [
                     { text: '🔍 Проверить', callback_data: `task_check_${taskId}` }
                 ],
                 [
@@ -279,10 +281,10 @@ function getRatingsKeyboard() {
             inline_keyboard: [
                 [
                     { text: '🏆 Общий рейтинг', callback_data: 'ratings_all' },
-                    { text: '📅 Рейтинг за неделю', callback_data: 'ratings_week' }
+                    { text: '📅 Рей��инг за неделю', callback_data: 'ratings_week' }
                 ],
                 [
-                    { text: '🏠 В главное меню', callback_data: 'main_menu' }
+                    { text: '🏠 В г��авное меню', callback_data: 'main_menu' }
                 ]
             ]
         }
@@ -534,7 +536,7 @@ bot.onText(/\/refupplayer (\d+) (\d+)/, async (msg, match) => {
         }
     } catch (error) {
         console.error('Error in refupplayer:', error);
-        bot.sendMessage(chatId, '❌ Ошибка добавления рефералов.');
+        bot.sendMessage(chatId, '❌ Ошибка добавлен��я рефералов.');
     }
 });
 
@@ -566,7 +568,7 @@ bot.onText(/\/starsupplayer (\d+) (\d+)/, async (msg, match) => {
         }
     } catch (error) {
         console.error('Error in starsupplayer:', error);
-        bot.sendMessage(chatId, '❌ Ошибка добавления звёзд.');
+        bot.sendMessage(chatId, '❌ Ошибка добавле��ия звёзд.');
     }
 });
 
@@ -578,7 +580,7 @@ bot.onText(/\/admin/, async (msg) => {
     console.log(`[ADMIN] /admin command called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа к панели администратора.');
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа к панели админ��стратора.');
         return;
     }
 
@@ -601,7 +603,7 @@ bot.onText(/\/admin/, async (msg) => {
 📊 **/list_tracking** - список всех ссылок
 📈 **/tracking_stats ID** - статистика ссылки
 
-Выберите действие:`;
+Выберите действи��:`;
 
         await bot.sendMessage(chatId, message, {
             parse_mode: 'Markdown',
@@ -627,27 +629,68 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
     try {
         const params = match[1].split('|');
         if (params.length < 3) {
-            bot.sendMessage(chatId, '❌ Неверный формат! Используйте: /create_task канал|название|награда');
+            bot.sendMessage(chatId, '❌ Неверный формат!\n\nИспользуйте:\n`/create_task канал|название|награда|лимит`\n\nГде лимит - максимальное количество выполнений (необязательно).\n\nПримеры:\n• `/create_task @channel|Мой канал|1.5`\n• `/create_task @channel|Мой канал|1.5|100`', { parse_mode: 'Markdown' });
             return;
         }
 
-        const [channelId, channelName, reward] = params;
+        const [channelId, channelName, reward, maxCompletions] = params;
         const rewardAmount = parseFloat(reward) || 1.0;
+        const limit = maxCompletions ? parseInt(maxCompletions) : null;
 
-        console.log('[CREATE-TASK] Creating task:', { channelId, channelName, rewardAmount });
+        console.log('[CREATE-TASK] Creating task:', { channelId, channelName, rewardAmount, limit });
 
         await db.executeQuery(
-            'INSERT INTO tasks (channel_id, channel_name, reward) VALUES ($1, $2, $3) ON CONFLICT (channel_id) DO UPDATE SET channel_name = $2, reward = $3',
-            [channelId.trim(), channelName.trim(), rewardAmount]
+            'INSERT INTO tasks (channel_id, channel_name, reward, max_completions) VALUES ($1, $2, $3, $4) ON CONFLICT (channel_id) DO UPDATE SET channel_name = $2, reward = $3, max_completions = $4',
+            [channelId.trim(), channelName.trim(), rewardAmount, limit]
         );
 
-        bot.sendMessage(chatId, `✅ Задание создано!\n📺 Канал: ${channelId.trim()}\n📝 Название: ${channelName.trim()}\n💰 Награда: ${rewardAmount} ⭐`);
+        let message = `✅ Задание создано!\n📺 Канал: ${channelId.trim()}\n📝 Название: ${channelName.trim()}\n💰 Награда: ${rewardAmount} ⭐`;
+        if (limit) {
+            message += `\n🔢 Лимит выполнений: ${limit}`;
+        } else {
+            message += `\n🔢 Лимит выполнений: Без ограничений`;
+        }
+
+        bot.sendMessage(chatId, message);
         console.log('[CREATE-TASK] Task created successfully');
 
     } catch (error) {
         console.error('Error creating task:', error);
         console.error('Full error:', error.stack);
         bot.sendMessage(chatId, `❌ Ошибка создания задания: ${error.message}`);
+    }
+});
+
+// Admin task deletion
+bot.onText(/\/delete_task (\d+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const taskId = parseInt(match[1]);
+
+        // Check if task exists
+        const taskResult = await db.executeQuery('SELECT * FROM tasks WHERE id = $1', [taskId]);
+        if (taskResult.rows.length === 0) {
+            bot.sendMessage(chatId, `❌ Задание с ID ${taskId} не найдено.`);
+            return;
+        }
+
+        const task = taskResult.rows[0];
+
+        // Delete task (this will also delete related user_tasks due to foreign key)
+        await db.executeQuery('DELETE FROM tasks WHERE id = $1', [taskId]);
+
+        bot.sendMessage(chatId, `✅ Задание удалено!\n📺 Канал: ${task.channel_name || task.channel_id}\n💰 Награда: ${task.reward} ⭐`);
+
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        bot.sendMessage(chatId, `❌ Ошибка удаления задания: ${error.message}`);
     }
 });
 
@@ -1034,10 +1077,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
             default:
                 // Handle dynamic callback data
-                if (data.startsWith('task_execute_')) {
-                    const taskId = data.replace('task_execute_', '');
-                    await handleTaskExecute(chatId, msg.message_id, userId, taskId);
-                } else if (data.startsWith('task_check_')) {
+                if (data.startsWith('task_check_')) {
                     const taskId = data.replace('task_check_', '');
                     await handleTaskCheck(chatId, msg.message_id, userId, taskId);
                 } else if (data.startsWith('lottery_buy_')) {
@@ -1045,7 +1085,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     await handleLotteryBuy(chatId, msg.message_id, userId, lotteryId);
                 } else if (data === 'lottery_sold_out') {
                     await bot.answerCallbackQuery(callbackQuery.id, {
-                        text: '🚫 Все билеты в эту лотерею проданы!',
+                        text: '🚫 Все би��еты в эту лотерею проданы!',
                         show_alert: true
                     });
                     return; // Don't process further
@@ -1106,7 +1146,7 @@ async function distributeLotteryRewards(lotteryId, lottery) {
             // Notify winner
             try {
                 const user = await db.getUser(winner.user_id);
-                const message = `🎉 **Поздравляем! Вы выиграли в лотерее!**
+                const message = `🎉 **��оздравляем! Вы выиграли в лотерее!**
 
 🎰 Лотерея: **${lottery.name}**
 💰 Ваш выигрыш: **${rewardPerWinner} ⭐**
@@ -1152,7 +1192,7 @@ async function handleMainMenu(chatId, messageId) {
 • 🎯 **Кликер** - ежедневная награда 0.1 ⭐
 • 📋 **Задания** - выполняйте задачи за вознаграждение
 • 👥 **Рефералы** - приглашайте друзей (3 ⭐ за каждого)
-• 🎁 **Кейсы** - призы от 1 до 10 ⭐
+��� 🎁 **Кейсы** - призы от 1 до 10 ⭐
 • 🎰 **Лотерея** - участвуйте в розыгрышах
 
 Выберите нужный раздел:`;
@@ -1208,7 +1248,7 @@ async function handleInvite(chatId, messageId, user) {
 
     const inviteLink = `https://t.me/${botUsername}?start=${user.id}`;
 
-    const message = `🌟 **Реферальная программа**
+    const message = `🌟 **��еферальная программа**
 
 💰 **Зарабатывайте вместе с друзьями!**
 Приглашайте друзей и получайте **3 ⭐** за каждого нового пользователя!
@@ -1219,7 +1259,7 @@ async function handleInvite(chatId, messageId, user) {
 📊 **Статистика приглашений:**
 👥 Всего друзей приглашено: **${user.referrals_count}**
 📅 Приглашено сегодня: **${user.referrals_today}**
-💰 Заработано с рефералов: **${user.referrals_count * 3} 🎉**
+���� Заработано с рефералов: **${user.referrals_count * 3} 🎉**
 
 🎯 **Как это работает:**
 1. Поделитесь ссылкой с друзьями
@@ -1310,7 +1350,7 @@ async function handleWithdraw(chatId, messageId, user) {
 
 ${user.referrals_count < 5 ? 
     '❌ **Для вывода средств требуются минимум 5 рефералов**' : 
-    '✅ **Вы можете выводить средства**'
+    '✅ **Вы може��е выводить средства**'
 }
 
 Выберите сумму для вывода:`;
@@ -1327,7 +1367,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
     const user = await db.getUser(userId);
     
     if (user.referrals_count < 5) {
-        await bot.editMessageText('❌ Для вывода средств требуются минимум 5 рефералов!', {
+        await bot.editMessageText('❌ Для вывода средств требуют��я минимум 5 рефералов!', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -1402,16 +1442,16 @@ async function handleTasks(chatId, messageId, user) {
     try {
         // Get all tasks
         const allTasks = await db.getTasks();
-        
+
         // Get completed tasks for user
         const completedTasks = await db.getUserCompletedTasks(user.id);
         const completedTaskIds = completedTasks.map(t => t.id);
-        
+
         // Filter available tasks
         const availableTasks = allTasks.filter(task => !completedTaskIds.includes(task.id));
 
         if (availableTasks.length === 0) {
-            await bot.editMessageText('✅ все задания выполнены! Ожидайте новых заданий.', {
+            await bot.editMessageText('✅ Все задания выполнены! Ожидайте новых заданий.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -1419,18 +1459,22 @@ async function handleTasks(chatId, messageId, user) {
             return;
         }
 
-        // Show first available task
+        // Show first available task with channel link
         const task = availableTasks[0];
-        const message = `📋 **Активные задания**
+        const channelLink = task.channel_id.startsWith('@') ?
+            `https://t.me/${task.channel_id.substring(1)}` :
+            task.channel_id;
+
+        const message = `📋 **Активные задани��**
 
 🎯 **Текущее задание:**
-Подписка на канал **${task.channel_name || task.channel_id}**
+Подпис��а на канал **${task.channel_name || task.channel_id}**
 
 💰 **Награда за выполнение:** ${task.reward} ⭐
 📊 **Прогресс:** ${completedTasks.length}/${allTasks.length} заданий выполнено
 
 📝 **Инструкция:**
-1. Нажмите "Выполнить" для перехода к каналу
+1. Нажмите "Подписаться" для перехода к каналу
 2. Подпишитесь на канал
 3. Вернитесь и нажмите "Проверить"
 4. Получите награду!`;
@@ -1439,7 +1483,7 @@ async function handleTasks(chatId, messageId, user) {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown',
-            ...getTaskKeyboard(task.id)
+            ...getTaskKeyboard(task.id, channelLink)
         });
 
     } catch (error) {
@@ -1452,51 +1496,13 @@ async function handleTasks(chatId, messageId, user) {
     }
 }
 
-async function handleTaskExecute(chatId, messageId, userId, taskId) {
-    try {
-        const result = await db.executeQuery('SELECT * FROM tasks WHERE id = $1 AND is_active = TRUE', [taskId]);
-        
-        if (result.rows.length === 0) {
-            await bot.editMessageText('❌ Задание не найдено.', {
-                chat_id: chatId,
-                message_id: messageId,
-                ...getBackToMainKeyboard()
-            });
-            return;
-        }
-
-        const task = result.rows[0];
-        const channelLink = task.channel_id.startsWith('@') ? 
-            `https://t.me/${task.channel_id.substring(1)}` : 
-            task.channel_id;
-
-        const keyboard = {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '📺 Перейти к каналу', url: channelLink }],
-                    [{ text: '🔍 Проверить', callback_data: `task_check_${taskId}` }],
-                    [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
-                ]
-            }
-        };
-
-        await bot.editMessageText(`📋 Подпишитесь на канал и нажмите "Проверить"`, {
-            chat_id: chatId,
-            message_id: messageId,
-            ...keyboard
-        });
-
-    } catch (error) {
-        console.error('Error in task execute:', error);
-    }
-}
 
 async function handleTaskCheck(chatId, messageId, userId, taskId) {
     try {
         const result = await db.executeQuery('SELECT * FROM tasks WHERE id = $1 AND is_active = TRUE', [taskId]);
-        
+
         if (result.rows.length === 0) {
-            await bot.editMessageText('❌ Задание не найдено.', {
+            await bot.editMessageText('❌ Задание не найдено или неактивно.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -1520,33 +1526,11 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
             }
 
             // Complete the task
-            const completed = await db.completeTask(userId, taskId);
-            
-            if (completed) {
-                await bot.editMessageText(`✅ Задание выполнено! Вы получили ${task.reward} ⭐`, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    ...getBackToMainKeyboard()
-                });
-            } else {
-                await bot.editMessageText('❌ Задание уже выполнено ранее.', {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    ...getBackToMainKeyboard()
-                });
-            }
-
-        } catch (error) {
-            console.error(`Error checking task subscription: ${error.message}`);
-
-            // Only auto-approve for specific errors (chat not found, private chat)
-            if (error.response?.body?.error_code === 400 || error.response?.body?.description?.includes('chat not found')) {
-                console.log(`Auto-approving task ${taskId} for user ${userId} - chat not accessible`);
-
+            try {
                 const completed = await db.completeTask(userId, taskId);
 
                 if (completed) {
-                    await bot.editMessageText(`✅ **Задание выполнено!**\n\nВы получили **${task.reward} ⭐**\n\n💰 Награда зачислена на баланс!\n\n⚠️ *Канал недоступен для проверки*`, {
+                    await bot.editMessageText(`✅ **Задание выполнено!**\n\nВы получили **${task.reward} ⭐**\n\n💰 Награда зачислена на баланс!`, {
                         chat_id: chatId,
                         message_id: messageId,
                         parse_mode: 'Markdown',
@@ -1559,11 +1543,68 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                         ...getBackToMainKeyboard()
                     });
                 }
+            } catch (taskError) {
+                if (taskError.message === 'Task completion limit reached') {
+                    await bot.editMessageText('❌ **Лимит выполнений достигнут!**\n\nЭто задание больше недоступно для выполнения.\n\nПопробуйте другие задания!', {
+                        chat_id: chatId,
+                        message_id: messageId,
+                        parse_mode: 'Markdown',
+                        ...getBackToMainKeyboard()
+                    });
+                } else {
+                    await bot.editMessageText('❌ Ошибка выполнения задания. Попробуйте позже.', {
+                        chat_id: chatId,
+                        message_id: messageId,
+                        ...getBackToMainKeyboard()
+                    });
+                }
+            }
+
+        } catch (error) {
+            console.error(`Error checking task subscription: ${error.message}`);
+
+            // Only auto-approve for specific errors (chat not found, private chat)
+            if (error.response?.body?.error_code === 400 || error.response?.body?.description?.includes('chat not found')) {
+                console.log(`Auto-approving task ${taskId} for user ${userId} - chat not accessible`);
+
+                try {
+                    const completed = await db.completeTask(userId, taskId);
+
+                    if (completed) {
+                        await bot.editMessageText(`✅ **Задание выполнено!**\n\nВы получили **${task.reward} ⭐**\n\n💰 Награда зачислена на баланс!\n\n⚠️ *Канал недоступен для проверки*`, {
+                            chat_id: chatId,
+                            message_id: messageId,
+                            parse_mode: 'Markdown',
+                            ...getBackToMainKeyboard()
+                        });
+                    } else {
+                        await bot.editMessageText('❌ Задание уже выполнено ранее.', {
+                            chat_id: chatId,
+                            message_id: messageId,
+                            ...getBackToMainKeyboard()
+                        });
+                    }
+                } catch (taskError) {
+                    if (taskError.message === 'Task completion limit reached') {
+                        await bot.editMessageText('❌ **Лимит выполнений достигнут!**\n\nЭто задание больше недоступно для выполнения.', {
+                            chat_id: chatId,
+                            message_id: messageId,
+                            parse_mode: 'Markdown',
+                            ...getBackToMainKeyboard()
+                        });
+                    } else {
+                        await bot.editMessageText('❌ Ошибка выполнения задания. Попробуйте позже.', {
+                            chat_id: chatId,
+                            message_id: messageId,
+                            ...getBackToMainKeyboard()
+                        });
+                    }
+                }
             } else {
                 await bot.editMessageText('❌ Ошибка проверки подписки. Попробуйте позже или обратитесь к администрации.', {
                     chat_id: chatId,
                     message_id: messageId,
-                    ...getTaskKeyboard(taskId)
+                    ...getBackToMainKeyboard()
                 });
             }
         }
@@ -1574,8 +1615,64 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
 }
 
 async function handleTaskSkip(chatId, messageId, userId) {
-    // Show next task or return to tasks menu
-    await handleTasks(chatId, messageId, await db.getUser(userId));
+    try {
+        const user = await db.getUser(userId);
+
+        // Get all tasks
+        const allTasks = await db.getTasks();
+
+        // Get completed tasks for user
+        const completedTasks = await db.getUserCompletedTasks(userId);
+        const completedTaskIds = completedTasks.map(t => t.id);
+
+        // Filter available tasks
+        const availableTasks = allTasks.filter(task => !completedTaskIds.includes(task.id));
+
+        if (availableTasks.length <= 1) {
+            // No more tasks available
+            await bot.editMessageText('✅ Больше доступных заданий нет!\n\nОжидайте новых заданий или проверьте выполненные.', {
+                chat_id: chatId,
+                message_id: messageId,
+                ...getBackToMainKeyboard()
+            });
+            return;
+        }
+
+        // Show next available task (skip first one)
+        const nextTask = availableTasks[1];
+        const channelLink = nextTask.channel_id.startsWith('@') ?
+            `https://t.me/${nextTask.channel_id.substring(1)}` :
+            nextTask.channel_id;
+
+        const message = `📋 **Следующее зад��ние**
+
+🎯 **Задание:**
+Подписка на канал **${nextTask.channel_name || nextTask.channel_id}**
+
+💰 **Награда за выполнение:** ${nextTask.reward} ⭐
+📊 **Прогресс:** ${completedTasks.length}/${allTasks.length + completedTasks.length} заданий выполнено
+
+📝 **Инструкция:**
+1. Нажмите "Подписаться" для перехода к каналу
+2. Подпишитесь на канал
+3. Вернитесь и нажмите "Проверить"
+4. Получите награду!`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            ...getTaskKeyboard(nextTask.id, channelLink)
+        });
+
+    } catch (error) {
+        console.error('Error in task skip:', error);
+        await bot.editMessageText('❌ Ошибка загрузки следующего задания.', {
+            chat_id: chatId,
+            message_id: messageId,
+            ...getBackToMainKeyboard()
+        });
+    }
 }
 
 async function handleInstruction(chatId, messageId) {
@@ -1713,7 +1810,7 @@ async function handleCases(chatId, messageId, user) {
 
 **Ваши рефералы сегодня:** ${user.referrals_today}/3
 
-Приглашайте друзей и возвращайтесь!`;
+Приглашайте друзей и во��вращайтесь!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -1747,7 +1844,7 @@ async function handleCases(chatId, messageId, user) {
 
     const message = `🎁 **Кейсы**
 
-🎉 **Поздравляем!** Вы открыли кейс и получили **${reward} ⭐**
+🎉 **Поз��равляем!** Вы открыли кейс и получили **${reward} ⭐**
 
 💰 **Ваш баланс:** ${user.balance + reward} ⭐
 
@@ -1944,7 +2041,7 @@ async function handlePromocodeInput(chatId, messageId, userId) {
     // Set temp action for user
     await db.updateUserField(userId, 'temp_action', 'awaiting_promocode');
     
-    await bot.editMessageText('🎁 Введите промокод:', {
+    await bot.editMessageText('🎁 Введите пр��мокод:', {
         chat_id: chatId,
         message_id: messageId,
         ...getBackToMainKeyboard()
@@ -2128,7 +2225,7 @@ ${rejectionReason}
                     console.log('[REJECTION] Rejection message sent to user');
 
                     // Confirm to admin
-                    await bot.sendMessage(chatId, `✅ Заявка отклонена.\n👤 Пользователю ${targetUser.first_name} отправлено уведомление.\n💸 Средства (${amount} ⭐) возвращены на баланс.`);
+                    await bot.sendMessage(chatId, `✅ Заявка отклонена.\n👤 Пользователю ${targetUser.first_name} отпра��лено уведомление.\n💸 Средства (${amount} ⭐) возвращены на баланс.`);
                     console.log('[REJECTION] Confirmation sent to admin');
                 }
             }
@@ -2210,7 +2307,7 @@ async function handleAdminMenu(chatId, messageId) {
 
     } catch (error) {
         console.error('Error in admin menu:', error);
-        await bot.editMessageText('❌ Ошибка загрузки админ панели.', {
+        await bot.editMessageText('❌ Ошибка загрузки админ панел��.', {
             chat_id: chatId,
             message_id: messageId
         });
@@ -2310,7 +2407,7 @@ bot.onText(/\/list_tracking/, async (msg) => {
 
     } catch (error) {
         console.error('Error listing tracking links:', error);
-        bot.sendMessage(chatId, `❌ Ошибка загрузки списка: ${error.message}`);
+        bot.sendMessage(chatId, `❌ Ошибка загру��ки списка: ${error.message}`);
     }
 });
 
@@ -2615,7 +2712,7 @@ cron.schedule('0 20 * * 0', async () => {
         }
 
         const rewards = [100, 75, 50, 25, 15]; // Stars for positions 1-5
-        const positions = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+        const positions = ['🥇', '🥈', '���', '4️⃣', '5️⃣'];
 
         let rewardMessage = '🏆 **Еженедельные награды!**\n\n📅 **Топ-5 пользователей по рефералам за неделю:**\n\n';
 

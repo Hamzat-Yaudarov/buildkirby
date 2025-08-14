@@ -10,17 +10,24 @@ async function handleAdminTasks(bot, chatId, messageId) {
         const message = `📋 **Управление заданиями**
 
 🛠️ **Команды для управления заданиями:**
-• \`/create_task канал|@example|1|100\` - создать задание
+• \`/create_task канал|название|награда|лимит\` - создать задание
 • \`/delete_task ID\` - удалить задание
 
 📋 **Доступные действия:**
-• Создание новых заданий
+• Создание новых заданий с лимитами
 • Просмотр существующих заданий
 • Удаление ненужных заданий
+• Просмотр статистики выполнений
 
 💡 **Примеры команд:**
-• \`/create_task подписка|@myChannel|2|50\`
-• \`/delete_task 5\` (где 5 - ID задания)`;
+• \`/create_task @myChannel|Мой канал|2\` - без лимита
+• \`/create_task @myChannel|Мой канал|2|100\` - с лимитом 100 выполнений
+• \`/delete_task 5\` (где 5 - ID задания)
+
+🔢 **О лимитах:**
+• Если лимит не указан - задание без ограничений
+• С лимитом - задание автоматически завершится после N выполнений
+• В списке заданий пок��зывается прогресс выполнений`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -153,7 +160,7 @@ async function handleAdminPromocodes(bot, chatId, messageId) {
 • \`/delete_promo ID\` - удалить промокод
 
 🎁 **Доступные действия:**
-• Создание новых промокодов
+• Создание н��вых промокодов
 • Просмотр активных промокодов
 • Удаление ненужных промокодов
 
@@ -226,21 +233,33 @@ async function handleAdminBroadcast(bot, chatId, messageId) {
 // List functions with database integration
 async function handleAdminListTasks(bot, chatId, messageId) {
     console.log('[ADMIN-FINAL] handleAdminListTasks called');
-    
+
     try {
-        const tasks = await db.executeQuery('SELECT * FROM tasks ORDER BY id');
-        
-        let message = '📋 **Список заданий**\n\n';
-        
-        if (tasks.rows.length === 0) {
+        const tasks = await db.getAllTasksStats();
+
+        let message = '📋 **Список заданий с статистикой**\n\n';
+
+        if (tasks.length === 0) {
             message += '❌ Заданий пока нет.\n\n';
             message += '💡 **Создайте задание командой:**\n';
-            message += '`/create_task канал|@example|1|100`';
+            message += '`/create_task канал|название|награда|лимит`';
         } else {
-            tasks.rows.forEach((task, index) => {
+            tasks.forEach((task, index) => {
                 message += `${index + 1}. **${task.channel_name || task.channel_id}**\n`;
                 message += `   • ID: ${task.id}\n`;
                 message += `   • Награда: ${task.reward} ⭐\n`;
+                message += `   • Выполнений: ${task.current_completions}`;
+
+                if (task.max_completions) {
+                    message += `/${task.max_completions} (осталось: ${task.remaining_completions})\n`;
+                    // Показать прогресс-бар
+                    const progress = Math.round((task.current_completions / task.max_completions) * 10);
+                    const progressBar = '█'.repeat(progress) + '░'.repeat(10 - progress);
+                    message += `   • Прогресс: [${progressBar}] ${Math.round((task.current_completions / task.max_completions) * 100)}%\n`;
+                } else {
+                    message += ' (без лимита)\n';
+                }
+
                 message += `   • Статус: ${task.is_active ? '✅ Активно' : '❌ Неактивно'}\n\n`;
             });
         }
@@ -423,7 +442,7 @@ async function handleBroadcastTasks(bot, chatId, messageId) {
         const keyboard = {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '📋 Посмотреть задания', callback_data: 'tasks' }],
+                    [{ text: '📋 Посмотреть задан��я', callback_data: 'tasks' }],
                     [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
                 ]
             }

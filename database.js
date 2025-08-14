@@ -47,6 +47,8 @@ async function initializeDatabase() {
                 channel_id VARCHAR(100) UNIQUE NOT NULL,
                 channel_name VARCHAR(100),
                 reward DECIMAL(10,2) DEFAULT 1.00,
+                max_completions INTEGER DEFAULT NULL,
+                current_completions INTEGER DEFAULT 0,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -153,6 +155,16 @@ async function initializeDatabase() {
             await pool.query(`
                 ALTER TABLE lotteries
                 ADD COLUMN IF NOT EXISTS bot_percent INTEGER DEFAULT 20;
+            `);
+
+            await pool.query(`
+                ALTER TABLE tasks
+                ADD COLUMN IF NOT EXISTS max_completions INTEGER DEFAULT NULL;
+            `);
+
+            await pool.query(`
+                ALTER TABLE tasks
+                ADD COLUMN IF NOT EXISTS current_completions INTEGER DEFAULT 0;
             `);
 
             console.log('✅ Database columns updated');
@@ -288,7 +300,12 @@ async function updateUserField(userId, field, value) {
 // Task management functions
 async function getTasks() {
     try {
-        const result = await executeQuery('SELECT * FROM tasks WHERE is_active = TRUE ORDER BY id');
+        const result = await executeQuery(`
+            SELECT * FROM tasks
+            WHERE is_active = TRUE
+            AND (max_completions IS NULL OR current_completions < max_completions)
+            ORDER BY id
+        `);
         return result.rows;
     } catch (error) {
         console.error('Error getting tasks:', error);
@@ -318,32 +335,46 @@ async function completeTask(userId, taskId) {
             'SELECT 1 FROM user_tasks WHERE user_id = $1 AND task_id = $2',
             [userId, taskId]
         );
-        
+
         if (existing.rows.length > 0) {
             return false; // Already completed
         }
-        
-        // Get task reward
-        const taskResult = await executeQuery('SELECT reward FROM tasks WHERE id = $1 AND is_active = TRUE', [taskId]);
+
+        // Get task details
+        const taskResult = await executeQuery(
+            'SELECT reward, max_completions, current_completions FROM tasks WHERE id = $1 AND is_active = TRUE',
+            [taskId]
+        );
         if (taskResult.rows.length === 0) {
             throw new Error('Task not found or inactive');
         }
-        
-        const reward = taskResult.rows[0].reward;
-        
+
+        const task = taskResult.rows[0];
+
+        // Check if task has reached completion limit
+        if (task.max_completions && task.current_completions >= task.max_completions) {
+            throw new Error('Task completion limit reached');
+        }
+
         // Begin transaction
         await executeQuery('BEGIN');
-        
+
         try {
             // Mark task as completed
             await executeQuery(
                 'INSERT INTO user_tasks (user_id, task_id) VALUES ($1, $2)',
                 [userId, taskId]
             );
-            
+
+            // Increment current completions counter
+            await executeQuery(
+                'UPDATE tasks SET current_completions = current_completions + 1 WHERE id = $1',
+                [taskId]
+            );
+
             // Add reward to user balance
-            await updateUserBalance(userId, reward);
-            
+            await updateUserBalance(userId, task.reward);
+
             await executeQuery('COMMIT');
             return true;
         } catch (error) {
@@ -438,7 +469,7 @@ async function usePromocode(userId, promocodeId) {
 async function getUserStats() {
     try {
         const result = await executeQuery(`
-            SELECT 
+            SELECT
                 COUNT(*) as total_users,
                 SUM(balance) as total_balance,
                 SUM(referrals_count) as total_referrals,
@@ -448,6 +479,59 @@ async function getUserStats() {
         return result.rows[0];
     } catch (error) {
         console.error('Error getting user stats:', error);
+        throw error;
+    }
+}
+
+async function getTaskStats(taskId) {
+    try {
+        const result = await executeQuery(`
+            SELECT
+                t.id,
+                t.channel_name,
+                t.channel_id,
+                t.reward,
+                t.max_completions,
+                t.current_completions,
+                t.is_active,
+                COUNT(ut.user_id) as total_completions,
+                t.max_completions - t.current_completions as remaining_completions
+            FROM tasks t
+            LEFT JOIN user_tasks ut ON t.id = ut.task_id
+            WHERE t.id = $1
+            GROUP BY t.id
+        `, [taskId]);
+        return result.rows[0];
+    } catch (error) {
+        console.error('Error getting task stats:', error);
+        throw error;
+    }
+}
+
+async function getAllTasksStats() {
+    try {
+        const result = await executeQuery(`
+            SELECT
+                t.id,
+                t.channel_name,
+                t.channel_id,
+                t.reward,
+                t.max_completions,
+                t.current_completions,
+                t.is_active,
+                COUNT(ut.user_id) as total_completions,
+                CASE
+                    WHEN t.max_completions IS NULL THEN NULL
+                    ELSE t.max_completions - t.current_completions
+                END as remaining_completions
+            FROM tasks t
+            LEFT JOIN user_tasks ut ON t.id = ut.task_id
+            GROUP BY t.id
+            ORDER BY t.id
+        `);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting all tasks stats:', error);
         throw error;
     }
 }
@@ -489,6 +573,8 @@ module.exports = {
     getPromocode,
     usePromocode,
     getUserStats,
+    getTaskStats,
+    getAllTasksStats,
     resetDailyData,
     closeConnection
 };
