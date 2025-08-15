@@ -1,28 +1,32 @@
+# Используем Node Alpine как базовый образ
 FROM node:18-alpine
 
-# Устанавливаем Python и venv
-RUN apk add --no-cache python3 py3-pip python3-venv
+# Устанавливаем необходимые зависимости для Python и сборки
+RUN apk add --no-cache python3 py3-pip python3-dev build-base
 
+# Создаём виртуальное окружение для Python
+RUN python3 -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+# Рабочая директория
 WORKDIR /app
 
-# Копируем package.json и package-lock.json
+# Копируем package.json и package-lock.json, ставим Node зависимости
 COPY package*.json ./
-
-# Устанавливаем npm зависимости
 RUN npm install --production
 
-# Копируем остальные файлы
+# Копируем requirements.txt и ставим Python зависимости в виртуальное окружение
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем весь остальной код
 COPY . .
 
-# Создаем виртуальное окружение для Python
-RUN python3 -m venv venv
-# Активируем venv и устанавливаем зависимости
-RUN . venv/bin/activate && pip install --no-cache-dir -r requirements.txt
-
-# Создаем папку для базы
+# Создаём директорию для базы данных
 RUN mkdir -p data
 
+# Открываем порт
 EXPOSE 3000
 
-# Активируем venv при запуске и стартуем бота
-CMD ["/bin/sh", "-c", ". venv/bin/activate && npm start"]
+# Запуск бота
+CMD ["npm", "start"]
