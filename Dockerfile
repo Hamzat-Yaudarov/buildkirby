@@ -1,29 +1,28 @@
 FROM node:18-alpine
 
-# Устанавливаем Python и pip
-RUN apk add --no-cache python3 py3-pip
+# Устанавливаем Python и venv
+RUN apk add --no-cache python3 py3-pip python3-venv
 
-# Создаем рабочую директорию
 WORKDIR /app
 
-# Копируем package.json и requirements.txt
+# Копируем package.json и package-lock.json
 COPY package*.json ./
-COPY requirements.txt ./
 
-# Устанавливаем зависимости Node.js
+# Устанавливаем npm зависимости
 RUN npm install --production
 
-# Устанавливаем зависимости Python
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Копируем исходный код
+# Копируем остальные файлы
 COPY . .
 
-# Создаем директорию для базы данных
+# Создаем виртуальное окружение для Python
+RUN python3 -m venv venv
+# Активируем venv и устанавливаем зависимости
+RUN . venv/bin/activate && pip install --no-cache-dir -r requirements.txt
+
+# Создаем папку для базы
 RUN mkdir -p data
 
-# Открываем порт (Railway сам присваивает порт)
 EXPOSE 3000
 
-# Запускаем бот
-CMD ["npm", "start"]
+# Активируем venv при запуске и стартуем бота
+CMD ["/bin/sh", "-c", ". venv/bin/activate && npm start"]
