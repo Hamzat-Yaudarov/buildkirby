@@ -260,6 +260,21 @@ async function initializeDatabase() {
                 ON CONFLICT DO NOTHING;
             `);
 
+            // Add unique index to prevent duplicate withdrawal requests
+            await pool.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_withdrawal
+                ON withdrawal_requests (user_id, amount, type)
+                WHERE status = 'pending';
+            `);
+
+            // Add indexes for performance
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance);
+                CREATE INDEX IF NOT EXISTS idx_users_weekly_points ON users(weekly_points);
+                CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status ON withdrawal_requests(status);
+                CREATE INDEX IF NOT EXISTS idx_weekly_points_history_user_week ON weekly_points_history(user_id, week_start);
+            `);
+
             console.log('✅ Database columns updated');
         } catch (error) {
             console.log('ℹ️ Column update attempt (may already exist):', error.message);
@@ -366,11 +381,28 @@ async function addReferralBonus(referrerId, newUserName = 'Новый польз
 
 async function updateUserBalance(userId, amount) {
     try {
+        // Validate input parameters
+        if (!userId || amount === undefined || amount === null) {
+            throw new Error('Invalid parameters for updateUserBalance');
+        }
+
         const result = await executeQuery(
             'UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING balance',
             [amount, userId]
         );
-        return result.rows[0]?.balance || 0;
+
+        if (result.rows.length === 0) {
+            throw new Error(`User ${userId} not found for balance update`);
+        }
+
+        const newBalance = result.rows[0].balance;
+
+        // Prevent negative balance (except for legitimate withdrawals)
+        if (newBalance < 0 && amount < 0) {
+            console.warn(`Warning: User ${userId} balance went negative: ${newBalance}`);
+        }
+
+        return newBalance;
     } catch (error) {
         console.error('Error updating user balance:', error);
         throw error;
@@ -479,10 +511,14 @@ async function completeTask(userId, taskId) {
             // Add reward to user balance
             await updateUserBalance(userId, task.reward);
 
-            // Add weekly points for task completion
-            await addWeeklyPoints(userId, 2, 'task_completion');
-
             await executeQuery('COMMIT');
+
+            // Add weekly points for task completion (after main transaction)
+            try {
+                await addWeeklyPoints(userId, 2, 'task_completion');
+            } catch (pointsError) {
+                console.error('Error adding weekly points for task completion:', pointsError);
+            }
             return true;
         } catch (error) {
             await executeQuery('ROLLBACK');
@@ -667,8 +703,22 @@ async function resetWeeklyData() {
 
 // Weekly points functions
 async function addWeeklyPoints(userId, points, activityType) {
+    // Validate input parameters
+    if (!userId || !points || !activityType) {
+        console.error('Invalid parameters for addWeeklyPoints:', { userId, points, activityType });
+        return false;
+    }
+
     try {
         await executeQuery('BEGIN');
+
+        // Check if user exists before updating
+        const userCheck = await executeQuery('SELECT id FROM users WHERE id = $1', [userId]);
+        if (userCheck.rows.length === 0) {
+            await executeQuery('ROLLBACK');
+            console.error(`User ${userId} not found for weekly points`);
+            return false;
+        }
 
         // Add points to user
         await executeQuery(
@@ -686,9 +736,14 @@ async function addWeeklyPoints(userId, points, activityType) {
         await executeQuery('COMMIT');
         return true;
     } catch (error) {
-        await executeQuery('ROLLBACK');
+        try {
+            await executeQuery('ROLLBACK');
+        } catch (rollbackError) {
+            console.error('Error rolling back weekly points transaction:', rollbackError);
+        }
         console.error('Error adding weekly points:', error);
-        throw error;
+        // Don't throw - just log and return false to prevent breaking parent operations
+        return false;
     }
 }
 
@@ -752,7 +807,8 @@ function getWeekStart() {
     const now = new Date();
     const day = now.getDay();
     const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Start from Monday
-    const weekStart = new Date(now.setDate(diff));
+    const weekStart = new Date(now); // Create copy to avoid mutating original
+    weekStart.setDate(diff);
     weekStart.setHours(0, 0, 0, 0);
     return weekStart;
 }

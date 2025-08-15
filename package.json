@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
+    "postinstall": "pip3 install pyrogram tgcrypto || echo 'Python packages install failed'",
     "admin": "node admin-tools.js",
     "migrate": "node migrate-data.js",
     "test-data": "node create-test-data.js",
@@ -21,6 +22,7 @@
     "pg": "^8.11.3"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=16.0.0",
+    "python": ">=3.8.0"
   }
 }
