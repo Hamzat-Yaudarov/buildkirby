@@ -66,7 +66,7 @@ async function initializeBotMode() {
 }
 
 // Admin configuration
-const ADMIN_ID = 6910097562;
+const ADMIN_ID = 7972065986;
 const ADMIN_CHANNEL = process.env.ADMIN_CHANNEL || '@kirbyvivodstars';
 const PAYMENTS_CHANNEL = process.env.PAYMENTS_CHANNEL || '@kirbystarspayments';
 
@@ -3436,7 +3436,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
         for (let i = 0; i < users.rows.length; i++) {
             const user = users.rows[i];
             try {
-                await bot.sendMessage(user.id, `📢 **Сообщение от администрации**\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
+                await bot.sendMessage(user.id, `\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
                 successCount++;
             } catch (error) {
                 failCount++;
