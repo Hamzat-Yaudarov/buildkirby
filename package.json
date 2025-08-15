@@ -8,7 +8,8 @@
     "dev": "node index.js",
     "admin": "node admin-tools.js",
     "migrate": "node migrate-data.js",
-    "test-data": "node create-test-data.js"
+    "test-data": "node create-test-data.js",
+    "test-throttling": "node test-throttling.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",

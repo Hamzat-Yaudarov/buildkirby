@@ -1,6 +1,7 @@
 console.log('[ADMIN-FINAL] Loading final admin handlers...');
 
 const db = require('./database');
+const { throttler } = require('./message-throttler');
 
 // Final working admin handlers based on successful test
 async function handleAdminTasks(bot, chatId, messageId) {
@@ -115,7 +116,7 @@ async function handleAdminLottery(bot, chatId, messageId) {
 • \`/endlottery ID\` - завершить лотерею вручную
 
 **Реферальные лотереи:**
-• \`/create_referral_lottery название|часов|рефералов|цена|1:приз1|2:��риз2\` - с условием
+• \`/create_referral_lottery название|часов|рефералов|цена|1:приз1|2:приз2\` - с условием
 • \`/create_auto_referral_lottery название|часов|1:приз1|2:приз2\` - автоматическая
 
 **Управление победителями:**
@@ -140,7 +141,7 @@ async function handleAdminLottery(bot, chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🎰 Список ло��ерей', callback_data: 'admin_list_lotteries' }],
+                    [{ text: '🎰 Список лотерей', callback_data: 'admin_list_lotteries' }],
                     [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
                 ]
             }
@@ -173,7 +174,7 @@ async function handleAdminPromocodes(bot, chatId, messageId) {
 
 🎁 **Доступные действия:**
 • Создание новых промокодов
-• Просмотр активных п��омокодов
+• Просмотр активных промокодов
 • Удаление ненужных промокодов
 
 💡 **Примеры команд:**
@@ -211,7 +212,7 @@ async function handleAdminBroadcast(bot, chatId, messageId) {
     console.log('[ADMIN-FINAL] handleAdminBroadcast called');
     
     try {
-        const message = `📢 **Рассылка сообщений**
+        const message = `📢 **Рассылка сообщения**
 
 Выберите тип рассылки:`;
 
@@ -411,7 +412,7 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '�� Назад к лотереям', callback_data: 'admin_lottery' }]
+                    [{ text: '◀️ Назад к лотереям', callback_data: 'admin_lottery' }]
                 ]
             }
         });
@@ -481,8 +482,7 @@ async function handleBroadcastTasks(bot, chatId, messageId) {
     
     try {
         const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
-        let successCount = 0;
-        
+
         const message = `📋 **Новые задания ждут вас!**
 
 🎯 Не упустите возможность заработать дополнительные звёзды!
@@ -497,20 +497,16 @@ async function handleBroadcastTasks(bot, chatId, messageId) {
             }
         };
 
-        for (const user of users.rows) {
-            try {
-                await bot.sendMessage(user.id, message, {
-                    parse_mode: 'Markdown',
-                    ...keyboard
-                });
-                successCount++;
-                await new Promise(resolve => setTimeout(resolve, 50)); // Rate limiting
-            } catch (error) {
-                console.error(`[ADMIN-FINAL] Failed to send to user ${user.id}:`, error.message);
-            }
-        }
+        // Use throttler for broadcast
+        const result = await throttler.broadcastMessages(
+            users.rows,
+            (user) => bot.sendMessage(user.id, message, {
+                parse_mode: 'Markdown',
+                ...keyboard
+            })
+        );
 
-        await bot.editMessageText(`✅ Рассылка завершена!\n\n📤 Отп��авлено: ${successCount} из ${users.rows.length} пользователей`, {
+        await bot.editMessageText(`✅ Рассылка завершена!\n\n📤 Отправлено: ${result.success} из ${result.total} пользователей\n❌ Ошибок: ${result.errors}`, {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {
@@ -539,12 +535,11 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
     
     try {
         const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
-        let successCount = 0;
-        
+
         const message = `🏆 **Попадите в топ-5 по рефералам!**
 
 👥 Приглашайте друзей и зарабатывайте больше звёзд!
-🎁 За каждого друга вы получаете 3 ⭐`;
+🎁 за каждого друга вы получаете 3 ⭐`;
 
         const keyboard = {
             reply_markup: {
@@ -555,20 +550,16 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
             }
         };
 
-        for (const user of users.rows) {
-            try {
-                await bot.sendMessage(user.id, message, {
-                    parse_mode: 'Markdown',
-                    ...keyboard
-                });
-                successCount++;
-                await new Promise(resolve => setTimeout(resolve, 50)); // Rate limiting
-            } catch (error) {
-                console.error(`[ADMIN-FINAL] Failed to send to user ${user.id}:`, error.message);
-            }
-        }
+        // Use throttler for broadcast
+        const result = await throttler.broadcastMessages(
+            users.rows,
+            (user) => bot.sendMessage(user.id, message, {
+                parse_mode: 'Markdown',
+                ...keyboard
+            })
+        );
 
-        await bot.editMessageText(`✅ Рассылка завершена!\n\n📤 Отправлено: ${successCount} из ${users.rows.length} пользователей`, {
+        await bot.editMessageText(`✅ Рассылка завершена!\n\n📤 Отправлено: ${result.success} из ${result.total} пользователей\n❌ Ошибок: ${result.errors}`, {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {

@@ -38,7 +38,9 @@ async function initializeDatabase() {
                 registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_subscribed BOOLEAN DEFAULT FALSE,
                 temp_action VARCHAR(100),
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                clicks_today INTEGER DEFAULT 0,
+                weekly_points INTEGER DEFAULT 0
             );
 
             -- Tasks table
@@ -192,6 +194,26 @@ async function initializeDatabase() {
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(lottery_id, user_id)
             );
+
+            -- Weekly rewards settings table
+            CREATE TABLE IF NOT EXISTS weekly_rewards_settings (
+                id SERIAL PRIMARY KEY,
+                auto_rewards_enabled BOOLEAN DEFAULT TRUE,
+                last_manual_trigger TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Weekly points history table
+            CREATE TABLE IF NOT EXISTS weekly_points_history (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                points_earned INTEGER DEFAULT 0,
+                activity_type VARCHAR(50),
+                week_start DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT fk_weekly_points_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
         `);
 
         // Add missing columns if they don't exist
@@ -219,6 +241,23 @@ async function initializeDatabase() {
             await pool.query(`
                 ALTER TABLE lotteries
                 ADD COLUMN IF NOT EXISTS lottery_type VARCHAR(20) DEFAULT 'standard';
+            `);
+
+            await pool.query(`
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS clicks_today INTEGER DEFAULT 0;
+            `);
+
+            await pool.query(`
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS weekly_points INTEGER DEFAULT 0;
+            `);
+
+            // Initialize weekly rewards settings if not exists
+            await pool.query(`
+                INSERT INTO weekly_rewards_settings (auto_rewards_enabled)
+                VALUES (TRUE)
+                ON CONFLICT DO NOTHING;
             `);
 
             console.log('✅ Database columns updated');
@@ -340,6 +379,17 @@ async function updateUserBalance(userId, amount) {
 
 async function updateUserField(userId, field, value) {
     try {
+        // Validate field name to prevent SQL injection
+        const allowedFields = [
+            'username', 'first_name', 'balance', 'referrals_count', 'referrals_today',
+            'invited_by', 'pending_referrer', 'last_click', 'last_case_open',
+            'is_subscribed', 'temp_action', 'clicks_today', 'weekly_points'
+        ];
+
+        if (!allowedFields.includes(field)) {
+            throw new Error(`Invalid field name: ${field}`);
+        }
+
         const result = await executeQuery(
             `UPDATE users SET ${field} = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
             [value, userId]
@@ -428,6 +478,9 @@ async function completeTask(userId, taskId) {
 
             // Add reward to user balance
             await updateUserBalance(userId, task.reward);
+
+            // Add weekly points for task completion
+            await addWeeklyPoints(userId, 2, 'task_completion');
 
             await executeQuery('COMMIT');
             return true;
@@ -593,12 +646,115 @@ async function getAllTasksStats() {
 // Daily reset function
 async function resetDailyData() {
     try {
-        await executeQuery('UPDATE users SET referrals_today = 0');
-        console.log('✅ Daily data reset completed');
+        await executeQuery('UPDATE users SET referrals_today = 0, clicks_today = 0');
+        console.log('��� Daily data reset completed');
     } catch (error) {
         console.error('Error resetting daily data:', error);
         throw error;
     }
+}
+
+// Weekly reset function
+async function resetWeeklyData() {
+    try {
+        await executeQuery('UPDATE users SET weekly_points = 0');
+        console.log('✅ Weekly data reset completed');
+    } catch (error) {
+        console.error('Error resetting weekly data:', error);
+        throw error;
+    }
+}
+
+// Weekly points functions
+async function addWeeklyPoints(userId, points, activityType) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Add points to user
+        await executeQuery(
+            'UPDATE users SET weekly_points = weekly_points + $1 WHERE id = $2',
+            [points, userId]
+        );
+
+        // Record activity in history
+        const weekStart = getWeekStart();
+        await executeQuery(
+            'INSERT INTO weekly_points_history (user_id, points_earned, activity_type, week_start) VALUES ($1, $2, $3, $4)',
+            [userId, points, activityType, weekStart]
+        );
+
+        await executeQuery('COMMIT');
+        return true;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error adding weekly points:', error);
+        throw error;
+    }
+}
+
+async function getWeeklyTopUsers(limit = 5) {
+    try {
+        const result = await executeQuery(`
+            SELECT id, first_name, username, weekly_points
+            FROM users
+            WHERE weekly_points > 0
+            ORDER BY weekly_points DESC, registered_at ASC
+            LIMIT $1
+        `, [limit]);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting weekly top users:', error);
+        throw error;
+    }
+}
+
+// Weekly rewards settings functions
+async function getWeeklyRewardsSettings() {
+    try {
+        const result = await executeQuery('SELECT * FROM weekly_rewards_settings ORDER BY id DESC LIMIT 1');
+        return result.rows[0] || { auto_rewards_enabled: true };
+    } catch (error) {
+        console.error('Error getting weekly rewards settings:', error);
+        throw error;
+    }
+}
+
+async function updateWeeklyRewardsSettings(autoEnabled) {
+    try {
+        await executeQuery(`
+            UPDATE weekly_rewards_settings
+            SET auto_rewards_enabled = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = (SELECT id FROM weekly_rewards_settings ORDER BY id DESC LIMIT 1)
+        `, [autoEnabled]);
+        return true;
+    } catch (error) {
+        console.error('Error updating weekly rewards settings:', error);
+        throw error;
+    }
+}
+
+async function recordManualRewardsTrigger() {
+    try {
+        await executeQuery(`
+            UPDATE weekly_rewards_settings
+            SET last_manual_trigger = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = (SELECT id FROM weekly_rewards_settings ORDER BY id DESC LIMIT 1)
+        `);
+        return true;
+    } catch (error) {
+        console.error('Error recording manual rewards trigger:', error);
+        throw error;
+    }
+}
+
+// Helper function to get week start date
+function getWeekStart() {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Start from Monday
+    const weekStart = new Date(now.setDate(diff));
+    weekStart.setHours(0, 0, 0, 0);
+    return weekStart;
 }
 
 // Clean up function
@@ -939,7 +1095,14 @@ module.exports = {
     getTaskStats,
     getAllTasksStats,
     resetDailyData,
+    resetWeeklyData,
     closeConnection,
+    // Weekly points functions
+    addWeeklyPoints,
+    getWeeklyTopUsers,
+    getWeeklyRewardsSettings,
+    updateWeeklyRewardsSettings,
+    recordManualRewardsTrigger,
     // Referral lottery functions
     createReferralLottery,
     getReferralLotteries,
