@@ -1,8 +1,10 @@
-# Используем Node Alpine как базовый образ
-FROM node:18-alpine
+# Базовый образ
+FROM node:18-bullseye
 
-# Устанавливаем необходимые зависимости для Python и сборки
-RUN apk add --no-cache python3 py3-pip python3-dev build-base
+# Устанавливаем Python, сборку и Rust
+RUN apt-get update && apt-get install -y \
+    python3 python3-pip python3-venv build-essential rustc cargo \
+ && rm -rf /var/lib/apt/lists/*
 
 # Создаём виртуальное окружение для Python
 RUN python3 -m venv /venv
@@ -11,22 +13,26 @@ ENV PATH="/venv/bin:$PATH"
 # Рабочая директория
 WORKDIR /app
 
-# Копируем package.json и package-lock.json, ставим Node зависимости
+# Копируем Node-зависимости и ставим их
 COPY package*.json ./
 RUN npm install --production
 
-# Копируем requirements.txt и ставим Python зависимости в виртуальное окружение
+# Копируем Python-зависимости и ставим их
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем весь остальной код
+# Копируем остальной код
 COPY . .
 
 # Создаём директорию для базы данных
-RUN mkdir -p data
+RUN mkdir -p /app/data
 
 # Открываем порт
 EXPOSE 3000
 
+# Запуск
+CMD ["npm", "start"]
+
 # Запуск бота
 CMD ["npm", "start"]
+
