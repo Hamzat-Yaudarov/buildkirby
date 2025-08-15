@@ -214,7 +214,7 @@ function getMainMenuKeyboard() {
                     { text: '📖 Инструкция по боту', callback_data: 'instruction' }
                 ],
                 [
-                    { text: '🏆 ейтинги', callback_data: 'ratings' },
+                    { text: '🏆 Рейтинги', callback_data: 'ratings' },
                     { text: '🎁 Кейсы', callback_data: 'cases' }
                 ],
                 [
