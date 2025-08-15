@@ -88,7 +88,7 @@ async function initializeDatabase() {
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT,
                 amount DECIMAL(10,2) NOT NULL,
-                type VARCHAR(20) NOT NULL,
+                type VARCHAR(20) NOT NULL CHECK (type IN ('stars', 'crypto', 'bank', 'premium')),
                 status VARCHAR(20) DEFAULT 'pending',
                 admin_notes TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -819,6 +819,107 @@ async function getLotteryParticipants(lotteryId) {
     }
 }
 
+// Withdrawal functions
+async function getWithdrawalRequest(userId, amount, type) {
+    try {
+        const result = await executeQuery(
+            'SELECT * FROM withdrawal_requests WHERE user_id = $1 AND amount = $2 AND type = $3 AND status = $4',
+            [userId, amount, type, 'pending']
+        );
+        return result.rows[0] || null;
+    } catch (error) {
+        console.error('Error getting withdrawal request:', error);
+        throw error;
+    }
+}
+
+async function approveWithdrawalRequest(userId, amount, type, adminId) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Update withdrawal request status
+        const result = await executeQuery(`
+            UPDATE withdrawal_requests
+            SET status = 'completed',
+                processed_at = CURRENT_TIMESTAMP,
+                processed_by = $1
+            WHERE user_id = $2 AND amount = $3 AND type = $4 AND status = 'pending'
+            RETURNING id
+        `, [adminId, userId, amount, type]);
+
+        if (result.rows.length === 0) {
+            await executeQuery('ROLLBACK');
+            return null;
+        }
+
+        await executeQuery('COMMIT');
+        return result.rows[0].id;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error approving withdrawal:', error);
+        throw error;
+    }
+}
+
+async function rejectWithdrawalRequest(userId, amount, type, adminId, reason) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Update withdrawal request status
+        const result = await executeQuery(`
+            UPDATE withdrawal_requests
+            SET status = 'rejected',
+                processed_at = CURRENT_TIMESTAMP,
+                processed_by = $1,
+                admin_notes = $5
+            WHERE user_id = $2 AND amount = $3 AND type = $4 AND status = 'pending'
+            RETURNING id
+        `, [adminId, userId, amount, type, reason]);
+
+        if (result.rows.length === 0) {
+            await executeQuery('ROLLBACK');
+            return null;
+        }
+
+        // Return balance to user
+        await updateUserBalance(userId, amount);
+
+        await executeQuery('COMMIT');
+        return result.rows[0].id;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error rejecting withdrawal:', error);
+        throw error;
+    }
+}
+
+async function getCompletedWithdrawalsCount() {
+    try {
+        const result = await executeQuery(
+            "SELECT COUNT(*) as count FROM withdrawal_requests WHERE status = 'completed'"
+        );
+        return parseInt(result.rows[0].count);
+    } catch (error) {
+        console.error('Error getting completed withdrawals count:', error);
+        throw error;
+    }
+}
+
+async function getWithdrawalById(withdrawalId) {
+    try {
+        const result = await executeQuery(`
+            SELECT wr.*, u.first_name, u.username
+            FROM withdrawal_requests wr
+            JOIN users u ON wr.user_id = u.id
+            WHERE wr.id = $1
+        `, [withdrawalId]);
+        return result.rows[0] || null;
+    } catch (error) {
+        console.error('Error getting withdrawal by ID:', error);
+        throw error;
+    }
+}
+
 // Export functions
 module.exports = {
     pool,
@@ -846,5 +947,11 @@ module.exports = {
     addReferralTicket,
     checkReferralCondition,
     selectLotteryWinners,
-    getLotteryParticipants
+    getLotteryParticipants,
+    // Withdrawal functions
+    getWithdrawalRequest,
+    approveWithdrawalRequest,
+    rejectWithdrawalRequest,
+    getCompletedWithdrawalsCount,
+    getWithdrawalById
 };

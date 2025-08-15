@@ -51,6 +51,7 @@ async function initializeBotMode() {
 // Admin configuration
 const ADMIN_ID = 6910097562;
 const ADMIN_CHANNEL = process.env.ADMIN_CHANNEL || '@kirbyvivodstars';
+const PAYMENTS_CHANNEL = process.env.PAYMENTS_CHANNEL || '@kirbystarspayments';
 
 // Initialize database and bot
 async function startBot() {
@@ -450,7 +451,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 • Ежедневные награды в кликере
 • Выполнение заданий за вознаграждение
 • Реферальная программа (3⭐ за друга)
-• Участие в лотереях и розыгрышах
+• Учас��ие в лотереях и розыгрышах
 • Открытие призовых кейсов
 
 Выберите действие из меню ниже:`;
@@ -517,7 +518,7 @@ bot.onText(/\/endlottery (\d+)/, async (msg, match) => {
 
         await distributeLotteryRewards(lotteryId, lottery);
         
-        bot.sendMessage(chatId, `✅ Лотерея "${lottery.name}" завершена!\n👥 Участников: ${participantCount}\n🏆 Награды распределены между ${Math.min(lottery.winners_count, participantCount)} победителями.`);
+        bot.sendMessage(chatId, `✅ Лотерея "${lottery.name}" завершена!\n👥 Участников: ${participantCount}\n🏆 Нагр��ды распределены между ${Math.min(lottery.winners_count, participantCount)} победителями.`);
 
     } catch (error) {
         console.error('Error ending lottery:', error);
@@ -547,7 +548,7 @@ bot.onText(/\/refupplayer (\d+) (\d+)/, async (msg, match) => {
             bot.sendMessage(chatId, `✅ Пользователю ${targetUserId} добавлено ${refCount} рефералов!`);
             
             try {
-                await bot.sendMessage(targetUserId, `🎉 **Бонус от администрации!**\n\nВам добавлено **${refCount} реф��ралов** от администрации!\n\n💫 Спасибо за активность!`, { parse_mode: 'Markdown' });
+                await bot.sendMessage(targetUserId, `🎉 **Бонус от администрации!**\n\nВам добавлено **${refCount} реф��ралов** от администрации!\n\n💫 Спасибо ��а активность!`, { parse_mode: 'Markdown' });
             } catch (error) {
                 console.log('Could not notify user about referral bonus');
             }
@@ -579,7 +580,7 @@ bot.onText(/\/starsupplayer (\d+) (\d+)/, async (msg, match) => {
             bot.sendMessage(chatId, `✅ Пользователю ${targetUserId} добавлено ${starsCount} ⭐!`);
             
             try {
-                await bot.sendMessage(targetUserId, `🎉 **Бонус от администрации!**\n\nВам добавлено **${starsCount} ⭐** от администрации!\n\n💫 Спасибо за активность!`, { parse_mode: 'Markdown' });
+                await bot.sendMessage(targetUserId, `🎉 **Бонус от администрации!**\n\nВам добавлено **${starsCount} ⭐** от администрации!\n\n💫 Спас��бо за активность!`, { parse_mode: 'Markdown' });
             } catch (error) {
                 console.log('Could not notify user about stars bonus');
             }
@@ -615,7 +616,7 @@ bot.onText(/\/admin/, async (msg) => {
 
 **Дополнительные команды:**
 🎰 **/endlottery [ID]** - завершить лотерею вручную
-👥 **/refupplayer [ID] [число]** - добавить рефералов пользователю
+👥 **/refupplayer [ID] [числ��]** - добавить рефералов пользователю
 ⭐ **/starsupplayer [ID] [число]** - добавить звёзды пользователю
 
 **Трекинговые ссылки:**
@@ -804,7 +805,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
 Пример:
 \`/create_referral_lottery Недельная|168|3|1.5|1:50|2:30|3:20\`
 
-• Название: Недельная
+�� Название: Недельная
 • Время: 168 часов (неделя)
 • Условие: пригласить 3 рефералов
 • Цена доп. билета: 1.5 ⭐
@@ -826,7 +827,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
         }
 
         if (prizes.length === 0) {
-            bot.sendMessage(chatId, '❌ Необходимо указать хотя бы один приз!');
+            bot.sendMessage(chatId, '❌ Необходимо указат�� хотя бы один приз!');
             return;
         }
 
@@ -1032,7 +1033,7 @@ async function handleReferralLotteryCheck(chatId, messageId, userId, lotteryId) 
             // Add free ticket for qualified user
             await db.addReferralTicket(lotteryId, userId, 'free');
 
-            await bot.editMessageText(`✅ **Поздравляем!**\n\nВы выполнили условие участия в лотерее!\n\n👥 Приглашено рефералов: ${condition.referralCount}/${condition.required}\n🎫 Вы получили бесплатный билет!\n\n💰 Теперь вы можете купить дополнительные билеты для увеличения шансов на победу.`, {
+            await bot.editMessageText(`✅ **Поздравляем!**\n\nВы выполнили условие участия в лотерее!\n\n👥 Приглашено рефералов: ${condition.referralCount}/${condition.required}\n🎫 Вы получили бесплатный билет!\n\n💰 Теперь вы можете купить дополните��ьные билеты для увеличения шансов на победу.`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
@@ -1051,7 +1052,7 @@ async function handleReferralLotteryCheck(chatId, messageId, userId, lotteryId) 
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '👥 Пригласить друзей', callback_data: 'invite' }],
+                        [{ text: '👥 Пригласить д��узей', callback_data: 'invite' }],
                         [{ text: '🎰 К лотереям', callback_data: 'lottery' }],
                         [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
                     ]
@@ -1157,6 +1158,49 @@ async function handleReferralLotteryBuy(chatId, messageId, userId, lotteryId) {
     }
 }
 
+// Function to send completed withdrawal notification to payments channel
+async function sendPaymentNotification(withdrawalId, user, amount, type) {
+    try {
+        const completedCount = await db.getCompletedWithdrawalsCount();
+
+        // Clean user display name
+        const displayName = cleanDisplayText(user.first_name);
+        const usernameText = user.username ? ` | @${user.username}` : '';
+
+        const typeText = type === 'premium' ? 'Telegram Premium на 3 месяца' : `${amount}⭐️`;
+
+        const message = `✅ Запрос на вывод №${completedCount}
+
+👤 Пользователь: ${displayName}${usernameText} | ID: ${user.id}
+💫 Количество: ${typeText}
+
+🔄 Статус: Подарок отправлен 🎁`;
+
+        const keyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📺 Основной канал', url: 'https://t.me/kirbyvivodstars' },
+                        { text: '💬 Наш чат', url: 'https://t.me/kirbychat_stars' },
+                        { text: '🤖 Бот', url: 'https://t.me/kirby_stars_bot' }
+                    ]
+                ]
+            }
+        };
+
+        await bot.sendMessage(PAYMENTS_CHANNEL, message, {
+            parse_mode: 'Markdown',
+            ...keyboard
+        });
+
+        console.log(`[PAYMENT] Notification sent to ${PAYMENTS_CHANNEL} for withdrawal #${completedCount}`);
+        return true;
+    } catch (error) {
+        console.error('Error sending payment notification:', error);
+        return false;
+    }
+}
+
 // Function to broadcast lottery results to all users
 async function broadcastLotteryResults(lotteryName, prizes) {
     try {
@@ -1177,7 +1221,7 @@ async function broadcastLotteryResults(lotteryName, prizes) {
             }
         }
 
-        message += '\nПоздравляем победителей! 🎊';
+        message += '\nПоздра��ляем победителей! 🎊';
 
         const keyboard = {
             reply_markup: {
@@ -1216,7 +1260,7 @@ bot.onText(/\/create_promo (.+)/, async (msg, match) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '��� У вас нет прав доступа.');
         return;
     }
 
@@ -1334,7 +1378,7 @@ bot.on('callback_query', async (callbackQuery) => {
 💰 **Вы получили:** +3 ⭐
 💎 **Ваш баланс пополнен!**
 
-👥 Продолжайте приглашать друзей и зарабатывайте еще больше звёзд!`;
+👥 Продолжайте приглашать друзей и зарабатывайте еще больше зв��зд!`;
 
                             await bot.sendMessage(invitedBy, message, { parse_mode: 'Markdown' });
                         } catch (error) {
@@ -1625,7 +1669,7 @@ async function distributeLotteryRewards(lotteryId, lottery) {
 💰 Ваш выигрыш: **${rewardPerWinner} ⭐**
 🏆 Всего победителей: ${winnersCount}
 
-✨ Награда зачислена на ваш баланс!`;
+✨ Награда зачислена н�� ваш баланс!`;
 
                 await bot.sendMessage(winner.user_id, message, {
                     parse_mode: 'Markdown',
@@ -1694,8 +1738,8 @@ async function handleProfile(chatId, messageId, user) {
 • Заработано с рефералов: **${totalEarned} ⭐**
 
 👥 **Реферальная активность:**
-• Всего приглашено: **${user.referrals_count}**
-• Приглашено се��одня: **${user.referrals_today}**
+• Всего пригла��ено: **${user.referrals_count}**
+• П��иглашено се��одня: **${user.referrals_today}**
 
 🎯 **Игровая статистика:**
 ${user.last_click ? `• Последний клик: ${new Date(user.last_click).toLocaleDateString('ru-RU')}` : '• Кликер еще не использовался'}
@@ -1775,8 +1819,6 @@ async function handleClicker(chatId, messageId, user) {
 🎉 **Отлично!** Вы получили ежедневную награду!
 💰 Начислено: **+${reward} ⭐**
 
-💎 **Текущий баланс:** ${user.balance + reward} ⭐
-
 ⏰ **Следующая награда:** завтра в это же время
 🕐 Не забудьте вернуться за новой наградой!`;
 
@@ -1798,7 +1840,7 @@ async function handleClicker(chatId, messageId, user) {
 
         const message = `🎯 **Ежедневный кликер**
 
-🎯 **Награда уже получена сегодня!**
+🎯 **Награда уже получена ��егодня!**
 
 💰 **Ваш баланс:** ${user.balance} ⭐
 
@@ -1840,7 +1882,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
     const user = await db.getUser(userId);
     
     if (user.referrals_count < 5) {
-        await bot.editMessageText('❌ Для вывода средств требуются минимум 5 рефералов!', {
+        await bot.editMessageText('❌ Для вывода сред��тв требуются минимум 5 рефералов!', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -1950,7 +1992,7 @@ async function handleTasks(chatId, messageId, user) {
 1. Нажмите "Подп��саться" для перехода к каналу
 2. Подпишитесь на канал
 3. Вернитесь и нажмите "Проверить"
-4. Получите награду!`;
+4. Получите н��граду!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -2018,7 +2060,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                 }
             } catch (taskError) {
                 if (taskError.message === 'Task completion limit reached') {
-                    await bot.editMessageText('❌ **Лимит выполнений достигнут!**\n\nЭто задание больше недоступно для выполнения.\n\nПопробуйте другие задания!', {
+                    await bot.editMessageText('❌ **Лимит выполнений достигнут!**\n\nЭто задание больше недоступно для выполнения.\n\n��опробуйте другие задания!', {
                         chat_id: chatId,
                         message_id: messageId,
                         parse_mode: 'Markdown',
@@ -2125,7 +2167,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 💰 **Награда за выполнение:** ${nextTask.reward} ⭐
 📊 **Прогресс:** ${completedTasks.length}/${allTasks.length + completedTasks.length} заданий выполнено
 
-📝 **Инструкция:**
+📝 **Инструк��ия:**
 1. Нажм��те "Подписаться" для перехода к каналу
 2. Подпишитесь на канал
 3. Вернитесь и нажмите "Проверить"
@@ -2165,7 +2207,7 @@ async function handleInstruction(chatId, messageId) {
 • Telegram Premium на 3 месяца за 1300 ⭐
 
 📈 **Советы:**
-• Заходите каждый день
+• З��ходите каждый день
 • Приглашайте активных друзей
 • Выполняйте все задания
 
@@ -2233,7 +2275,7 @@ async function handleRatingsAll(chatId, messageId) {
 
 async function handleRatingsWeek(chatId, messageId) {
     try {
-        // Получаем рейтинг по реферала�� за последние 7 дней
+        // Получ��ем рейтинг по реферала�� за последние 7 дней
         const result = await db.executeQuery(`
             SELECT first_name, referrals_count
             FROM users
@@ -2299,7 +2341,7 @@ async function handleCases(chatId, messageId, user) {
 
 ⏰ **Вы уже открыли кейс сегодня!**
 
-Возвращайтесь завтра за новым кейсом!`;
+Возвращайтесь завтр�� за новым кейсом!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -2562,7 +2604,7 @@ async function handlePromocodeInput(chatId, messageId, userId) {
     // Set temp action for user
     await db.updateUserField(userId, 'temp_action', 'awaiting_promocode');
     
-    await bot.editMessageText('🎁 Введите пр��мокод:', {
+    await bot.editMessageText('🎁 Введите пр���мокод:', {
         chat_id: chatId,
         message_id: messageId,
         ...getBackToMainKeyboard()
@@ -2575,7 +2617,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
         console.log('[WITHDRAWAL] Processing approval:', callbackData);
         const parts = callbackData.split('_');
         const targetUserId = parseInt(parts[2]);
-        const amount = parseInt(parts[3]);
+        const amount = parseFloat(parts[3]);
         const type = parts[4];
 
         console.log('[WITHDRAWAL] Parsed data:', { targetUserId, amount, type });
@@ -2592,13 +2634,28 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
 
         console.log('[WITHDRAWAL] User found:', user.first_name);
 
+        // Approve withdrawal in database
+        const withdrawalId = await db.approveWithdrawalRequest(targetUserId, amount, type, ADMIN_ID);
+        if (!withdrawalId) {
+            await bot.editMessageText('❌ Заявка на вывод не найдена или уже обработана.', {
+                chat_id: chatId,
+                message_id: messageId
+            });
+            return;
+        }
+
+        console.log('[WITHDRAWAL] Withdrawal approved in database, ID:', withdrawalId);
+
+        // Send payment notification to payments channel
+        await sendPaymentNotification(withdrawalId, user, amount, type);
+
         // Send congratulations to user
+        const typeDisplay = type === 'premium' ? 'Telegram Premium на 3 месяца' : `${amount} ⭐`;
         const congratsMessage = `🎉 **Поздравляем!**
 
 ✅ **Ваша заявка на вывод одобрена!**
 
-💰 **Сумма:** ${amount} ⭐
-📦 **Тип:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}
+💰 **Сумма:** ${typeDisplay}
 
 🎯 **Награда уже выплачена!** Спасибо за использование нашего бота!
 
@@ -2608,13 +2665,14 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
         console.log('[WITHDRAWAL] Congratulations sent to user');
 
         // Update admin message
-        await bot.editMessageText(`✅ **Заявка одобрена**
+        const completedCount = await db.getCompletedWithdrawalsCount();
+        await bot.editMessageText(`✅ **Заявка одобрена** (#${completedCount})
 
-👤 Пользователь: ${user.first_name}
-💰 Сумма: ${amount} ⭐
-📦 Тип: ${type === 'premium' ? 'Telegram Premium' : 'Звёзды'}
+👤 Пользователь: ${cleanDisplayText(user.first_name)}
+💰 Сумма: ${typeDisplay}
 
-✅ Пользователь уведомлен об одобрении.`, {
+✅ Пользователь уведомлен об одобрении.
+📢 Уведомление отправлено в канал платежей.`, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown'
@@ -2712,7 +2770,7 @@ bot.on('message', async (msg) => {
                     const rejectionReason = msg.text.trim();
                     const actionParts = user.temp_action.split('_');
                     const targetUserId = parseInt(actionParts[2]);
-                    const amount = parseInt(actionParts[3]);
+                    const amount = parseFloat(actionParts[3]);
                     const type = actionParts[4];
 
                     console.log('[REJECTION] Parsed data:', { targetUserId, amount, type, rejectionReason });
@@ -2721,19 +2779,24 @@ bot.on('message', async (msg) => {
                     await db.updateUserField(userId, 'temp_action', null);
                     console.log('[REJECTION] Temp action cleared');
 
-                    // Return money to user
-                    await db.updateUserBalance(targetUserId, amount);
-                    console.log('[REJECTION] Money returned to user');
+                    // Reject withdrawal in database (this will also return money to user)
+                    const withdrawalId = await db.rejectWithdrawalRequest(targetUserId, amount, type, userId, rejectionReason);
+                    if (!withdrawalId) {
+                        await bot.sendMessage(chatId, '❌ Заявка на вывод не найдена или уже обработана.');
+                        return;
+                    }
+
+                    console.log('[REJECTION] Withdrawal rejected in database, ID:', withdrawalId);
 
                     // Get target user info
                     const targetUser = await db.getUser(targetUserId);
                     console.log('[REJECTION] Target user found:', targetUser.first_name);
 
                     // Send rejection notice to user
+                    const typeDisplay = type === 'premium' ? 'Telegram Premium на 3 месяца' : `${amount} ⭐`;
                     const rejectionMessage = `❌ **Заявка на вывод отклонена**
 
-💰 **Сумма:** ${amount} ⭐
-📦 **Тип:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}
+💰 **Сумма:** ${typeDisplay}
 
 📝 **Причина отклонения:**
 ${rejectionReason}
@@ -2746,7 +2809,14 @@ ${rejectionReason}
                     console.log('[REJECTION] Rejection message sent to user');
 
                     // Confirm to admin
-                    await bot.sendMessage(chatId, `✅ Заявка отклонена.\n👤 Пользователю ${targetUser.first_name} отпра��лено уведомление.\n💸 Средства (${amount} ⭐) возвращены на баланс.`);
+                    await bot.sendMessage(chatId, `✅ **Заявка отклонена**
+
+👤 Пользователь: ${cleanDisplayText(targetUser.first_name)}
+💰 Сумма: ${typeDisplay}
+📝 Причина: ${rejectionReason}
+
+✅ Пользователю отправлено уведомление.
+💸 Средства возвращены на баланс.`, { parse_mode: 'Markdown' });
                     console.log('[REJECTION] Confirmation sent to admin');
                 }
             }
@@ -2817,7 +2887,7 @@ async function handleAdminMenu(chatId, messageId) {
 👥 **/refupplayer [ID] [число]** - добавить рефералов пользователю
 ⭐ **/starsupplayer [ID] [число]** - добавить звёзды пользователю
 
-Выберите действие:`;
+��ыберите действие:`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -2849,7 +2919,7 @@ bot.onText(/\/create_tracking_link (.+)/, async (msg, match) => {
         const linkName = match[1].trim();
 
         if (!linkName) {
-            bot.sendMessage(chatId, '❌ укажите название ссылки! Используйте: /create_tracking_link Название_рекламы');
+            bot.sendMessage(chatId, '❌ укажите название ��сылки! Используйте: /create_tracking_link Название_рекламы');
             return;
         }
 
@@ -3109,7 +3179,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
             if (i % 10 === 0 || i === users.rows.length - 1) {
                 const progress = Math.round((i + 1) / totalUsers * 100);
                 try {
-                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Польз��вателей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ Прогресс: ${progress}%`, {
+                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Польз��вателей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ ��рогресс: ${progress}%`, {
                         chat_id: chatId,
                         message_id: confirmMsg.message_id,
                         parse_mode: 'Markdown'
@@ -3124,7 +3194,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
         }
 
         // Final report
-        await bot.editMessageText(`✅ **Рассылка завершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n📊 Успешность: ${Math.round(successCount/totalUsers*100)}%`, {
+        await bot.editMessageText(`✅ **Рассылка завершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n��� Ошибок: ${failCount}\n📊 Успешность: ${Math.round(successCount/totalUsers*100)}%`, {
             chat_id: chatId,
             message_id: confirmMsg.message_id,
             parse_mode: 'Markdown'
@@ -3146,7 +3216,7 @@ async function handleBroadcastCustom(chatId, messageId, userId) {
 
         const message = `✏️ **Создать свою рассылку**
 
-📝 **Отправьте ваше сообщение следующим сообщением.**
+📝 **Отправьте ваше сообщение сле��ующим сообщением.**
 
 Бот будет ждать ваше сообщение и разошлет его всем пользователям.
 
@@ -3250,7 +3320,7 @@ cron.schedule('0 20 * * 0', async () => {
 
             // Send personal congratulations
             try {
-                const personalMessage = `🎉 **Поздравляем!**\n\n${position} **Вы заняли ${i + 1} место в недельном рейтинге!**\n\n👥 **Рефералов за неделю:** ${user.referrals_today}\n💰 **Награда:** +${reward} ⭐\n\n🎯 Отличная работа! Продолжайте приглашать друзей!`;
+                const personalMessage = `🎉 **Поздравляем!**\n\n${position} **Вы заняли ${i + 1} место в недельном рейтинге!**\n\n👥 **Рефералов за неделю:** ${user.referrals_today}\n💰 **Награда:** +${reward} ⭐\n\n🎯 Отличная работа! Прод��лжайте приглашать друзей!`;
 
                 await bot.sendMessage(user.id, personalMessage, { parse_mode: 'Markdown' });
                 console.log(`[WEEKLY-REWARDS] Reward sent to ${user.first_name}: ${reward} stars`);

@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS withdrawal_requests (
     id SERIAL PRIMARY KEY,
     user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
     amount DECIMAL(10,2) NOT NULL CHECK (amount > 0),
-    type VARCHAR(20) NOT NULL CHECK (type IN ('stars', 'crypto', 'bank')),
+    type VARCHAR(20) NOT NULL CHECK (type IN ('stars', 'crypto', 'bank', 'premium')),
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'rejected')),
     admin_notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
