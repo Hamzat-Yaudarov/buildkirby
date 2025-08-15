@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_user_tasks_completed_at ON user_tasks(completed_a
 CREATE TABLE IF NOT EXISTS lotteries (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    ticket_price DECIMAL(10,2) NOT NULL CHECK (ticket_price > 0),
+    ticket_price DECIMAL(10,2) NOT NULL CHECK (ticket_price >= 0),
     max_tickets INTEGER NOT NULL CHECK (max_tickets > 0),
     winners_count INTEGER NOT NULL CHECK (winners_count > 0 AND winners_count <= max_tickets),
     current_tickets INTEGER DEFAULT 0 CHECK (current_tickets >= 0 AND current_tickets <= max_tickets),

@@ -65,7 +65,7 @@ async function initializeDatabase() {
             CREATE TABLE IF NOT EXISTS lotteries (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
-                ticket_price DECIMAL(10,2) NOT NULL,
+                ticket_price DECIMAL(10,2) NOT NULL CHECK (ticket_price >= 0),
                 max_tickets INTEGER NOT NULL,
                 winners_count INTEGER NOT NULL,
                 current_tickets INTEGER DEFAULT 0,
