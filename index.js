@@ -81,7 +81,7 @@ function cleanDisplayText(text) {
         // Remove control characters
         .replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
         // Remove specific problematic symbols that cause Telegram parsing errors
-        .replace(/[☭⧁⁣༒𓆩��ł₦ℳ₳𓆪⭐]/g, '')
+        .replace(/[☭⧁⁣༒𓆩₦ł₦ℳ₳𓆪⭐]/g, '')
         // Remove various unicode spaces, symbols, and special characters
         .replace(/[\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F]/g, '')
         // Remove other potentially problematic unicode ranges
@@ -212,8 +212,8 @@ function getProfileKeyboard() {
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: '🎁 Промокод', callback_data: 'promocode' },
-                    { text: '👥 ��ригласить друзей', callback_data: 'invite' }
+                    { text: '🎁 Пр��мокод', callback_data: 'promocode' },
+                    { text: '👥 Пригласить друзей', callback_data: 'invite' }
                 ],
                 [
                     { text: '🏠 В главное меню', callback_data: 'main_menu' }
@@ -385,13 +385,33 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         // Process pending referral if exists
         if (dbUser.pending_referrer) {
             const invitedBy = dbUser.pending_referrer;
-            
+
             // Update referrer stats
             await db.executeQuery(
                 'UPDATE users SET referrals_count = referrals_count + 1, referrals_today = referrals_today + 1, balance = balance + 3 WHERE id = $1',
                 [invitedBy]
             );
-            
+
+            // Add tickets to active auto-referral lotteries
+            try {
+                const autoLotteries = await db.executeQuery(`
+                    SELECT l.id
+                    FROM lotteries l
+                    JOIN referral_lotteries rl ON l.id = rl.lottery_id
+                    WHERE l.is_active = TRUE
+                    AND l.lottery_type = 'referral_auto'
+                    AND rl.ends_at > NOW()
+                `);
+
+                for (const lottery of autoLotteries.rows) {
+                    await db.addReferralTicket(lottery.id, invitedBy, 'referral', userId);
+                }
+
+                console.log(`[AUTO-REFERRAL] Added tickets to ${autoLotteries.rows.length} auto-referral lotteries for user ${invitedBy}`);
+            } catch (error) {
+                console.error('Error adding auto-referral tickets:', error);
+            }
+
             // Clear pending referrer
             await db.updateUserField(userId, 'pending_referrer', null);
             await db.updateUserField(userId, 'invited_by', invitedBy);
@@ -527,7 +547,7 @@ bot.onText(/\/refupplayer (\d+) (\d+)/, async (msg, match) => {
             bot.sendMessage(chatId, `✅ Пользователю ${targetUserId} добавлено ${refCount} рефералов!`);
             
             try {
-                await bot.sendMessage(targetUserId, `🎉 **Бонус от администрации!**\n\nВам добавлено **${refCount} рефералов** от администрации!\n\n💫 Спасибо за активность!`, { parse_mode: 'Markdown' });
+                await bot.sendMessage(targetUserId, `🎉 **Бонус от администрации!**\n\nВам добавлено **${refCount} реф��ралов** от администрации!\n\n💫 Спасибо за активность!`, { parse_mode: 'Markdown' });
             } catch (error) {
                 console.log('Could not notify user about referral bonus');
             }
@@ -580,7 +600,7 @@ bot.onText(/\/admin/, async (msg) => {
     console.log(`[ADMIN] /admin command called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа к панели админ��стратора.');
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа к панели администратора.');
         return;
     }
 
@@ -629,7 +649,7 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
     try {
         const params = match[1].split('|');
         if (params.length < 3) {
-            bot.sendMessage(chatId, '❌ Неверный формат!\n\nИспользуйте:\n`/create_task канал|название|награда|лимит`\n\nГде лимит - максимальное количество выполнений (необязательно).\n\nПримеры:\n• `/create_task @channel|Мой канал|1.5`\n• `/create_task @channel|Мой канал|1.5|100`', { parse_mode: 'Markdown' });
+            bot.sendMessage(chatId, '❌ Неверный формат!\n\nИс��ользуйте:\n`/create_task канал|название|награда|лимит`\n\nГде лимит - максимальное количество выполнений (необязательно).\n\nПримеры:\n• `/create_task @channel|Мой канал|1.5`\n• `/create_task @channel|Мой канал|1.5|100`', { parse_mode: 'Markdown' });
             return;
         }
 
@@ -763,6 +783,433 @@ bot.onText(/\/create_lottery (.+)/, async (msg, match) => {
     }
 });
 
+// Admin referral lottery creation (Type 1: with condition)
+bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const params = match[1].split('|');
+        if (params.length < 5) {
+            bot.sendMessage(chatId, `❌ Неверный формат!
+
+Используйте:
+\`/create_referral_lottery название|время_часов|мин_рефералов|цена_билета|место1:приз1|место2:приз2|...\`
+
+Пример:
+\`/create_referral_lottery Недельная|168|3|1.5|1:50|2:30|3:20\`
+
+• Название: Недельная
+• Время: 168 часов (неделя)
+• Условие: пригласить 3 рефералов
+• Цена доп. билета: 1.5 ⭐
+• Призы: 1м-50⭐, 2м-30⭐, 3м-20⭐`, { parse_mode: 'Markdown' });
+            return;
+        }
+
+        const [name, timeHours, minReferrals, ticketPrice, ...prizeParams] = params;
+
+        // Parse prizes
+        const prizes = [];
+        for (const prizeParam of prizeParams) {
+            const [place, amount] = prizeParam.split(':');
+            if (!place || !amount) {
+                bot.sendMessage(chatId, '❌ Неверный формат призов! Используйте: место:сумма');
+                return;
+            }
+            prizes.push(parseFloat(amount));
+        }
+
+        if (prizes.length === 0) {
+            bot.sendMessage(chatId, '❌ Необходимо указать хотя бы один приз!');
+            return;
+        }
+
+        // Create lottery
+        const timeHoursNum = parseInt(timeHours);
+        const endsAt = new Date();
+        endsAt.setHours(endsAt.getHours() + timeHoursNum);
+
+        const lotteryData = {
+            name: name.trim(),
+            ticket_price: 0, // Free base ticket
+            max_tickets: 999999, // No limit for referral lotteries
+            winners_count: prizes.length,
+            lottery_type: 'referral_condition'
+        };
+
+        const refLotteryData = {
+            required_referrals: parseInt(minReferrals),
+            referral_time_hours: timeHoursNum,
+            additional_ticket_price: parseFloat(ticketPrice),
+            ends_at: endsAt
+        };
+
+        const lotteryId = await db.createReferralLottery(lotteryData, refLotteryData, prizes);
+
+        let message = `✅ **Реферальная лотерея создана!**
+
+🎰 **Название:** ${name}
+⏰ **Длительность:** ${timeHours} часов
+👥 **Условие:** пригласить ${minReferrals} рефералов
+💰 **Цена доп. билета:** ${ticketPrice} ⭐
+🏆 **Призовые места:** ${prizes.length}
+
+**Призы:**`;
+
+        for (let i = 0; i < prizes.length; i++) {
+            const place = i + 1;
+            const emoji = place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : '🏅';
+            message += `\n${emoji} ${place} место: ${prizes[i]} ⭐`;
+        }
+
+        message += `\n\n⏰ **Завершение:** ${endsAt.toLocaleString('ru-RU')}`;
+
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        console.log('[CREATE-REF-LOTTERY] Referral lottery created successfully, ID:', lotteryId);
+
+    } catch (error) {
+        console.error('Error creating referral lottery:', error);
+        bot.sendMessage(chatId, `❌ Ошибка создания лотереи: ${error.message}`);
+    }
+});
+
+// Admin auto referral lottery creation (Type 2: automatic)
+bot.onText(/\/create_auto_referral_lottery (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const params = match[1].split('|');
+        if (params.length < 3) {
+            bot.sendMessage(chatId, `❌ Неверный формат!
+
+Используйте:
+\`/create_auto_referral_lottery название|время_часов|место1:приз1|место2:приз2|...\`
+
+Пример:
+\`/create_auto_referral_lottery Авто|72|1:100|2:60|3:40|4:20|5:10\`
+
+• Название: Авто
+• Время: 72 часа (3 дня)
+• Призы: 1м-100⭐, 2м-60⭐, 3м-40⭐, 4м-20⭐, 5м-10⭐
+• Билеты: автоматически за каждого нового реферала`, { parse_mode: 'Markdown' });
+            return;
+        }
+
+        const [name, timeHours, ...prizeParams] = params;
+
+        // Parse prizes
+        const prizes = [];
+        for (const prizeParam of prizeParams) {
+            const [place, amount] = prizeParam.split(':');
+            if (!place || !amount) {
+                bot.sendMessage(chatId, '❌ Неверный формат призов! Используйте: место:сумма');
+                return;
+            }
+            prizes.push(parseFloat(amount));
+        }
+
+        if (prizes.length === 0) {
+            bot.sendMessage(chatId, '❌ Необходимо указать хотя бы один приз!');
+            return;
+        }
+
+        // Create lottery
+        const timeHoursNum = parseInt(timeHours);
+        const endsAt = new Date();
+        endsAt.setHours(endsAt.getHours() + timeHoursNum);
+
+        const lotteryData = {
+            name: name.trim(),
+            ticket_price: 0, // No purchasing for auto referral
+            max_tickets: 999999, // No limit
+            winners_count: prizes.length,
+            lottery_type: 'referral_auto'
+        };
+
+        const refLotteryData = {
+            required_referrals: 1, // Each referral = 1 ticket
+            referral_time_hours: timeHoursNum,
+            additional_ticket_price: 0, // No additional tickets
+            ends_at: endsAt
+        };
+
+        const lotteryId = await db.createReferralLottery(lotteryData, refLotteryData, prizes);
+
+        let message = `✅ **Автоматическая реферальная лотерея создана!**
+
+🎰 **Название:** ${name}
+⏰ **Длительность:** ${timeHours} часов
+🎫 **Билеты:** каждый новый реферал = +1 билет
+🏆 **Призовые места:** ${prizes.length}
+
+**Призы:**`;
+
+        for (let i = 0; i < prizes.length; i++) {
+            const place = i + 1;
+            const emoji = place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : '🏅';
+            message += `\n${emoji} ${place} место: ${prizes[i]} ⭐`;
+        }
+
+        message += `\n\n⏰ **Завершение:** ${endsAt.toLocaleString('ru-RU')}`;
+
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        console.log('[CREATE-AUTO-REF-LOTTERY] Auto referral lottery created successfully, ID:', lotteryId);
+
+    } catch (error) {
+        console.error('Error creating auto referral lottery:', error);
+        bot.sendMessage(chatId, `❌ Ошибка создания лотереи: ${error.message}`);
+    }
+});
+
+// Admin command to select lottery winners manually
+bot.onText(/\/select_lottery_winners (\d+) (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const lotteryId = parseInt(match[1]);
+        const winnersData = match[2].split(' ');
+
+        const winners = {};
+        for (const winnerStr of winnersData) {
+            const [place, winnerUserId] = winnerStr.split(':');
+            if (!place || !winnerUserId) {
+                bot.sendMessage(chatId, '❌ Неверный формат! Используйте: /select_lottery_winners ID место1:userID место2:userID');
+                return;
+            }
+            winners[place] = parseInt(winnerUserId);
+        }
+
+        // Select winners and distribute prizes
+        await db.selectLotteryWinners(lotteryId, winners);
+
+        // Get lottery info and prizes for broadcast
+        const lotteryResult = await db.executeQuery('SELECT name FROM lotteries WHERE id = $1', [lotteryId]);
+        const prizes = await db.getLotteryPrizes(lotteryId);
+
+        if (lotteryResult.rows.length === 0) {
+            bot.sendMessage(chatId, '❌ Лотерея не найдена.');
+            return;
+        }
+
+        const lotteryName = lotteryResult.rows[0].name;
+
+        // Send broadcast message to all users
+        await broadcastLotteryResults(lotteryName, prizes);
+
+        bot.sendMessage(chatId, `✅ Победители выбраны и награды распределены!\n\n🎉 Всем пользователям отправлено уведомление о результатах лотереи "${lotteryName}".`);
+
+    } catch (error) {
+        console.error('Error selecting lottery winners:', error);
+        bot.sendMessage(chatId, `❌ Ошибка выбора победителей: ${error.message}`);
+    }
+});
+
+// Referral lottery handlers
+async function handleReferralLotteryCheck(chatId, messageId, userId, lotteryId) {
+    try {
+        // Check if user meets referral condition
+        const condition = await db.checkReferralCondition(lotteryId, userId);
+
+        if (condition.qualified) {
+            // Add free ticket for qualified user
+            await db.addReferralTicket(lotteryId, userId, 'free');
+
+            await bot.editMessageText(`✅ **Поздравляем!**\n\nВы выполнили условие участия в лотерее!\n\n👥 Приглашено рефералов: ${condition.referralCount}/${condition.required}\n🎫 Вы получили бесплатный билет!\n\n💰 Теперь вы можете купить дополнительные билеты для увеличения шансов на победу.`, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🎫 Купить доп. билет', callback_data: `ref_lottery_buy_${lotteryId}` }],
+                        [{ text: '🎰 К лотереям', callback_data: 'lottery' }],
+                        [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                    ]
+                }
+            });
+        } else {
+            await bot.editMessageText(`❌ **Условие не выполнено**\n\n👥 Приглашено рефералов: ${condition.referralCount}/${condition.required}\n\n📋 Для участия в лотерее необходимо пригласить еще ${condition.required - condition.referralCount} рефералов.\n\n💡 Приглашайте друзей по вашей реферальной ссылке!`, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '👥 Пригласить друзей', callback_data: 'invite' }],
+                        [{ text: '🎰 К лотереям', callback_data: 'lottery' }],
+                        [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                    ]
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error checking referral lottery condition:', error);
+        await bot.editMessageText('❌ Ошибка проверки условий участия.', {
+            chat_id: chatId,
+            message_id: messageId,
+            ...getBackToMainKeyboard()
+        });
+    }
+}
+
+async function handleReferralLotteryBuy(chatId, messageId, userId, lotteryId) {
+    try {
+        // Get lottery details
+        const lotteryResult = await db.executeQuery(`
+            SELECT l.name, rl.additional_ticket_price, rl.ends_at
+            FROM lotteries l
+            JOIN referral_lotteries rl ON l.id = rl.lottery_id
+            WHERE l.id = $1 AND l.is_active = TRUE
+        `, [lotteryId]);
+
+        if (lotteryResult.rows.length === 0) {
+            await bot.editMessageText('❌ Лотерея не найдена или неактивна.', {
+                chat_id: chatId,
+                message_id: messageId,
+                ...getBackToMainKeyboard()
+            });
+            return;
+        }
+
+        const lottery = lotteryResult.rows[0];
+
+        // Check if lottery is still active
+        if (new Date() > new Date(lottery.ends_at)) {
+            await bot.editMessageText('❌ Лотерея уже завершена.', {
+                chat_id: chatId,
+                message_id: messageId,
+                ...getBackToMainKeyboard()
+            });
+            return;
+        }
+
+        // Check user balance
+        const user = await db.getUser(userId);
+        if (user.balance < lottery.additional_ticket_price) {
+            await bot.editMessageText(`❌ **Недостаточно средств!**\n\nДля покупки дополнительного билета нужно: ${lottery.additional_ticket_price} ⭐\nВаш баланс: ${user.balance} ⭐\n\nВыполняйте задания и приглашайте друзей для заработка звёзд!`, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '📋 Задания', callback_data: 'tasks' }],
+                        [{ text: '👥 Пригласить друзей', callback_data: 'invite' }],
+                        [{ text: '🎰 К лотереям', callback_data: 'lottery' }]
+                    ]
+                }
+            });
+            return;
+        }
+
+        // Buy additional ticket
+        await db.executeQuery('BEGIN');
+
+        try {
+            // Deduct balance
+            await db.updateUserBalance(userId, -lottery.additional_ticket_price);
+
+            // Add purchased ticket
+            await db.addReferralTicket(lotteryId, userId, 'purchased');
+
+            await db.executeQuery('COMMIT');
+
+            await bot.editMessageText(`✅ **Билет куплен!**\n\nВы успешно приобрели дополнительный билет в лотерею "${lottery.name}"!\n\n💰 Списано: ${lottery.additional_ticket_price} ⭐\n💎 Ваш баланс: ${user.balance - lottery.additional_ticket_price} ⭐\n\n🍀 Удачи в розыгрыше!`, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🎫 Купить еще билет', callback_data: `ref_lottery_buy_${lotteryId}` }],
+                        [{ text: '🎰 К лотереям', callback_data: 'lottery' }],
+                        [{ text: '�� Главное меню', callback_data: 'main_menu' }]
+                    ]
+                }
+            });
+
+        } catch (error) {
+            await db.executeQuery('ROLLBACK');
+            throw error;
+        }
+
+    } catch (error) {
+        console.error('Error buying referral lottery ticket:', error);
+        await bot.editMessageText('❌ Ошибка покупки билета.', {
+            chat_id: chatId,
+            message_id: messageId,
+            ...getBackToMainKeyboard()
+        });
+    }
+}
+
+// Function to broadcast lottery results to all users
+async function broadcastLotteryResults(lotteryName, prizes) {
+    try {
+        const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
+        let successCount = 0;
+
+        let message = `🎉 **Лотерея "${lotteryName}" завершена!**\n\n🏆 **Победители:**\n`;
+
+        for (const prize of prizes) {
+            if (prize.winner_user_id) {
+                const winnerResult = await db.executeQuery('SELECT first_name, username FROM users WHERE id = $1', [prize.winner_user_id]);
+                if (winnerResult.rows.length > 0) {
+                    const winner = winnerResult.rows[0];
+                    const displayName = winner.username ? `@${winner.username}` : winner.first_name;
+                    const emoji = prize.place === 1 ? '🥇' : prize.place === 2 ? '🥈' : prize.place === 3 ? '🥉' : '🏅';
+                    message += `${emoji} ${prize.place} место: ${displayName} - ${prize.prize_amount} ⭐\n`;
+                }
+            }
+        }
+
+        message += '\nПоздравляем победителей! 🎊';
+
+        const keyboard = {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🎰 Участвовать в лотереях', callback_data: 'lottery' }],
+                    [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                ]
+            }
+        };
+
+        for (const user of users.rows) {
+            try {
+                await bot.sendMessage(user.id, message, {
+                    parse_mode: 'Markdown',
+                    ...keyboard
+                });
+                successCount++;
+                await new Promise(resolve => setTimeout(resolve, 50)); // Rate limiting
+            } catch (error) {
+                console.error(`Failed to send lottery results to user ${user.id}:`, error.message);
+            }
+        }
+
+        console.log(`[LOTTERY-BROADCAST] Results sent to ${successCount} out of ${users.rows.length} users`);
+        return successCount;
+
+    } catch (error) {
+        console.error('Error broadcasting lottery results:', error);
+        throw error;
+    }
+}
+
 // Admin promocode creation
 bot.onText(/\/create_promo (.+)/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -846,13 +1293,33 @@ bot.on('callback_query', async (callbackQuery) => {
                     const user = await db.getUser(userId);
                     if (user && user.pending_referrer) {
                         const invitedBy = user.pending_referrer;
-                        
+
                         // Update referrer stats
                         await db.executeQuery(
                             'UPDATE users SET referrals_count = referrals_count + 1, referrals_today = referrals_today + 1, balance = balance + 3 WHERE id = $1',
                             [invitedBy]
                         );
-                        
+
+                        // Add tickets to active auto-referral lotteries
+                        try {
+                            const autoLotteries = await db.executeQuery(`
+                                SELECT l.id
+                                FROM lotteries l
+                                JOIN referral_lotteries rl ON l.id = rl.lottery_id
+                                WHERE l.is_active = TRUE
+                                AND l.lottery_type = 'referral_auto'
+                                AND rl.ends_at > NOW()
+                            `);
+
+                            for (const lottery of autoLotteries.rows) {
+                                await db.addReferralTicket(lottery.id, invitedBy, 'referral', userId);
+                            }
+
+                            console.log(`[AUTO-REFERRAL] Added tickets to ${autoLotteries.rows.length} auto-referral lotteries for user ${invitedBy}`);
+                        } catch (error) {
+                            console.error('Error adding auto-referral tickets:', error);
+                        }
+
                         // Clear pending referrer
                         await db.updateUserField(userId, 'pending_referrer', null);
                         await db.updateUserField(userId, 'invited_by', invitedBy);
@@ -1083,6 +1550,12 @@ bot.on('callback_query', async (callbackQuery) => {
                 } else if (data.startsWith('lottery_buy_')) {
                     const lotteryId = data.replace('lottery_buy_', '');
                     await handleLotteryBuy(chatId, msg.message_id, userId, lotteryId);
+                } else if (data.startsWith('ref_lottery_check_')) {
+                    const lotteryId = data.replace('ref_lottery_check_', '');
+                    await handleReferralLotteryCheck(chatId, msg.message_id, userId, lotteryId);
+                } else if (data.startsWith('ref_lottery_buy_')) {
+                    const lotteryId = data.replace('ref_lottery_buy_', '');
+                    await handleReferralLotteryBuy(chatId, msg.message_id, userId, lotteryId);
                 } else if (data === 'lottery_sold_out') {
                     await bot.answerCallbackQuery(callbackQuery.id, {
                         text: '🚫 Все би��еты в эту лотерею проданы!',
@@ -1189,10 +1662,10 @@ async function handleMainMenu(chatId, messageId) {
 💰 **Ваш персональный центр заработка Telegram Stars**
 
 🎯 **Доступные возможности:**
-• 🎯 **Кликер** - ежедневная награда 0.1 ⭐
+• 🎯 **Кликер** - ежедневная наград�� 0.1 ⭐
 • 📋 **Задания** - выполняйте задачи за вознаграждение
 • 👥 **Рефералы** - приглашайте друзей (3 ⭐ за каждого)
-��� 🎁 **Кейсы** - призы от 1 до 10 ⭐
+• 🎁 **Кейсы** - призы от 1 до 10 ⭐
 • 🎰 **Лотерея** - участвуйте в розыгрышах
 
 Выберите нужный раздел:`;
@@ -1222,7 +1695,7 @@ async function handleProfile(chatId, messageId, user) {
 
 👥 **Реферальная активность:**
 • Всего приглашено: **${user.referrals_count}**
-• Приглашено сегодня: **${user.referrals_today}**
+• Приглашено се��одня: **${user.referrals_today}**
 
 🎯 **Игровая статистика:**
 ${user.last_click ? `• Последний клик: ${new Date(user.last_click).toLocaleDateString('ru-RU')}` : '• Кликер еще не использовался'}
@@ -1259,7 +1732,7 @@ async function handleInvite(chatId, messageId, user) {
 📊 **Статистика приглашений:**
 👥 Всего друзей приглашено: **${user.referrals_count}**
 📅 Приглашено сегодня: **${user.referrals_today}**
-���� Заработано с рефералов: **${user.referrals_count * 3} 🎉**
+💰 Заработано с рефералов: **${user.referrals_count * 3} 🎉**
 
 🎯 **Как это работает:**
 1. Поделитесь ссылкой с друзьями
@@ -1272,7 +1745,7 @@ async function handleInvite(chatId, messageId, user) {
     const keyboard = {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '📤 Поделиться', switch_inline_query: `Присоединяйся к боту для заработка звёзд! ${inviteLink}` }],
+                [{ text: '📤 Поделиться', switch_inline_query: `Присоединяйся к боту для зарабо��ка звёзд! ${inviteLink}` }],
                 [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
             ]
         }
@@ -1367,7 +1840,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
     const user = await db.getUser(userId);
     
     if (user.referrals_count < 5) {
-        await bot.editMessageText('❌ Для вывода средств требуют��я минимум 5 рефералов!', {
+        await bot.editMessageText('❌ Для вывода средств требуются минимум 5 рефералов!', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -1465,7 +1938,7 @@ async function handleTasks(chatId, messageId, user) {
             `https://t.me/${task.channel_id.substring(1)}` :
             task.channel_id;
 
-        const message = `📋 **Активные задани��**
+        const message = `📋 **Активные задания**
 
 🎯 **Текущее задание:**
 Подпис��а на канал **${task.channel_name || task.channel_id}**
@@ -1474,7 +1947,7 @@ async function handleTasks(chatId, messageId, user) {
 📊 **Прогресс:** ${completedTasks.length}/${allTasks.length} заданий выполнено
 
 📝 **Инструкция:**
-1. Нажмите "Подписаться" для перехода к каналу
+1. Нажмите "Подп��саться" для перехода к каналу
 2. Подпишитесь на канал
 3. Вернитесь и нажмите "Проверить"
 4. Получите награду!`;
@@ -1630,7 +2103,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 
         if (availableTasks.length <= 1) {
             // No more tasks available
-            await bot.editMessageText('✅ Больше доступных заданий нет!\n\nОжидайте новых заданий или проверьте выполненные.', {
+            await bot.editMessageText('✅ Больше доступных заданий ��ет!\n\nОжидайте новых заданий или проверьте выполненные.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -1644,7 +2117,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
             `https://t.me/${nextTask.channel_id.substring(1)}` :
             nextTask.channel_id;
 
-        const message = `📋 **Следующее зад��ние**
+        const message = `📋 **Следующее задание**
 
 🎯 **Задание:**
 Подписка на канал **${nextTask.channel_name || nextTask.channel_id}**
@@ -1653,7 +2126,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 📊 **Прогресс:** ${completedTasks.length}/${allTasks.length + completedTasks.length} заданий выполнено
 
 📝 **Инструкция:**
-1. Нажмите "Подписаться" для перехода к каналу
+1. Нажм��те "Подписаться" для перехода к каналу
 2. Подпишитесь на канал
 3. Вернитесь и нажмите "Проверить"
 4. Получите награду!`;
@@ -1760,7 +2233,7 @@ async function handleRatingsAll(chatId, messageId) {
 
 async function handleRatingsWeek(chatId, messageId) {
     try {
-        // Получаем рейтинг по рефералам за последние 7 дней
+        // Получаем рейтинг по реферала�� за последние 7 дней
         const result = await db.executeQuery(`
             SELECT first_name, referrals_count
             FROM users
@@ -1789,7 +2262,7 @@ async function handleRatingsWeek(chatId, messageId) {
         });
     } catch (error) {
         console.error('Error in ratings week:', error);
-        await bot.editMessageText('❌ Ошибка загрузки рейтинга.', {
+        await bot.editMessageText('❌ Ошибка загр��зки рейтинга.', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -1810,7 +2283,7 @@ async function handleCases(chatId, messageId, user) {
 
 **Ваши рефералы сегодня:** ${user.referrals_today}/3
 
-Приглашайте друзей и во��вращайтесь!`;
+Приглашайте друзей и возвращайтесь!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -1868,12 +2341,17 @@ async function handleCases(chatId, messageId, user) {
 
 async function handleLottery(chatId, messageId, userId = null) {
     try {
-        const result = await db.executeQuery('SELECT * FROM lotteries WHERE is_active = TRUE ORDER BY id');
+        // Get standard lotteries
+        const standardResult = await db.executeQuery('SELECT * FROM lotteries WHERE is_active = TRUE AND (lottery_type = $1 OR lottery_type IS NULL) ORDER BY id', ['standard']);
 
-        if (result.rows.length === 0) {
-            await bot.editMessageText('🎰 На данный момент нет активных лотерей.', {
+        // Get referral lotteries
+        const referralLotteries = await db.getReferralLotteries();
+
+        if (standardResult.rows.length === 0 && referralLotteries.length === 0) {
+            await bot.editMessageText('🎰 **Лотереи**\n\n❌ Активных лотерей пока нет.\n\nОжидайте новых розыгрышей!', {
                 chat_id: chatId,
                 message_id: messageId,
+                parse_mode: 'Markdown',
                 ...getBackToMainKeyboard()
             });
             return;
@@ -1892,20 +2370,19 @@ async function handleLottery(chatId, messageId, userId = null) {
         let message = '🎰 **Активные лотереи**\n\n';
         const keyboards = [];
 
-        result.rows.forEach((lottery, index) => {
+        // Standard lotteries
+        standardResult.rows.forEach((lottery) => {
             const hasPurchased = userTickets.includes(lottery.id);
 
-            message += `**${lottery.name}**\n`;
+            message += `🎫 **${lottery.name}** (обычная)\n`;
             message += `💰 Цена билета: ${lottery.ticket_price} ⭐\n`;
-            message += `🎫 Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
+            message += `🎯 Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
             message += `🏆 Победителей: ${lottery.winners_count}\n`;
 
             if (hasPurchased) {
                 message += `✅ **Ваш билет куплен!**\n\n`;
-                // Don't add button for purchased lottery
             } else {
                 message += `\n`;
-                // Check if lottery is full
                 if (lottery.current_tickets >= lottery.max_tickets) {
                     keyboards.push([{ text: `🚫 ${lottery.name} - ПРОДАНО`, callback_data: 'lottery_sold_out' }]);
                 } else {
@@ -1913,6 +2390,50 @@ async function handleLottery(chatId, messageId, userId = null) {
                 }
             }
         });
+
+        // Referral lotteries
+        for (const refLottery of referralLotteries) {
+            const timeLeft = new Date(refLottery.ref_ends_at) - new Date();
+            const hoursLeft = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60)));
+
+            if (timeLeft <= 0) continue; // Skip expired lotteries
+
+            // Get user participation info
+            let participant = null;
+            if (userId) {
+                const participantResult = await db.executeQuery(
+                    'SELECT * FROM lottery_participants WHERE lottery_id = $1 AND user_id = $2',
+                    [refLottery.id, userId]
+                );
+                participant = participantResult.rows[0];
+            }
+
+            const totalTickets = participant ? participant.total_tickets : 0;
+
+            if (refLottery.lottery_type === 'referral_condition') {
+                message += `👥 **${refLottery.name}** (реферальная)\n`;
+                message += `⏰ Осталось: ${hoursLeft} часов\n`;
+                message += `📋 Условие: пригласить ${refLottery.required_referrals} рефералов\n`;
+                message += `💰 Доп. билет: ${refLottery.additional_ticket_price} ⭐\n`;
+                message += `🎫 Ваши билеты: ${totalTickets}\n`;
+
+                if (participant && participant.qualified) {
+                    message += `✅ Условие выполнено!\n\n`;
+                    keyboards.push([{ text: `🎫 Купить доп. билет - ${refLottery.name}`, callback_data: `ref_lottery_buy_${refLottery.id}` }]);
+                } else {
+                    message += `❌ Пригласите ${refLottery.required_referrals} рефералов для участия\n\n`;
+                    keyboards.push([{ text: `👥 Проверить условие - ${refLottery.name}`, callback_data: `ref_lottery_check_${refLottery.id}` }]);
+                }
+
+            } else if (refLottery.lottery_type === 'referral_auto') {
+                message += `���� **${refLottery.name}** (авто-реферальная)\n`;
+                message += `⏰ Осталось: ${hoursLeft} часов\n`;
+                message += `🎫 Билеты за рефералов: ${totalTickets}\n`;
+                message += `📋 Каждый новый реферал = +1 билет\n\n`;
+
+                keyboards.push([{ text: `👥 Пригласить друзей - ${refLottery.name}`, callback_data: 'invite' }]);
+            }
+        }
 
         keyboards.push([{ text: '🏠 В главное меню', callback_data: 'main_menu' }]);
 
@@ -2307,7 +2828,7 @@ async function handleAdminMenu(chatId, messageId) {
 
     } catch (error) {
         console.error('Error in admin menu:', error);
-        await bot.editMessageText('❌ Ошибка загрузки админ панел��.', {
+        await bot.editMessageText('❌ Ошибка загрузки админ панели.', {
             chat_id: chatId,
             message_id: messageId
         });
@@ -2356,7 +2877,7 @@ bot.onText(/\/create_tracking_link (.+)/, async (msg, match) => {
         const message = `✅ **Трекинговая ссылка создана!**
 
 📝 **Название:** ${linkName}
-🔗 **Ссылка:** \`${trackingLink}\`
+🔗 **С��ылка:** \`${trackingLink}\`
 🆔 **ID:** \`${trackingId}\`
 
 📊 **Статистика:** /tracking_stats ${trackingId}
@@ -2529,7 +3050,7 @@ bot.onText(/\/delete_lottery (\d+)/, async (msg, match) => {
         const hasTickets = ticketsResult.rows[0].count > 0;
 
         if (hasTickets) {
-            bot.sendMessage(chatId, `❌ Нельзя удалить лотерею с ID ${lotteryId} - в ней есть участники! Сначала завершите лотерею командой /endlottery ${lotteryId}`);
+            bot.sendMessage(chatId, `❌ Нельзя удалить лотере�� с ID ${lotteryId} - в ней есть участники! Сначала завершите лотерею командой /endlottery ${lotteryId}`);
             return;
         }
 
@@ -2588,7 +3109,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
             if (i % 10 === 0 || i === users.rows.length - 1) {
                 const progress = Math.round((i + 1) / totalUsers * 100);
                 try {
-                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Пользователей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ Прогресс: ${progress}%`, {
+                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Польз��вателей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ Прогресс: ${progress}%`, {
                         chat_id: chatId,
                         message_id: confirmMsg.message_id,
                         parse_mode: 'Markdown'

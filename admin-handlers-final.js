@@ -27,7 +27,7 @@ async function handleAdminTasks(bot, chatId, messageId) {
 🔢 **О лимитах:**
 • Если лимит не указан - задание без ограничений
 • С лимитом - задание автоматически завершится после N выполнений
-• В списке заданий пок��зывается прогресс выполнений`;
+• В списке заданий показывается прогресс выполнений`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -109,18 +109,30 @@ async function handleAdminLottery(bot, chatId, messageId) {
         const message = `🎰 **Управление лотереями**
 
 🛠️ **Команды для управления лотереями:**
-• \`/create_lottery название|билеты|цена|победители|процент\` - создать лотерею
-• \`/delete_lottery ID\` - удалить лотерею (только без участников)
 
-🎰 **Доступные действия:**
-• Создание новых лотерей
-• Просмотр активных лотерей
-• Удаление пустых лотерей
-• Автоматическое завершение при заполнении
+**Обычные лотереи:**
+• \`/create_lottery название|билеты|цена|победители|процент\` - создать обычную лотерею
+• \`/endlottery ID\` - завершить лотерею вручную
+
+**Реферальные лотереи:**
+• \`/create_referral_lottery название|часов|рефералов|цена|1:приз1|2:��риз2\` - с условием
+• \`/create_auto_referral_lottery название|часов|1:приз1|2:приз2\` - автоматическая
+
+**Управление победителями:**
+• \`/select_lottery_winners ID 1:userID 2:userID\` - выбрать победителей вручную
+
+🎰 **Типы лотерей:**
+• **Обычная** - покупка билетов за звезды
+• **Реферальная** - нужно пригласить N рефералов + можно купить доп. билеты
+• **Авто-реферальная** - каждый новый реферал = +1 билет
 
 💡 **Примеры команд:**
 • \`/create_lottery Еженедельная|100|5|10|20\`
-• \`/delete_lottery 2\` (где 2 - ID лотереи)`;
+• \`/create_referral_lottery Реф|168|3|1.5|1:50|2:30|3:20\`
+• \`/create_auto_referral_lottery Авто|72|1:100|2:60|3:40\`
+• \`/select_lottery_winners 5 1:123456 2:789012 3:345678\`
+
+⚠️ **Важно:** Реферальные лотереи завершаются по времени, не по билетам!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -128,7 +140,7 @@ async function handleAdminLottery(bot, chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🎰 Список лотерей', callback_data: 'admin_list_lotteries' }],
+                    [{ text: '🎰 Список ло��ерей', callback_data: 'admin_list_lotteries' }],
                     [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
                 ]
             }
@@ -160,8 +172,8 @@ async function handleAdminPromocodes(bot, chatId, messageId) {
 • \`/delete_promo ID\` - удалить промокод
 
 🎁 **Доступные действия:**
-• Создание н��вых промокодов
-• Просмотр активных промокодов
+• Создание новых промокодов
+• Просмотр активных п��омокодов
 • Удаление ненужных промокодов
 
 💡 **Примеры команд:**
@@ -335,23 +347,60 @@ async function handleAdminListChannels(bot, chatId, messageId) {
 
 async function handleAdminListLotteries(bot, chatId, messageId) {
     console.log('[ADMIN-FINAL] handleAdminListLotteries called');
-    
+
     try {
-        const lotteries = await db.executeQuery('SELECT * FROM lotteries ORDER BY id');
-        
-        let message = '🎰 **Список лотерей**\n\n';
-        
+        // Get all lotteries including referral ones
+        const lotteries = await db.executeQuery(`
+            SELECT l.*, rl.required_referrals, rl.referral_time_hours,
+                   rl.additional_ticket_price, rl.ends_at as ref_ends_at,
+                   rl.winners_selected
+            FROM lotteries l
+            LEFT JOIN referral_lotteries rl ON l.id = rl.lottery_id
+            ORDER BY l.id
+        `);
+
+        let message = '🎰 **Список всех лотерей**\n\n';
+
         if (lotteries.rows.length === 0) {
             message += '❌ Лотерей пока нет.\n\n';
             message += '💡 **Создайте лотерею командой:**\n';
-            message += '`/create_lottery название|100|5|10|20`';
+            message += '`/create_lottery название|100|5|10|20` - обычная\n';
+            message += '`/create_referral_lottery название|168|3|1.5|1:50|2:30` - реферальная';
         } else {
             lotteries.rows.forEach((lottery, index) => {
-                message += `${index + 1}. **${lottery.name}**\n`;
+                const lotteryType = lottery.lottery_type || 'standard';
+                const typeEmoji = lotteryType === 'standard' ? '🎫' :
+                                lotteryType === 'referral_condition' ? '👥' : '🔄';
+                const typeName = lotteryType === 'standard' ? 'обычная' :
+                               lotteryType === 'referral_condition' ? 'реферальная' : 'авто-реферальная';
+
+                message += `${index + 1}. ${typeEmoji} **${lottery.name}** (${typeName})\n`;
                 message += `   • ID: ${lottery.id}\n`;
-                message += `   • Цена билета: ${lottery.ticket_price} ⭐\n`;
-                message += `   • Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
-                message += `   • Победителей: ${lottery.winners_count}\n`;
+
+                if (lotteryType === 'standard') {
+                    message += `   • Цена билета: ${lottery.ticket_price} ⭐\n`;
+                    message += `   • Билетов: ${lottery.current_tickets}/${lottery.max_tickets}\n`;
+                } else {
+                    // Referral lottery
+                    if (lottery.ref_ends_at) {
+                        const timeLeft = new Date(lottery.ref_ends_at) - new Date();
+                        const hoursLeft = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60)));
+                        message += `   • Осталось времени: ${hoursLeft} часов\n`;
+                    }
+
+                    if (lotteryType === 'referral_condition') {
+                        message += `   • Условие: ${lottery.required_referrals} рефералов\n`;
+                        message += `   • Доп. билет: ${lottery.additional_ticket_price} ⭐\n`;
+                    }
+
+                    if (lottery.winners_selected) {
+                        message += `   • Победители: ✅ Выбраны\n`;
+                    } else {
+                        message += `   • Победители: ❌ Не выбраны\n`;
+                    }
+                }
+
+                message += `   • Призовых мест: ${lottery.winners_count}\n`;
                 message += `   • Статус: ${lottery.is_active ? '✅ Активна' : '❌ Завершена'}\n\n`;
             });
         }
@@ -362,18 +411,18 @@ async function handleAdminListLotteries(bot, chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '🔙 Назад к лотереям', callback_data: 'admin_lottery' }]
+                    [{ text: '�� Назад к лотереям', callback_data: 'admin_lottery' }]
                 ]
             }
         });
     } catch (error) {
         console.error('[ADMIN-FINAL] Error listing lotteries:', error);
-        await bot.editMessageText('❌ Ошибка загрузки списка лотереи.', {
+        await bot.editMessageText('❌ Ошибка загрузки списка лотерей.', {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '◀️ Назад к лотереям', callback_data: 'admin_lottery' }]
+                    [{ text: '🔙 Назад к лотереям', callback_data: 'admin_lottery' }]
                 ]
             }
         });
@@ -442,7 +491,7 @@ async function handleBroadcastTasks(bot, chatId, messageId) {
         const keyboard = {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '📋 Посмотреть задан��я', callback_data: 'tasks' }],
+                    [{ text: '📋 Посмотреть задания', callback_data: 'tasks' }],
                     [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
                 ]
             }
@@ -461,7 +510,7 @@ async function handleBroadcastTasks(bot, chatId, messageId) {
             }
         }
 
-        await bot.editMessageText(`✅ Рассылка завершена!\n\n📤 Отправлено: ${successCount} из ${users.rows.length} пользователей`, {
+        await bot.editMessageText(`✅ Рассылка завершена!\n\n📤 Отп��авлено: ${successCount} из ${users.rows.length} пользователей`, {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {

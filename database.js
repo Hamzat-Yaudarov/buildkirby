@@ -143,6 +143,55 @@ async function initializeDatabase() {
                 user_id BIGINT,
                 clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Referral lotteries table
+            CREATE TABLE IF NOT EXISTS referral_lotteries (
+                id SERIAL PRIMARY KEY,
+                lottery_id INTEGER,
+                required_referrals INTEGER,
+                referral_time_hours INTEGER,
+                additional_ticket_price DECIMAL(10,2),
+                ends_at TIMESTAMP NOT NULL,
+                is_manual_selection BOOLEAN DEFAULT TRUE,
+                winners_selected BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Lottery prizes table
+            CREATE TABLE IF NOT EXISTS lottery_prizes (
+                id SERIAL PRIMARY KEY,
+                lottery_id INTEGER,
+                place INTEGER NOT NULL,
+                prize_amount DECIMAL(10,2) NOT NULL,
+                winner_user_id BIGINT DEFAULT NULL,
+                awarded_at TIMESTAMP DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Referral lottery tickets table
+            CREATE TABLE IF NOT EXISTS referral_lottery_tickets (
+                id SERIAL PRIMARY KEY,
+                lottery_id INTEGER,
+                user_id BIGINT NOT NULL,
+                ticket_type VARCHAR(20) NOT NULL,
+                referral_user_id BIGINT DEFAULT NULL,
+                purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Lottery participants table
+            CREATE TABLE IF NOT EXISTS lottery_participants (
+                id SERIAL PRIMARY KEY,
+                lottery_id INTEGER,
+                user_id BIGINT NOT NULL,
+                total_tickets INTEGER DEFAULT 0,
+                free_tickets INTEGER DEFAULT 0,
+                purchased_tickets INTEGER DEFAULT 0,
+                referral_tickets INTEGER DEFAULT 0,
+                referrals_count INTEGER DEFAULT 0,
+                qualified BOOLEAN DEFAULT FALSE,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(lottery_id, user_id)
+            );
         `);
 
         // Add missing columns if they don't exist
@@ -165,6 +214,11 @@ async function initializeDatabase() {
             await pool.query(`
                 ALTER TABLE tasks
                 ADD COLUMN IF NOT EXISTS current_completions INTEGER DEFAULT 0;
+            `);
+
+            await pool.query(`
+                ALTER TABLE lotteries
+                ADD COLUMN IF NOT EXISTS lottery_type VARCHAR(20) DEFAULT 'standard';
             `);
 
             console.log('✅ Database columns updated');
@@ -557,6 +611,214 @@ async function closeConnection() {
     }
 }
 
+// Referral lottery functions
+async function createReferralLottery(lotteryData, refLotteryData, prizes) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Create main lottery entry
+        const lotteryResult = await executeQuery(`
+            INSERT INTO lotteries (name, ticket_price, max_tickets, winners_count, lottery_type, is_active)
+            VALUES ($1, $2, $3, $4, $5, TRUE)
+            RETURNING id
+        `, [lotteryData.name, lotteryData.ticket_price, lotteryData.max_tickets, lotteryData.winners_count, lotteryData.lottery_type]);
+
+        const lotteryId = lotteryResult.rows[0].id;
+
+        // Create referral lottery details
+        await executeQuery(`
+            INSERT INTO referral_lotteries
+            (lottery_id, required_referrals, referral_time_hours, additional_ticket_price, ends_at)
+            VALUES ($1, $2, $3, $4, $5)
+        `, [lotteryId, refLotteryData.required_referrals, refLotteryData.referral_time_hours,
+            refLotteryData.additional_ticket_price, refLotteryData.ends_at]);
+
+        // Create lottery prizes
+        for (let i = 0; i < prizes.length; i++) {
+            await executeQuery(`
+                INSERT INTO lottery_prizes (lottery_id, place, prize_amount)
+                VALUES ($1, $2, $3)
+            `, [lotteryId, i + 1, prizes[i]]);
+        }
+
+        await executeQuery('COMMIT');
+        return lotteryId;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        throw error;
+    }
+}
+
+async function getReferralLotteries() {
+    try {
+        const result = await executeQuery(`
+            SELECT l.*, rl.required_referrals, rl.referral_time_hours,
+                   rl.additional_ticket_price, rl.ends_at as ref_ends_at,
+                   rl.winners_selected, rl.is_manual_selection
+            FROM lotteries l
+            JOIN referral_lotteries rl ON l.id = rl.lottery_id
+            WHERE l.is_active = TRUE AND l.lottery_type IN ('referral_condition', 'referral_auto')
+            ORDER BY rl.ends_at ASC
+        `);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting referral lotteries:', error);
+        throw error;
+    }
+}
+
+async function getLotteryPrizes(lotteryId) {
+    try {
+        const result = await executeQuery(`
+            SELECT * FROM lottery_prizes
+            WHERE lottery_id = $1
+            ORDER BY place ASC
+        `, [lotteryId]);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting lottery prizes:', error);
+        throw error;
+    }
+}
+
+async function addReferralTicket(lotteryId, userId, ticketType, referralUserId = null) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Add ticket
+        await executeQuery(`
+            INSERT INTO referral_lottery_tickets (lottery_id, user_id, ticket_type, referral_user_id)
+            VALUES ($1, $2, $3, $4)
+        `, [lotteryId, userId, ticketType, referralUserId]);
+
+        // Update participant stats
+        const ticketField = ticketType === 'free' ? 'free_tickets' :
+                           ticketType === 'purchased' ? 'purchased_tickets' : 'referral_tickets';
+
+        await executeQuery(`
+            INSERT INTO lottery_participants (lottery_id, user_id, total_tickets, ${ticketField})
+            VALUES ($1, $2, 1, 1)
+            ON CONFLICT (lottery_id, user_id)
+            DO UPDATE SET
+                total_tickets = lottery_participants.total_tickets + 1,
+                ${ticketField} = lottery_participants.${ticketField} + 1
+        `, [lotteryId, userId]);
+
+        await executeQuery('COMMIT');
+        return true;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        throw error;
+    }
+}
+
+async function checkReferralCondition(lotteryId, userId) {
+    try {
+        // Get lottery details
+        const lotteryResult = await executeQuery(`
+            SELECT rl.required_referrals, rl.referral_time_hours, rl.created_at
+            FROM referral_lotteries rl
+            WHERE rl.lottery_id = $1
+        `, [lotteryId]);
+
+        if (lotteryResult.rows.length === 0) return false;
+
+        const lottery = lotteryResult.rows[0];
+        const timeThreshold = new Date(lottery.created_at);
+        timeThreshold.setHours(timeThreshold.getHours() + lottery.referral_time_hours);
+
+        // Count referrals made after lottery creation
+        const referralResult = await executeQuery(`
+            SELECT COUNT(*) as count
+            FROM users
+            WHERE invited_by = $1
+            AND registered_at >= $2
+            AND registered_at <= $3
+            AND is_subscribed = TRUE
+        `, [userId, lottery.created_at, timeThreshold]);
+
+        const referralCount = parseInt(referralResult.rows[0].count);
+        const qualified = referralCount >= lottery.required_referrals;
+
+        // Update participant qualification
+        if (qualified) {
+            await executeQuery(`
+                INSERT INTO lottery_participants (lottery_id, user_id, referrals_count, qualified)
+                VALUES ($1, $2, $3, TRUE)
+                ON CONFLICT (lottery_id, user_id)
+                DO UPDATE SET referrals_count = $3, qualified = TRUE
+            `, [lotteryId, userId, referralCount]);
+        }
+
+        return { qualified, referralCount, required: lottery.required_referrals };
+    } catch (error) {
+        console.error('Error checking referral condition:', error);
+        throw error;
+    }
+}
+
+async function selectLotteryWinners(lotteryId, winners) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Update prizes with winners
+        for (const [place, userId] of Object.entries(winners)) {
+            const placeNum = parseInt(place);
+            await executeQuery(`
+                UPDATE lottery_prizes
+                SET winner_user_id = $1, awarded_at = CURRENT_TIMESTAMP
+                WHERE lottery_id = $2 AND place = $3
+            `, [userId, lotteryId, placeNum]);
+
+            // Get prize amount and add to user balance
+            const prizeResult = await executeQuery(`
+                SELECT prize_amount FROM lottery_prizes
+                WHERE lottery_id = $1 AND place = $2
+            `, [lotteryId, placeNum]);
+
+            if (prizeResult.rows.length > 0) {
+                const prizeAmount = prizeResult.rows[0].prize_amount;
+                await updateUserBalance(userId, prizeAmount);
+            }
+        }
+
+        // Mark lottery as completed
+        await executeQuery(`
+            UPDATE referral_lotteries
+            SET winners_selected = TRUE
+            WHERE lottery_id = $1
+        `, [lotteryId]);
+
+        await executeQuery(`
+            UPDATE lotteries
+            SET is_active = FALSE
+            WHERE id = $1
+        `, [lotteryId]);
+
+        await executeQuery('COMMIT');
+        return true;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        throw error;
+    }
+}
+
+async function getLotteryParticipants(lotteryId) {
+    try {
+        const result = await executeQuery(`
+            SELECT lp.*, u.first_name, u.username
+            FROM lottery_participants lp
+            JOIN users u ON lp.user_id = u.id
+            WHERE lp.lottery_id = $1 AND lp.total_tickets > 0
+            ORDER BY lp.total_tickets DESC, lp.joined_at ASC
+        `, [lotteryId]);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting lottery participants:', error);
+        throw error;
+    }
+}
+
 // Export functions
 module.exports = {
     pool,
@@ -576,5 +838,13 @@ module.exports = {
     getTaskStats,
     getAllTasksStats,
     resetDailyData,
-    closeConnection
+    closeConnection,
+    // Referral lottery functions
+    createReferralLottery,
+    getReferralLotteries,
+    getLotteryPrizes,
+    addReferralTicket,
+    checkReferralCondition,
+    selectLotteryWinners,
+    getLotteryParticipants
 };
