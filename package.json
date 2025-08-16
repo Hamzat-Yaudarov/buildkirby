@@ -10,7 +10,11 @@
     "admin": "node admin-tools.js",
     "migrate": "node migrate-data.js",
     "test-data": "node create-test-data.js",
-    "test-throttling": "node test-throttling.js"
+    "test-throttling": "node test-throttling.js",
+    "diagnose-userbot": "node diagnose-userbot.js",
+    "fix-userbot": "python3 fix-userbot-auth.py",
+    "test-stars": "python3 test-stars-sending.py",
+    "check-agent": "node check-agent-status.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",
