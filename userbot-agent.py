@@ -29,7 +29,7 @@ SECURITY_CONFIG = {
     "work_hours_start": 9,     # Начало рабочего дня (МСК)
     "work_hours_end": 23,      # Конец рабочего дня (МСК)
     "max_retries": 3,          # Максимум попыток отправки
-    "test_mode": True,         # Режим тестирования (только малые суммы)
+    "test_mode": True,         # Режим тестирования (только малые ��уммы)
     "test_max_amount": 25      # Максимальная сумма в тест-режиме
 }
 
@@ -37,7 +37,7 @@ SECURITY_CONFIG = {
 API_CONFIG = {
     "api_id": 28085629,
     "api_hash": "78027b2ae19b9ec44a6e03bf5cc1299f",
-    "phone_number": "+7972065986",
+    "phone_number": "+79639887777",
     "username": "kirbystarsagent"
 }
 
@@ -244,7 +244,7 @@ class SafeStarsAgent:
         
         # Проверка лимитов
         if self.stats["stars_sent_hour"] + amount > SECURITY_CONFIG["max_stars_per_hour"]:
-            return False, f"Превышен лими�� в час ({SECURITY_CONFIG['max_stars_per_hour']})"
+            return False, f"Превышен лимит в час ({SECURITY_CONFIG['max_stars_per_hour']})"
         
         if self.stats["stars_sent_today"] + amount > SECURITY_CONFIG["max_stars_per_day"]:
             return False, f"Превышен лимит в день ({SECURITY_CONFIG['max_stars_per_day']})"
@@ -264,7 +264,7 @@ class SafeStarsAgent:
     async def send_stars_to_user(self, user_id: int, amount: int) -> tuple[bool, str]:
         """Отправка звёзд пользователю"""
         try:
-            logger.info(f"🌟 Попыт��а отправить {amount} звёзд пользователю {user_id}")
+            logger.info(f"🌟 Попытка отправить {amount} звёзд пользователю {user_id}")
             
             # Проверка безопасности
             can_send, reason = self.can_send_stars(amount)
@@ -286,7 +286,7 @@ class SafeStarsAgent:
             await asyncio.sleep(delay)
             
             # ЗДЕСЬ БУДЕТ КОД ОТПРАВКИ ЗВЁЗД
-            # Пока что симуляция дл�� безопасности
+            # Пока что симуляция для безопасности
             logger.info(f"🎁 [СИМУЛЯЦИЯ] Отправлено {amount} звёзд пользователю {user_id}")
             
             # Обновление статистики
@@ -413,7 +413,7 @@ class SafeStarsAgent:
         self.load_settings()
 
         if not await self.init_client():
-            logger.error("❌ Не удалось инициали��ировать клиент")
+            logger.error("❌ Не удалось инициализировать клиент")
             logger.warning("🔄 Переход в режим мониторинга очереди...")
 
             # Режим мониторинга без отправки
@@ -432,7 +432,7 @@ class SafeStarsAgent:
                     await asyncio.sleep(300)  # Проверка каждые 5 минут вне рабочих часов
 
         except KeyboardInterrupt:
-            logger.info("🛑 Получен сигнал остановки")
+            logger.info("��� Получен сигнал остановки")
         except Exception as e:
             logger.error(f"❌ Критическая ошибка: {e}")
         finally:
