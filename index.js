@@ -262,7 +262,7 @@ function getTaskKeyboard(taskId, channelLink) {
                     { text: '📺 Подписаться', url: channelLink }
                 ],
                 [
-                    { text: '🔍 Проверить', callback_data: `task_check_${taskId}` }
+                    { text: '🔍 Провер��ть', callback_data: `task_check_${taskId}` }
                 ],
                 [
                     { text: '⏭️ Пропустить задание', callback_data: 'task_skip' },
@@ -913,7 +913,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
         let message = `✅ **Реферальная лотерея создана!**
 
 🎰 **Название:** ${name}
-⏰ **Длительность:** ${timeHours} часов
+��� **Длительность:** ${timeHours} часов
 👥 **Условие:** пригласить ${minReferrals} рефералов
 💰 **Цена доп. билета:** ${ticketPrice} ⭐
 🏆 **Призовые места:** ${prizes.length}
@@ -1462,7 +1462,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     await handleMainMenu(chatId, msg.message_id);
                 } else {
                     await bot.answerCallbackQuery(callbackQuery.id, {
-                        text: '❌ Вы подписаны не на все каналы!',
+                        text: '❌ Вы подписаны не на все ка��алы!',
                         show_alert: true
                     });
                 }
@@ -2048,7 +2048,7 @@ async function handleProfile(chatId, messageId, user) {
 
 💰 **Финансовая статистика:**
 • Текущий баланс: **${user.balance} ⭐**
-• Заработано с рефералов: **${totalEarned} ⭐**
+• ��аработано с рефералов: **${totalEarned} ⭐**
 
 👥 **Реферальная активность:**
 • Всего приглашено: **${user.referrals_count}**
@@ -2080,7 +2080,7 @@ async function handleInvite(chatId, messageId, user) {
 
     const message = `🌟 **Реферальная программа**
 
-💰 **Зарабатывайте вместе с друзьями!**
+💰 **Зарабатывайте вместе с друзьям��!**
 Приглашайте друзей и получайте **3 ⭐** за каждого нового пользователя!
 
 🔗 **Ваша персональная ссылка:**
@@ -2176,7 +2176,7 @@ async function handleClicker(chatId, messageId, user) {
 ⏳ **До следующего клика:** ${minutesLeft} мин
 🎁 **Следующая награда:** 0.1 ⭐
 
-⌛ **Время ожидания:** ${delayMinutes} мин (увеличивается с каждым кликом)`;
+⌛ **Время ожидания:** ${delayMinutes} мин (у��еличивается с каждым кликом)`;
 
             await bot.editMessageText(message, {
                 chat_id: chatId,
@@ -2245,11 +2245,11 @@ async function handleClicker(chatId, messageId, user) {
 💰 Начислено: **+${reward} ⭐** (+1 очко)
 
 �� **Статистика:**
-💎 Ваш баланс: ${(user.balance + reward).toFixed(1)} ⭐
+💎 Ваш баланс: ${(parseFloat(user.balance) + parseFloat(reward)).toFixed(1)} ⭐
 🔢 Осталось кликов: ${remainingClicks}
 ${remainingClicks > 0 ? `⏰ Следующий клик через: ${nextDelayMinutes} мин` : '🎉 Все клики на сегодня использованы!'}
 
-💡 **Совет:** С каждым кликом время ожидания увеличивается на 5 минут`;
+���� **Совет:** С каждым кликом время ожидания увеличивается на 5 минут`;
 
     await bot.editMessageText(message, {
         chat_id: chatId,
@@ -2327,7 +2327,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
         }
 
         if (user.balance < amount) {
-            await bot.editMessageText('❌ Недостаточно средств на балансе!', {
+            await bot.editMessageText('❌ Недостаточно средств на ба��ансе!', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2391,7 +2391,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
 💰 **Сумма:** ${amount} ⭐
 🎯 **Статус:** Добавлено в очередь агента
 ⏰ **Время:** ${new Date().toLocaleString('ru-RU')}
-💎 **Баланс пользователя:** ${(user.balance - amount).toFixed(1)} ⭐
+💎 **Баланс пользователя:** ${(parseFloat(user.balance) - parseFloat(amount)).toFixed(1)} ⭐
 
 🤖 Звёзды будут отправлены автоматически в ближайшее время`;
 
@@ -2421,7 +2421,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
 
 💰 **Сумма:** ${amount} ⭐
 📦 **Тип:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}
-💎 **Баланс пользователя:** ${(user.balance - amount).toFixed(1)} ⭐
+💎 **Баланс пользователя:** ${(parseFloat(user.balance) - parseFloat(amount)).toFixed(1)} ⭐
 ${amount > 50 ? '\n⚠️ **КРУПНАЯ СУММА - требует ручной обработки**' : ''}`;
 
                 const adminKeyboard = {
@@ -2780,7 +2780,7 @@ async function handleRatingsAll(chatId, messageId) {
                 const safeName = cleanDisplayText(user.first_name);
                 message += `${medal} ${safeName} - ${user.referrals_count} рефералов\n`;
             });
-            message += '\n💪 Приглашайте друзей и поднимайтесь в рейтинге!';
+            message += '\n💪 Приглашайте друзей и поднима��тесь в рейтинге!';
         }
 
         await bot.editMessageText(message, {
@@ -2848,7 +2848,7 @@ async function handleRatingsWeekPoints(chatId, messageId) {
         if (users.length === 0) {
             message += 'Пока нет ��ктивных пользователей за эту неделю.';
         } else {
-            message += '🏆 **Топ-10 по очкам за неделю:**\n\n';
+            message += '🏆 **То��-10 по очкам за неделю:**\n\n';
 
             users.forEach((user, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
@@ -2910,7 +2910,7 @@ async function handleCases(chatId, messageId, user) {
 
 ��� **Вы уже открыли кейс сегодня!**
 
-Возвращайтесь завтра за новым кейсом!`;
+Возвращайтесь завтра за новы�� кейсом!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -3213,7 +3213,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
         // Approve withdrawal in database
         const withdrawalId = await db.approveWithdrawalRequest(targetUserId, amount, type, ADMIN_ID);
         if (!withdrawalId) {
-            await bot.editMessageText('❌ Заявка на вывод не найдена или уже обработана.', {
+            await bot.editMessageText('❌ Заявка на вывод не найдена или уже обработа��а.', {
                 chat_id: chatId,
                 message_id: messageId
             });
@@ -3441,7 +3441,7 @@ async function handleAdminStats(chatId, messageId) {
 
     } catch (error) {
         console.error('Error in admin stats:', error);
-        await bot.editMessageText('❌ Ошибка загрузки статистики.', {
+        await bot.editMessageText('❌ О��ибка загрузки статистики.', {
             chat_id: chatId,
             message_id: messageId
         });
@@ -3620,7 +3620,7 @@ bot.onText(/\/tracking_stats (.+)/, async (msg, match) => {
 
         const createdDate = new Date(link.created_at).toLocaleDateString('ru-RU');
 
-        const message = `📊 **Статистика трекинговой ссылки**\n\n📝 **Название:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n📅 **Создана:** ${createdDate}\n\n📈 **Статистика:**\n���� Всего переходов: **${stats.total_clicks || 0}**\n Уникальных пользователей: **${stats.unique_users || 0}**\n⏰ За последние 24 часа: **${recentStats.recent_clicks || 0}**\n\n🔗 **Ссылка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
+        const message = `📊 **Статистика трекинговой ссылки**\n\n📝 **Название:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n📅 **Создана:** ${createdDate}\n\n📈 **Статистика:**\n���� Всего переходов: **${stats.total_clicks || 0}**\n Уникальных пользователей: **${stats.unique_users || 0}**\n⏰ За последние 24 ��аса: **${recentStats.recent_clicks || 0}**\n\n🔗 **Ссылка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
 
         bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
@@ -3755,7 +3755,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
             if (i % 10 === 0 || i === users.rows.length - 1) {
                 const progress = Math.round((i + 1) / totalUsers * 100);
                 try {
-                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Пользователей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ прогресс: ${progress}%`, {
+                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Пользова��елей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ прогресс: ${progress}%`, {
                         chat_id: chatId,
                         message_id: confirmMsg.message_id,
                         parse_mode: 'Markdown'
@@ -4170,7 +4170,7 @@ bot.onText(/\/agent_status/, async (msg) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '��� У вас нет прав доступа.');
         return;
     }
 
@@ -4270,7 +4270,7 @@ bot.onText(/\/send_stars_manual (\d+) (\d+)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error manual stars send:', error);
-        bot.sendMessage(chatId, '❌ Ошибка добавления задания.');
+        bot.sendMessage(chatId, '❌ О��ибка добавления задания.');
     }
 });
 
@@ -4468,7 +4468,7 @@ ${dayLimit > 25 ? '🔓 **Тест-режим отключён**' : '🔒 **Те
 • При ошибках FloodWait снизьте лимиты
 
 🤖 **Перезапустите ��гент** для применения изменений:
-\`/admin\` → \`🤖 Stars Agent\` → \`⏹️ Остановить\` → \`▶️ Запустить\``;
+\`/admin\` → \`���� Stars Agent\` → \`⏹️ Остановить\` → \`▶️ Запустить\``;
 
             bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
