@@ -4395,12 +4395,12 @@ bot.onText(/\/agent_limits(?:\s+(\d+)\s+(\d+)\s+(\d+))?/, async (msg, match) => 
         const maxAmount = parseInt(match[3]);
 
         // Валидац��я лимитов
-        if (dayLimit < 10 || dayLimit > 1000) {
+        if (dayLimit < 10 || dayLimit > 100000) {
             bot.sendMessage(chatId, '❌ Дневной лимит должен быть от 10 до 1000 звёзд.');
             return;
         }
 
-        if (hourLimit < 5 || hourLimit > 100) {
+        if (hourLimit < 5 || hourLimit > 10000) {
             bot.sendMessage(chatId, '❌ Часовой лимит должен быть от 5 до 100 звёзд.');
             return;
         }
