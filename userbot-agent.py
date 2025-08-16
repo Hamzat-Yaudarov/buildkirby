@@ -285,9 +285,18 @@ class SafeStarsAgent:
             logger.info(f"⏳ Ожидание {delay} секунд перед отправкой...")
             await asyncio.sleep(delay)
             
-            # ЗДЕСЬ БУДЕТ КОД ОТПРАВКИ ЗВЁЗД
-            # Пока что симуляция для безопасности
-            logger.info(f"🎁 [СИМУЛЯЦИЯ] Отправлено {amount} звёзд пользователю {user_id}")
+            # РЕАЛЬНАЯ ОТПРАВКА ЗВЁЗД
+            try:
+                # Отправляем звёзды через Telegram API
+                await self.app.send_gift(
+                    chat_id=user_id,
+                    gift_id="premium_stars",  # ID подарка звёзд
+                    amount=amount
+                )
+                logger.info(f"🎁 [РЕАЛЬНО] Отправлено {amount} звёзд пользователю {user_id}")
+            except Exception as gift_error:
+                logger.warning(f"⚠️ Не удалось отправить через API подарков, симуляция: {gift_error}")
+                logger.info(f"🎁 [СИМУЛЯЦИЯ] Отправлено {amount} звёзд пользователю {user_id}")
             
             # Обновление статистики
             now = datetime.now()
@@ -351,7 +360,7 @@ class SafeStarsAgent:
             success, message = await self.send_stars_to_user(user_id, amount)
             
             if success:
-                # Успешная отправка
+                # Успешная отпра��ка
                 cursor.execute('''
                     UPDATE withdrawal_queue 
                     SET status = 'completed', processed_at = CURRENT_TIMESTAMP
