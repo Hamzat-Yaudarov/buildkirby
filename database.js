@@ -260,11 +260,9 @@ async function initializeDatabase() {
                 ON CONFLICT DO NOTHING;
             `);
 
-            // Add unique index to prevent duplicate withdrawal requests
+            // Remove unique index constraint - allow multiple withdrawal requests
             await pool.query(`
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_withdrawal
-                ON withdrawal_requests (user_id, amount, type)
-                WHERE status = 'pending';
+                DROP INDEX IF EXISTS idx_unique_pending_withdrawal;
             `);
 
             // Add indexes for performance
@@ -1073,6 +1071,34 @@ async function approveWithdrawalRequest(userId, amount, type, adminId) {
     }
 }
 
+async function approveWithdrawalRequestById(withdrawalId, adminId) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Update withdrawal request status by ID
+        const result = await executeQuery(`
+            UPDATE withdrawal_requests
+            SET status = 'completed',
+                processed_at = CURRENT_TIMESTAMP,
+                processed_by = $1
+            WHERE id = $2 AND status = 'pending'
+            RETURNING id
+        `, [adminId, withdrawalId]);
+
+        if (result.rows.length === 0) {
+            await executeQuery('ROLLBACK');
+            return null;
+        }
+
+        await executeQuery('COMMIT');
+        return result.rows[0].id;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error approving withdrawal by ID:', error);
+        throw error;
+    }
+}
+
 async function rejectWithdrawalRequest(userId, amount, type, adminId, reason) {
     try {
         await executeQuery('BEGIN');
@@ -1101,6 +1127,51 @@ async function rejectWithdrawalRequest(userId, amount, type, adminId, reason) {
     } catch (error) {
         await executeQuery('ROLLBACK');
         console.error('Error rejecting withdrawal:', error);
+        throw error;
+    }
+}
+
+async function rejectWithdrawalRequestById(withdrawalId, adminId, reason) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Get withdrawal details first
+        const withdrawalResult = await executeQuery(`
+            SELECT user_id, amount FROM withdrawal_requests
+            WHERE id = $1 AND status = 'pending'
+        `, [withdrawalId]);
+
+        if (withdrawalResult.rows.length === 0) {
+            await executeQuery('ROLLBACK');
+            return null;
+        }
+
+        const { user_id: userId, amount } = withdrawalResult.rows[0];
+
+        // Update withdrawal request status
+        const result = await executeQuery(`
+            UPDATE withdrawal_requests
+            SET status = 'rejected',
+                processed_at = CURRENT_TIMESTAMP,
+                processed_by = $1,
+                admin_notes = $2
+            WHERE id = $3 AND status = 'pending'
+            RETURNING id
+        `, [adminId, reason, withdrawalId]);
+
+        if (result.rows.length === 0) {
+            await executeQuery('ROLLBACK');
+            return null;
+        }
+
+        // Return balance to user
+        await updateUserBalance(userId, amount);
+
+        await executeQuery('COMMIT');
+        return result.rows[0].id;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error rejecting withdrawal by ID:', error);
         throw error;
     }
 }
@@ -1170,7 +1241,9 @@ module.exports = {
     // Withdrawal functions
     getWithdrawalRequest,
     approveWithdrawalRequest,
+    approveWithdrawalRequestById,
     rejectWithdrawalRequest,
+    rejectWithdrawalRequestById,
     getCompletedWithdrawalsCount,
     getWithdrawalById
 };

@@ -60,7 +60,7 @@ async function initializeBotMode() {
 
         console.log(' Starting polling mode...');
         await bot.startPolling({ restart: true });
-        console.log('✅ Bot polling started successfully!');
+        console.log(' Bot polling started successfully!');
     } catch (error) {
         console.error('❌ Error initializing bot mode:', error);
         throw error;
@@ -608,7 +608,7 @@ bot.onText(/\/refupplayer (\d+) (\d+)/, async (msg, match) => {
                 console.log('Could not notify user about referral bonus');
             }
         } else {
-            bot.sendMessage(chatId, `❌ Пользователь с ID ${targetUserId} не найден.`);
+            bot.sendMessage(chatId, ` Пользователь с ID ${targetUserId} не найден.`);
         }
     } catch (error) {
         console.error('Error in refupplayer:', error);
@@ -640,7 +640,7 @@ bot.onText(/\/starsupplayer (\d+) (\d+)/, async (msg, match) => {
                 console.log('Could not notify user about stars bonus');
             }
         } else {
-            bot.sendMessage(chatId, `❌ Пользователь с ID ${targetUserId} не найден.`);
+            bot.sendMessage(chatId, ` Пользователь с ID ${targetUserId} не найден.`);
         }
     } catch (error) {
         console.error('Error in starsupplayer:', error);
@@ -1444,7 +1444,7 @@ bot.on('callback_query', async (callbackQuery) => {
                             const userInfo = await db.getUser(userId);
                             const message = `🎉 **Поздравляем!**
 
-👤 По вашей реферальной ссылке присоединился новый пользователь: **${userInfo.first_name}**
+🎉 По вашей реферальной ссылке присоединился новый пользователь: **${userInfo.first_name}**
 
 💰 **Вы получили:** +3 ⭐
 💎 **Ваш баланс пополнен!**
@@ -1616,7 +1616,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 }
                 break;
 
-            // Stars Agent функциональность удалена - только ручная обработка заявок
+            // Stars Agent функциона��ьность удалена - только ручная обработка заявок
 
             case 'admin_tasks':
                 console.log(`[MAIN] Admin tasks called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
@@ -2027,7 +2027,7 @@ async function handleClicker(chatId, messageId, user) {
 💰 **Ваш баланс:** ${user.balance} ⭐
 
 ⏳ **До следующего клика:** ${minutesLeft} мин
-🎁 **Следующая награда:** 0.1 ⭐
+⏰ **Следующая награда:** 0.1 ⭐
 
 ⌛ **Время ожидания:** ${delayMinutes} мин (увеличивается с каждым кликом)`;
 
@@ -2179,8 +2179,9 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
             return;
         }
 
-        if (user.balance < amount) {
-            await bot.editMessageText('❌ Недостаточно средств на балансе!', {
+        // Check balance BEFORE starting transaction
+        if (parseFloat(user.balance) < amount) {
+            await bot.editMessageText('❌ Недостаточно звёзд для вывода!', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2188,19 +2189,15 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
             return;
         }
 
-        // Start transaction for withdrawal
+        // Start transaction for withdrawal - but DON'T deduct balance yet
         await db.executeQuery('BEGIN');
 
         try {
-            // Check if user already has pending withdrawal of same type and amount
-            const existingRequest = await db.executeQuery(
-                'SELECT id FROM withdrawal_requests WHERE user_id = $1 AND amount = $2 AND type = $3 AND status = $4',
-                [userId, amount, type, 'pending']
-            );
-
-            if (existingRequest.rows.length > 0) {
+            // Double-check balance in transaction (in case of concurrent requests)
+            const currentUser = await db.getUser(userId);
+            if (parseFloat(currentUser.balance) < amount) {
                 await db.executeQuery('ROLLBACK');
-                await bot.editMessageText('❌ У вас уже есть активная заявка на такую же сумму!', {
+                await bot.editMessageText('❌ Недостаточно звёзд для вывода!', {
                     chat_id: chatId,
                     message_id: messageId,
                     ...getBackToMainKeyboard()
@@ -2208,18 +2205,16 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
                 return;
             }
 
-            // Create withdrawal request first
-            await db.executeQuery(
-                'INSERT INTO withdrawal_requests (user_id, amount, type) VALUES ($1, $2, $3)',
+            // Create withdrawal request WITHOUT deducting balance first
+            const withdrawalResult = await db.executeQuery(
+                'INSERT INTO withdrawal_requests (user_id, amount, type) VALUES ($1, $2, $3) RETURNING id',
                 [userId, amount, type]
             );
+            const withdrawalId = withdrawalResult.rows[0].id;
 
-            // Then deduct from balance
-            await db.updateUserBalance(userId, -amount);
-
-            // Отправка уведомления админу для ручной обработки ПЕРЕД коммитом
+            // Prepare admin notification
             const cleanName = cleanDisplayText(user.first_name);
-            const adminMessage = `🔔 **Новая заявка на вывод**
+            const adminMessage = `🔔 **Новая заявка на вывод #${withdrawalId}**
 
 👤 **Пользователь:** ${cleanName}
 🆔 **ID:** ${user.id}
@@ -2228,27 +2223,30 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
 
 💰 **Сумма:** ${amount} ⭐
 📦 **Тип:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}
-💎 **Баланс пользователя:** ${(parseFloat(user.balance) - parseFloat(amount)).toFixed(1)} ⭐
+💎 **Текущий баланс:** ${currentUser.balance} ⭐
 ${amount > 50 ? '\n⚠️ **КРУПНАЯ СУММА - требует ручной обработки**' : ''}`;
 
             const adminKeyboard = {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '✅ Выполнено', callback_data: `approve_withdrawal_${userId}_${amount}_${type}` },
-                            { text: '❌ Отклонено', callback_data: `reject_withdrawal_${userId}_${amount}_${type}` }
+                            { text: '✅ Выполнено', callback_data: `approve_withdrawal_${userId}_${amount}_${type}_${withdrawalId}` },
+                            { text: '❌ Отклонено', callback_data: `reject_withdrawal_${userId}_${amount}_${type}_${withdrawalId}` }
                         ]
                     ]
                 }
             };
 
-            // Отправляем уведомление админу - если это падает, транзакция откатится
+            // Send admin notification - if this fails, rollback
             await bot.sendMessage(ADMIN_CHANNEL, adminMessage, {
                 parse_mode: 'Markdown',
                 ...adminKeyboard
             });
 
-            // Коммитим транзакцию ТОЛЬКО после успешной отправки уведомления
+            // ONLY deduct balance AFTER successful admin notification
+            await db.updateUserBalance(userId, -amount);
+
+            // Commit transaction only after everything succeeded
             await db.executeQuery('COMMIT');
 
             await bot.editMessageText('✅ Заявка на вывод отправлена! Ожидайте обработки.', {
@@ -2257,14 +2255,14 @@ ${amount > 50 ? '\n⚠️ **КРУПНАЯ СУММА - требует ручн�
                 ...getBackToMainKeyboard()
             });
 
-            console.log(`[WITHDRAWAL] Request created: User ${userId}, Amount ${amount}, Type ${type}`);
+            console.log(`[WITHDRAWAL] Request created safely: User ${userId}, Amount ${amount}, Type ${type}, ID ${withdrawalId}`);
 
-        } catch (dbError) {
-            // Rollback transaction on database error
+        } catch (error) {
+            // Rollback transaction on ANY error - this ensures balance is never deducted if something fails
             await db.executeQuery('ROLLBACK');
-            console.error('[WITHDRAWAL] Database error:', dbError);
+            console.error('[WITHDRAWAL] Error in transaction:', error);
 
-            await bot.editMessageText('❌ Ошибка обработки заявки. Попробуйте позже.', {
+            await bot.editMessageText('❌ Ошибка обработки заявки. Ваши звёзды не были списаны. Попробуйте позже.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2478,7 +2476,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 
         if (availableTasks.length <= 1) {
             // No more tasks available
-            await bot.editMessageText('✅ Больше доступных заданий нет!\n\nОжидайте новых заданий или проверьте выполненные.', {
+            await bot.editMessageText('✅ Больше доступных заданий нет!\n\nОжидайте новых задания или проверьте выполненные.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -3002,8 +3000,9 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
         const targetUserId = parseInt(parts[2]);
         const amount = parseFloat(parts[3]);
         const type = parts[4];
+        const withdrawalId = parts[5] ? parseInt(parts[5]) : null; // Support both old and new format
 
-        console.log('[WITHDRAWAL] Parsed data:', { targetUserId, amount, type });
+        console.log('[WITHDRAWAL] Parsed data:', { targetUserId, amount, type, withdrawalId });
 
         // Get user info
         const user = await db.getUser(targetUserId);
@@ -3017,20 +3016,28 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
 
         console.log('[WITHDRAWAL] User found:', user.first_name);
 
-        // Approve withdrawal in database
-        const withdrawalId = await db.approveWithdrawalRequest(targetUserId, amount, type, ADMIN_ID);
-        if (!withdrawalId) {
-            await bot.editMessageText('❌ Заявка на вывод не найдена или уже обработака.', {
+        // Approve withdrawal in database - use specific withdrawal ID if available
+        let approvedWithdrawalId;
+        if (withdrawalId) {
+            // Use specific withdrawal ID for newer format
+            approvedWithdrawalId = await db.approveWithdrawalRequestById(withdrawalId, ADMIN_ID);
+        } else {
+            // Fallback to old method for backward compatibility
+            approvedWithdrawalId = await db.approveWithdrawalRequest(targetUserId, amount, type, ADMIN_ID);
+        }
+
+        if (!approvedWithdrawalId) {
+            await bot.editMessageText('❌ Заявка на вывод не найдена или уже обработана.', {
                 chat_id: chatId,
                 message_id: messageId
             });
             return;
         }
 
-        console.log('[WITHDRAWAL] Withdrawal approved in database, ID:', withdrawalId);
+        console.log('[WITHDRAWAL] Withdrawal approved in database, ID:', approvedWithdrawalId);
 
         // Send payment notification to payments channel
-        await sendPaymentNotification(withdrawalId, user, amount, type);
+        await sendPaymentNotification(approvedWithdrawalId, user, amount, type);
 
         // Send congratulations to user
         const typeDisplay = type === 'premium' ? 'Telegram Premium на 3 месяца' : `${amount} ⭐`;
@@ -3080,6 +3087,7 @@ async function handleWithdrawalRejection(chatId, messageId, callbackData, adminI
         const targetUserId = parseInt(parts[2]);
         const amount = parseInt(parts[3]);
         const type = parts[4];
+        const withdrawalId = parts[5] ? parseInt(parts[5]) : null; // Support both old and new format
 
         // Get user info
         const user = await db.getUser(targetUserId);
@@ -3091,15 +3099,19 @@ async function handleWithdrawalRejection(chatId, messageId, callbackData, adminI
             return;
         }
 
-        // Set admin state to await rejection reason
-        await db.updateUserField(adminId, 'temp_action', `rejecting_withdrawal_${targetUserId}_${amount}_${type}`);
+        // Set admin state to await rejection reason - include withdrawal ID if available
+        const rejectionAction = withdrawalId ?
+            `rejecting_withdrawal_${targetUserId}_${amount}_${type}_${withdrawalId}` :
+            `rejecting_withdrawal_${targetUserId}_${amount}_${type}`;
+        await db.updateUserField(adminId, 'temp_action', rejectionAction);
 
         // Update message to ask for reason
-        await bot.editMessageText(`❌ **Отклонение заявки**
+        const rejectionTitle = withdrawalId ? `❌ **Отклонение заявки #${withdrawalId}**` : `❌ **Отклонение заявки**`;
+        await bot.editMessageText(`${rejectionTitle}
 
 👤 Пользователь: ${user.first_name}
 💰 Сумма: ${amount} ⭐
-📦 Топ: ${type === 'premium' ? 'Telegram Premium' : 'Звёзды'}
+📦 Тип: ${type === 'premium' ? 'Telegram Premium' : 'Звёзды'}
 
 ✏️ **Напишите причину отклонения:**`, {
             chat_id: chatId,
@@ -3155,21 +3167,30 @@ bot.on('message', async (msg) => {
                     const targetUserId = parseInt(actionParts[2]);
                     const amount = parseFloat(actionParts[3]);
                     const type = actionParts[4];
+                    const withdrawalId = actionParts[5] ? parseInt(actionParts[5]) : null; // Support new format with ID
 
-                    console.log('[REJECTION] Parsed data:', { targetUserId, amount, type, rejectionReason });
+                    console.log('[REJECTION] Parsed data:', { targetUserId, amount, type, withdrawalId, rejectionReason });
 
                     // Clear temp action
                     await db.updateUserField(userId, 'temp_action', null);
                     console.log('[REJECTION] Temp action cleared');
 
                     // Reject withdrawal in database (this will also return money to user)
-                    const withdrawalId = await db.rejectWithdrawalRequest(targetUserId, amount, type, userId, rejectionReason);
-                    if (!withdrawalId) {
+                    let rejectedWithdrawalId;
+                    if (withdrawalId) {
+                        // Use specific withdrawal ID for newer format
+                        rejectedWithdrawalId = await db.rejectWithdrawalRequestById(withdrawalId, userId, rejectionReason);
+                    } else {
+                        // Fallback to old method for backward compatibility
+                        rejectedWithdrawalId = await db.rejectWithdrawalRequest(targetUserId, amount, type, userId, rejectionReason);
+                    }
+
+                    if (!rejectedWithdrawalId) {
                         await bot.sendMessage(chatId, '❌ Заявка на вывод не найдена или уже обработана.');
                         return;
                     }
 
-                    console.log('[REJECTION] Withdrawal rejected in database, ID:', withdrawalId);
+                    console.log('[REJECTION] Withdrawal rejected in database, ID:', rejectedWithdrawalId);
 
                     // Get target user info
                     const targetUser = await db.getUser(targetUserId);
@@ -3177,7 +3198,8 @@ bot.on('message', async (msg) => {
 
                     // Send rejection notice to user
                     const typeDisplay = type === 'premium' ? 'Telegram Premium на 3 месяца' : `${amount} ⭐`;
-                    const rejectionMessage = `❌ **Заявка на вывод отклонена**
+                    const rejectionTitle = rejectedWithdrawalId ? `❌ **Заявка на вывод #${rejectedWithdrawalId} отклонена**` : `❌ **Заявка на вывод отклонена**`;
+                    const rejectionMessage = `${rejectionTitle}
 
  **Сумма:** ${typeDisplay}
 
@@ -3192,7 +3214,8 @@ ${rejectionReason}
                     console.log('[REJECTION] Rejection message sent to user');
 
                     // Confirm to admin
-                    await bot.sendMessage(chatId, `✅ **Заявка отклонена**
+                    const adminTitle = rejectedWithdrawalId ? `✅ **Заявка #${rejectedWithdrawalId} отклонена**` : `✅ **Заявка отклонена**`;
+                    await bot.sendMessage(chatId, `${adminTitle}
 
 👤 Пользователь: ${cleanDisplayText(targetUser.first_name)}
 💰 Сумма: ${typeDisplay}
@@ -3971,88 +3994,7 @@ bot.onText(/\/weekly_rewards_trigger/, async (msg) => {
     }
 });
 
-// Admin команды для управления Stars Agent
-bot.onText(/\/agent_status/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
 
-    if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
-        return;
-    }
-
-    try {
-        // Функциональность Stars Agent удалена
-        const health = { health_status: 'disabled' };
-        const stats = { success: false };
-
-        let message = `🤖 **Статус Stars Agent**\n\n`;
-        message += `🟢 **Состояние:** ${health.health_status === 'healthy' ? 'Работает' : 'Остановлен'}\n`;
-        message += `📊 **Статистика:**\n`;
-
-        if (stats.success) {
-            message += `• В очереди: ${stats.stats.queue_pending}\n`;
-            message += `• Выполнено: ${stats.stats.queue_completed}\n`;
-            message += `• Провалено: ${stats.stats.queue_failed}\n`;
-            message += `• Звёзд отправлено сегодня: ${stats.stats.stars_sent_today}/80\n`;
-            message += `• Ошибок сегодня: ${stats.stats.errors_today}\n`;
-        } else {
-            message += `❌ Ошибка получения статистики\n`;
-        }
-
-        message += `\n **Обновлено:** ${new Date().toLocaleString('ru-RU')}`;
-
-        const keyboard = {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: '🔄 Обновить', callback_data: 'agent_status' },
-                        { text: '📋 Логи', callback_data: 'agent_logs' }
-                    ],
-                    [
-                        { text: '▶️ Запустить', callback_data: 'agent_start' },
-                        { text: '⏹️ Остановить', callback_data: 'agent_stop' }
-                    ]
-                ]
-            }
-        };
-
-        await bot.sendMessage(chatId, message, {
-            parse_mode: 'Markdown',
-            ...keyboard
-        });
-
-    } catch (error) {
-        console.error('Error getting agent status:', error);
-        bot.sendMessage(chatId, '❌ Ошибка получения статуса агента.');
-    }
-});
-
-bot.onText(/\/agent_logs/, async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-
-    if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
-        return;
-    }
-
-    try {
-        // Функциональность Stars Agent удалена
-        const logs = { success: false, logs: 'Stars Agent отключен' };
-
-        if (logs.success) {
-            const message = `📋 **Логи Stars Agent (последние 30 строк)**\n\n\`\`\`\n${logs.logs}\n\`\`\``;
-            await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-        } else {
-            await bot.sendMessage(chatId, '❌ Не удалось получить логи агента.');
-        }
-
-    } catch (error) {
-        console.error('Error getting agent logs:', error);
-        bot.sendMessage(chatId, '❌ Ошибка получения логов агента.');
-    }
-});
 
 bot.onText(/\/send_stars_manual (\d+) (\d+)/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -4069,7 +4011,7 @@ bot.onText(/\/send_stars_manual (\d+) (\d+)/, async (msg, match) => {
 
         bot.sendMessage(chatId, `🤖 Добавляем в очередь агента: ${amount} звёзд для пользователя ${targetUserId}...`);
 
-        // Автоотправка Stars Agent отключена - требуется ручная обработка
+        // Автоотправка Stars Agent отключе��а - требуется ручная обработка
         const result = { success: false, error: 'Stars Agent отключен, только ручная обработка' };
 
         if (result.success) {
