@@ -58,8 +58,8 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.session
-*.session-journal
+# *.session - allow userbot session for production
+# *.session-journal
 
 # Agent files
 userbot_queue.db
