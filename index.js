@@ -2272,13 +2272,13 @@ ${amount > 50 ? '\n⚠️ **КРУПНАЯ СУММА - требует ручн�
     } catch (error) {
         console.error('[WITHDRAWAL] Error in transaction:', error?.message || error);
         try {
-            await bot.editMessageText('❌ Ошибка обработки заявки. Попробуйте позже.', {
-                chat_id: chatId,
-                message_id: messageId,
-                ...getBackToMainKeyboard()
+            await bot.sendMessage(ADMIN_CHANNEL, adminMessage, {
+                parse_mode: 'Markdown',
+                ...adminKeyboard
             });
-        } catch (botError) {
-            console.error('[WITHDRAWAL] Error sending error message:', botError);
+        } catch (sendError) {
+            console.error('[WITHDRAWAL] Error sending admin message:', sendError.message, adminMessage);
+            throw sendError; // чтобы откат сработал
         }
     }
 }
