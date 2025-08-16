@@ -181,26 +181,42 @@ class SafeStarsAgent:
     async def init_client(self):
         """Инициализация Telegram клиента"""
         try:
+            # Проверяем наличие файла сессии
+            session_exists = os.path.exists("userbot_session.session")
+
             self.app = Client(
                 "userbot_session",
                 api_id=API_CONFIG["api_id"],
                 api_hash=API_CONFIG["api_hash"],
                 phone_number=API_CONFIG["phone_number"]
             )
-            
+
+            if not session_exists:
+                logger.warning("⚠️ Файл сессии не найден - потребуется авторизация")
+
             await self.app.start()
-            
+
             # Проверка аккаунта
             me = await self.app.get_me()
             logger.info(f"✅ Авторизован как: {me.first_name} (@{me.username})")
-            
+
             return True
-            
+
         except SessionPasswordNeeded:
             logger.error("❌ Требуется 2FA пароль! Укажите его в коде.")
             return False
+        except EOFError:
+            logger.error("❌ Номер заблокирован или требуется ручная авторизация!")
+            logger.error("📞 КРИТИЧЕСКАЯ ОШИБКА: Невозможно авторизоваться")
+            return False
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации клиента: {e}")
+
+            # Если ошибка связана с блокировкой номера
+            if "banned" in str(e).lower() or "deactivated" in str(e).lower():
+                logger.error("🚫 НОМЕР ЗАБЛОКИРОВАН В TELEGRAM!")
+                logger.error("💡 Необходимо использовать другой номер телефона")
+
             return False
 
     def is_working_hours(self) -> bool:
@@ -228,7 +244,7 @@ class SafeStarsAgent:
         
         # Проверка лимитов
         if self.stats["stars_sent_hour"] + amount > SECURITY_CONFIG["max_stars_per_hour"]:
-            return False, f"Превышен лимит в час ({SECURITY_CONFIG['max_stars_per_hour']})"
+            return False, f"Превышен лими�� в час ({SECURITY_CONFIG['max_stars_per_hour']})"
         
         if self.stats["stars_sent_today"] + amount > SECURITY_CONFIG["max_stars_per_day"]:
             return False, f"Превышен лимит в день ({SECURITY_CONFIG['max_stars_per_day']})"
@@ -248,7 +264,7 @@ class SafeStarsAgent:
     async def send_stars_to_user(self, user_id: int, amount: int) -> tuple[bool, str]:
         """Отправка звёзд пользователю"""
         try:
-            logger.info(f"🌟 Попытка отправить {amount} звёзд пользователю {user_id}")
+            logger.info(f"🌟 Попыт��а отправить {amount} звёзд пользователю {user_id}")
             
             # Проверка безопасности
             can_send, reason = self.can_send_stars(amount)
@@ -270,7 +286,7 @@ class SafeStarsAgent:
             await asyncio.sleep(delay)
             
             # ЗДЕСЬ БУДЕТ КОД ОТПРАВКИ ЗВЁЗД
-            # Пока что симуляция для безопасности
+            # Пока что симуляция дл�� безопасности
             logger.info(f"🎁 [СИМУЛЯЦИЯ] Отправлено {amount} звёзд пользователю {user_id}")
             
             # Обновление статистики
@@ -397,11 +413,15 @@ class SafeStarsAgent:
         self.load_settings()
 
         if not await self.init_client():
-            logger.error("❌ Не удалось инициализировать клиент")
+            logger.error("❌ Не удалось инициали��ировать клиент")
+            logger.warning("🔄 Переход в режим мониторинга очереди...")
+
+            # Режим мониторинга без отправки
+            await self.run_monitoring_mode()
             return
 
         logger.info("✅ Агент запущен и готов к работе")
-        
+
         try:
             while True:
                 if self.is_working_hours():
@@ -410,7 +430,7 @@ class SafeStarsAgent:
                 else:
                     logger.info("😴 Не рабочие часы, агент спит...")
                     await asyncio.sleep(300)  # Проверка каждые 5 минут вне рабочих часов
-                    
+
         except KeyboardInterrupt:
             logger.info("🛑 Получен сигнал остановки")
         except Exception as e:
@@ -419,6 +439,46 @@ class SafeStarsAgent:
             if self.app:
                 await self.app.stop()
             logger.info("👋 Агент остановлен")
+
+    async def run_monitoring_mode(self):
+        """Режим мониторинга очереди без отправки звёзд"""
+        logger.warning("⚠️ РЕЖИМ МОНИТОРИНГА - отправка звёзд недоступна")
+        logger.info("📊 Агент будет отслеживать очередь и показывать статистику")
+
+        while True:
+            try:
+                # Проверка очереди
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+
+                cursor.execute("SELECT COUNT(*) FROM withdrawal_queue WHERE status = 'pending'")
+                pending_count = cursor.fetchone()[0]
+
+                if pending_count > 0:
+                    logger.warning(f"📋 В очереди {pending_count} заявок на вывод")
+                    logger.warning("🔧 Требуется ручная обработка или исправление номера")
+
+                    # Показываем последние заявки
+                    cursor.execute('''
+                        SELECT user_id, amount, created_at
+                        FROM withdrawal_queue
+                        WHERE status = 'pending'
+                        ORDER BY created_at DESC
+                        LIMIT 3
+                    ''')
+
+                    recent_tasks = cursor.fetchall()
+                    for user_id, amount, created_at in recent_tasks:
+                        logger.info(f"   📝 Пользователь {user_id}: {amount} звёзд ({created_at})")
+
+                conn.close()
+
+                # Ожидание 5 минут
+                await asyncio.sleep(300)
+
+            except Exception as e:
+                logger.error(f"❌ Ошибка мониторинга: {e}")
+                await asyncio.sleep(60)
 
 # Создание экземпляра агента
 agent = SafeStarsAgent()

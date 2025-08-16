@@ -174,7 +174,7 @@ async function checkSubscriptions(userId) {
 
 // Helper function to get subscription message with channel links
 async function getSubscriptionMessage() {
-    let message = '🔔 Для использования бота необходимо подписаться на все каналы:\n\n';
+    let message = '🔔 Для использования бота необходимо подпис��ться на все каналы:\n\n';
     let buttons = [];
     
     try {
@@ -806,7 +806,7 @@ bot.onText(/\/create_lottery (.+)/, async (msg, match) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У вас нет прав доступ��.');
         return;
     }
 
@@ -1005,7 +1005,7 @@ bot.onText(/\/create_auto_referral_lottery (.+)/, async (msg, match) => {
 
         const lotteryId = await db.createReferralLottery(lotteryData, refLotteryData, prizes);
 
-        let message = `✅ **Автоматическая реферальная лотерея создана!**
+        let message = `✅ **Автоматичес��ая реферальная лотерея создана!**
 
 🎰 **Название:** ${name}
 ⏰ **Длительность:** ${timeHours} часов
@@ -1037,7 +1037,7 @@ bot.onText(/\/select_lottery_winners (\d+) (.+)/, async (msg, match) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав д��ступа.');
+        bot.sendMessage(chatId, '❌ У вас нет пр��в д��ступа.');
         return;
     }
 
@@ -1072,7 +1072,7 @@ bot.onText(/\/select_lottery_winners (\d+) (.+)/, async (msg, match) => {
         // Send broadcast message to all users
         await broadcastLotteryResults(lotteryName, prizes);
 
-        bot.sendMessage(chatId, `✅ Победители выбраны и награды распределены!\n\n🎉 Всем пользователя�� отправлено уведомление о результатах лотереи "${lotteryName}".`);
+        bot.sendMessage(chatId, `✅ Победители выбраны и н��грады распределены!\n\n🎉 Всем пользователя�� отправлено уведомление о результатах лотереи "${lotteryName}".`);
 
     } catch (error) {
         console.error('Error selecting lottery winners:', error);
@@ -1111,7 +1111,7 @@ async function handleReferralLotteryCheck(chatId, messageId, userId, lotteryId) 
                     inline_keyboard: [
                         [{ text: '👥 Пригласить друзей', callback_data: 'invite' }],
                         [{ text: '🎰 К лотереям', callback_data: 'lottery' }],
-                        [{ text: '🏠 Главное ме��ю', callback_data: 'main_menu' }]
+                        [{ text: '🏠 Гл��вное ме��ю', callback_data: 'main_menu' }]
                     ]
                 }
             });
@@ -1284,7 +1284,7 @@ async function broadcastLotteryResults(lotteryName, prizes) {
             }
         }
 
-        message += '\nПоздравляем победителей! 🎊';
+        message += '\nПозд��авляем победителей! 🎊';
 
         const keyboard = {
             reply_markup: {
@@ -2244,7 +2244,7 @@ async function handleClicker(chatId, messageId, user) {
 🎉 **Отлично!** Клик ${newClicks}/10 выполнен!
 💰 Начислено: **+${reward} ⭐** (+1 очко)
 
-📊 **Статистика:**
+�� **Статистика:**
 💎 Ваш баланс: ${(user.balance + reward).toFixed(1)} ⭐
 🔢 Осталось кликов: ${remainingClicks}
 ${remainingClicks > 0 ? `⏰ Следующий клик через: ${nextDelayMinutes} мин` : '🎉 Все клики на сегодня использованы!'}
@@ -2370,7 +2370,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
             // Автоматическая отправка звёзд через агент (для небольших сумм)
             let autoProcessed = false;
 
-            if (type === 'stars' && amount <= 50) { // Автоматически только до 50 звёзд
+            if (type === 'stars' && amount <= 200) { // Автоматически до 200 звёзд (почти все заявки)
                 try {
                     console.log(`🤖 Попытка автоматической отправки ${amount} звёзд пользователю ${userId}`);
 
@@ -2428,7 +2428,7 @@ ${amount > 50 ? '\n⚠️ **КРУПНАЯ СУММА - требует ручн�
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: '✅ Выполнено', callback_data: `approve_withdrawal_${userId}_${amount}_${type}` },
+                                { text: '✅ Выполнен��', callback_data: `approve_withdrawal_${userId}_${amount}_${type}` },
                                 { text: '❌ Отклонено', callback_data: `reject_withdrawal_${userId}_${amount}_${type}` }
                             ],
                             [
@@ -2671,7 +2671,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 
         if (availableTasks.length <= 1) {
             // No more tasks available
-            await bot.editMessageText('✅ Больше доступных заданий нет!\n\nОжидайте новых заданий или проверьте выполненные.', {
+            await bot.editMessageText('✅ Больше доступных заданий нет!\n\nОжидайте новы�� заданий или проверьте выполненные.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2735,7 +2735,7 @@ async function handleInstruction(chatId, messageId) {
 📈 **Советы:**
 • Заходите каждый день
 • Приглашайте активных друзей
-• Выполняйте все задания
+• Выпо��няйте все задания
 
 ⚠️ **Важно:** Рефералы засчитываются только после подписки на все каналы!`;
 
@@ -4020,7 +4020,7 @@ async function handleAdminWeeklyRewards(chatId, messageId) {
 • Активация бота - 1 очко
 • Каждый клик - 1 очко
 • Выполненное задание - 2 очка
-• Покупка лотерейного билета - 1 очко
+��� Покупка лотерейного билета - 1 очко
 • Приглашенный реферал - 1 очко
 
 🏆 **Награды топ-5:**
@@ -4313,8 +4313,8 @@ bot.onText(/\/process_old_withdrawals/, async (msg) => {
 
                 const cleanName = cleanDisplayText(user.first_name);
 
-                // Автоматически обрабатывать только звёзды до 50
-                if (withdrawal.type === 'stars' && withdrawal.amount <= 50) {
+                // Автоматически обрабатывать звёзды до 200
+                if (withdrawal.type === 'stars' && withdrawal.amount <= 200) {
                     const result = await starsAgent.sendStarsSafely(withdrawal.user_id, withdrawal.amount);
 
                     if (result.success) {
