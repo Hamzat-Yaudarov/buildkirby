@@ -21,6 +21,18 @@ async function initializeDatabase() {
     try {
         console.log('🔄 Initializing PostgreSQL database...');
 
+        // First, add captcha_passed column if it doesn't exist (migration)
+        try {
+            await pool.query(`
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS captcha_passed BOOLEAN DEFAULT FALSE
+            `);
+            console.log('✅ captcha_passed column migration completed');
+        } catch (migrationError) {
+            // If table doesn't exist yet, this will fail, which is fine
+            console.log('ℹ️  captcha_passed migration: table might not exist yet');
+        }
+
         // Create tables without constraints to avoid conflicts
         await pool.query(`
             -- Users table
