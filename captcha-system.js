@@ -216,7 +216,7 @@ class CaptchaSystem {
                 // Простая числовая последовательность
                 return this.generateNumberSequence(3);
             case this.DIFFICULTY_LEVELS.HARD:
-                // Комбинированные задачи: буквы или сложные числа
+                // Комбиниро��анные задачи: буквы или сложные числа
                 if (Math.random() > 0.5) {
                     return this.generateLetterSequence();
                 } else {
@@ -339,9 +339,12 @@ class CaptchaSystem {
 
     /**
      * Проверка нужности капчи для пользователя
+     * БЕЗОПАСНАЯ ЛОГИКА: капча для тех кто НИ РАЗУ не проходил + подозрительных
      */
     async needsCaptcha(userId, db) {
         try {
+            console.log(`[CAPTCHA-CHECK] Checking captcha need for user ${userId}`);
+
             // Проверяем статус прохождения капчи
             const result = await db.executeQuery(
                 'SELECT * FROM user_captcha_status WHERE user_id = $1',
@@ -349,26 +352,37 @@ class CaptchaSystem {
             );
 
             if (result.rows.length === 0) {
-                return true; // Новый пользователь - нужна капча
+                console.log(`[CAPTCHA-CHECK] User ${userId} has NO captcha record - NEEDS CAPTCHA`);
+                return true; // Новый пользователь - НИ РАЗУ не проходил капчу
             }
 
             const status = result.rows[0];
-            
-            // Если уже прошел и не подозрительный
-            if (status.is_verified && !status.is_suspicious) {
-                return false;
-            }
+            console.log(`[CAPTCHA-CHECK] User ${userId} captcha status:`, {
+                is_verified: status.is_verified,
+                is_suspicious: status.is_suspicious,
+                verification_date: status.verification_date
+            });
 
-            // Если подозрительный - нужна повторная проверка
+            // Если пользователь подозрительный - всегда требуем капчу
             if (status.is_suspicious) {
+                console.log(`[CAPTCHA-CHECK] User ${userId} is SUSPICIOUS - NEEDS CAPTCHA`);
                 return true;
             }
 
-            // Если не прошел - нужна капча
-            return !status.is_verified;
+            // Если уже успешно прошел капчу и не подозрительный - больше не показываем
+            if (status.is_verified && !status.is_suspicious) {
+                console.log(`[CAPTCHA-CHECK] User ${userId} already VERIFIED and not suspicious - NO CAPTCHA`);
+                return false;
+            }
+
+            // Если не прошел верификацию - нужна капча
+            const needsCaptcha = !status.is_verified;
+            console.log(`[CAPTCHA-CHECK] User ${userId} verification status: ${status.is_verified} - ${needsCaptcha ? 'NEEDS CAPTCHA' : 'NO CAPTCHA'}`);
+            return needsCaptcha;
 
         } catch (error) {
             console.error('Error checking captcha need:', error);
+            console.log(`[CAPTCHA-CHECK] Error for user ${userId} - DEFAULTING TO CAPTCHA`);
             return true; // В случае ошибки требуем капчу
         }
     }
@@ -389,7 +403,7 @@ class CaptchaSystem {
         behavior.responseTimes.push(responseTime);
         behavior.answers.push(answer);
 
-        // Анализ паттернов времени ответа
+        // Анализ пат��ернов времени ответа
         if (behavior.responseTimes.length >= 3) {
             const recent = behavior.responseTimes.slice(-3);
             const avgTime = recent.reduce((a, b) => a + b, 0) / recent.length;
