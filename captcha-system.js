@@ -18,12 +18,10 @@ class CaptchaSystem {
             BEHAVIOR: 'behavior'
         };
 
-        // Сложность капчи
+        // Сложность капчи - только 2 уровня
         this.DIFFICULTY_LEVELS = {
             EASY: 1,
-            MEDIUM: 2,
-            HARD: 3,
-            EXTREME: 4
+            HARD: 2
         };
 
         // Emoji наборы для капчи
@@ -63,7 +61,7 @@ class CaptchaSystem {
     /**
      * Генерирует уникальную капчу для пользователя
      */
-    generateCaptcha(userId, difficulty = this.DIFFICULTY_LEVELS.MEDIUM) {
+    generateCaptcha(userId, difficulty = this.DIFFICULTY_LEVELS.EASY) {
         const captchaId = this.generateId();
         const types = Object.values(this.CAPTCHA_TYPES);
         const randomType = types[Math.floor(Math.random() * (types.length - 1))]; // Исключаем behavior
@@ -109,29 +107,22 @@ class CaptchaSystem {
 
         switch (difficulty) {
             case this.DIFFICULTY_LEVELS.EASY:
+                // Простые операции до 10
                 num1 = Math.floor(Math.random() * 10) + 1;
                 num2 = Math.floor(Math.random() * 10) + 1;
                 operation = ['+', '-'][Math.floor(Math.random() * 2)];
                 break;
-            case this.DIFFICULTY_LEVELS.MEDIUM:
-                num1 = Math.floor(Math.random() * 25) + 1;
-                num2 = Math.floor(Math.random() * 25) + 1;
-                operation = ['+', '-', '×'][Math.floor(Math.random() * 3)];
-                break;
             case this.DIFFICULTY_LEVELS.HARD:
+                // Сложные операции до 50 с умножением и делением
                 num1 = Math.floor(Math.random() * 50) + 1;
                 num2 = Math.floor(Math.random() * 20) + 1;
                 operation = this.MATH_OPERATIONS[Math.floor(Math.random() * 4)];
-                break;
-            case this.DIFFICULTY_LEVELS.EXTREME:
-                num1 = Math.floor(Math.random() * 100) + 1;
-                num2 = Math.floor(Math.random() * 50) + 1;
-                operation = this.MATH_OPERATIONS[Math.floor(Math.random() * 4)];
-                // Добавляем второе действие
-                const num3 = Math.floor(Math.random() * 20) + 1;
-                const operation2 = ['+', '-'][Math.floor(Math.random() * 2)];
-                question = `${num1} ${operation} ${num2} ${operation2} ${num3}`;
-                answer = this.calculateMath(num1, operation, num2, operation2, num3);
+
+                // Для деления подбираем делимые числа
+                if (operation === '÷') {
+                    num2 = Math.floor(Math.random() * 9) + 2; // 2-10
+                    num1 = num2 * (Math.floor(Math.random() * 8) + 2); // Делимое число
+                }
                 break;
         }
 
@@ -166,37 +157,31 @@ class CaptchaSystem {
                 const count = Math.floor(Math.random() * 3) + 2; // 2-4
                 const emojiLine = Array(count).fill(targetEmoji).join('');
                 const mixedEmojis = this.shuffleArray([...emojiLine, ...this.getRandomEmojis(emojis, 3, targetEmoji)]).join('');
-                
+
                 question = `🔍 **Сколько ${targetEmoji} вы видите?**\n\n${mixedEmojis}`;
                 answer = count.toString();
                 break;
 
-            case this.DIFFICULTY_LEVELS.MEDIUM:
-                // Найти лишний эмодзи
-                const correctEmojis = this.getRandomEmojis(emojis, 4);
-                const wrongEmoji = this.getRandomEmojis(this.getAllEmojisExcept(category), 1)[0];
-                const allEmojis = this.shuffleArray([...correctEmojis, wrongEmoji]);
-                
-                question = `🎯 **Найдите лишний эмодзи (${this.getCategoryName(category)}):**\n\n${allEmojis.join(' ')}`;
-                answer = wrongEmoji;
-                break;
-
             case this.DIFFICULTY_LEVELS.HARD:
-                // Последовательность
-                const sequence = this.getRandomEmojis(emojis, 4);
-                const missingIndex = Math.floor(Math.random() * 4);
-                const missing = sequence[missingIndex];
-                sequence[missingIndex] = '❓';
-                
-                question = `🧩 **Восстановите последовательность:**\n\n${sequence.join(' → ')}`;
-                answer = missing;
-                break;
+                // Найти лишний эмодзи + восстановление последовательности (комбинированная задача)
+                if (Math.random() > 0.5) {
+                    // Лишний эмодзи
+                    const correctEmojis = this.getRandomEmojis(emojis, 4);
+                    const wrongEmoji = this.getRandomEmojis(this.getAllEmojisExcept(category), 1)[0];
+                    const allEmojis = this.shuffleArray([...correctEmojis, wrongEmoji]);
 
-            case this.DIFFICULTY_LEVELS.EXTREME:
-                // Комбинированная задача
-                const pattern = this.generateEmojiPattern(emojis);
-                question = `🔮 **Продолжите паттерн:**\n\n${pattern.question}`;
-                answer = pattern.answer;
+                    question = `🎯 **Найдите лишний эмодзи (${this.getCategoryName(category)}):**\n\n${allEmojis.join(' ')}`;
+                    answer = wrongEmoji;
+                } else {
+                    // Последовательность с пропуском
+                    const sequence = this.getRandomEmojis(emojis, 5);
+                    const missingIndex = Math.floor(Math.random() * 5);
+                    const missing = sequence[missingIndex];
+                    sequence[missingIndex] = '❓';
+
+                    question = `🧩 **Что пропущено в последовательности?**\n\n${sequence.join(' → ')}`;
+                    answer = missing;
+                }
                 break;
         }
 
@@ -228,13 +213,15 @@ class CaptchaSystem {
     generateSequenceCaptcha(difficulty) {
         switch (difficulty) {
             case this.DIFFICULTY_LEVELS.EASY:
+                // Простая числовая последовательность
                 return this.generateNumberSequence(3);
-            case this.DIFFICULTY_LEVELS.MEDIUM:
-                return this.generateNumberSequence(4);
             case this.DIFFICULTY_LEVELS.HARD:
-                return this.generateLetterSequence();
-            case this.DIFFICULTY_LEVELS.EXTREME:
-                return this.generateComplexSequence();
+                // Комбинированные задачи: буквы или сложные числа
+                if (Math.random() > 0.5) {
+                    return this.generateLetterSequence();
+                } else {
+                    return this.generateComplexSequence();
+                }
         }
     }
 
@@ -256,23 +243,28 @@ class CaptchaSystem {
                 question = `✏️ **Напишите слово:**\n\n${word}`;
                 answer = word;
                 break;
-            case this.DIFFICULTY_LEVELS.MEDIUM:
-                // Наоборот
-                question = `🔄 **Напишите слово наоборот:**\n\n${word}`;
-                answer = word.split('').reverse().join('');
-                break;
             case this.DIFFICULTY_LEVELS.HARD:
-                // Без определенной буквы
-                const excludeLetter = word[Math.floor(Math.random() * word.length)];
-                const filteredWord = word.replace(new RegExp(excludeLetter, 'g'), '_');
-                question = `🚫 **Уберите все буквы "${excludeLetter}" из слова:**\n\n${word}`;
-                answer = word.replace(new RegExp(excludeLetter, 'g'), '');
-                break;
-            case this.DIFFICULTY_LEVELS.EXTREME:
-                // Анаграмма
-                const shuffled = this.shuffleArray(word.split('')).join('');
-                question = `🎲 **Составьте слово из букв:**\n\n${shuffled}`;
-                answer = word;
+                // Комбинированные сложные задачи
+                const taskType = Math.floor(Math.random() * 3);
+                switch (taskType) {
+                    case 0:
+                        // Наоборот
+                        question = `🔄 **Напишите слово наоборот:**\n\n${word}`;
+                        answer = word.split('').reverse().join('');
+                        break;
+                    case 1:
+                        // Без определенной буквы
+                        const excludeLetter = word[Math.floor(Math.random() * word.length)];
+                        question = `🚫 **Уберите все буквы "${excludeLetter}" из слова:**\n\n${word}`;
+                        answer = word.replace(new RegExp(excludeLetter, 'g'), '');
+                        break;
+                    case 2:
+                        // Анаграмма
+                        const shuffled = this.shuffleArray(word.split('')).join('');
+                        question = `🎲 **Составьте с��ово из букв:**\n\n${shuffled}`;
+                        answer = word;
+                        break;
+                }
                 break;
         }
 
@@ -311,7 +303,7 @@ class CaptchaSystem {
             };
         }
 
-        // Проверка правильности ответ��
+        // Проверка правильности ответа
         const isCorrect = this.checkAnswer(captcha, userAnswer);
         
         if (isCorrect) {
@@ -377,7 +369,7 @@ class CaptchaSystem {
 
         } catch (error) {
             console.error('Error checking captcha need:', error);
-            return true; // В ��лучае ошибки требуем капчу
+            return true; // В случае ошибки требуем капчу
         }
     }
 
@@ -478,7 +470,7 @@ class CaptchaSystem {
         }
     }
 
-    // ============ ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ============
+    // ============ ВС��ОМОГАТЕЛЬНЫЕ МЕТОДЫ ============
 
     generateId() {
         return crypto.randomBytes(16).toString('hex');
@@ -578,6 +570,7 @@ class CaptchaSystem {
     generateNumberLogic(difficulty) {
         switch (difficulty) {
             case this.DIFFICULTY_LEVELS.EASY:
+                // Простые четные числа
                 const nums = [2, 4, 6, 8];
                 return {
                     question: `🔢 **Найдите закономерность:**\n\n${nums.join(', ')}, ?`,
@@ -585,16 +578,27 @@ class CaptchaSystem {
                     acceptedAnswers: ['10'],
                     hints: ['Четные числа']
                 };
-            
-            case this.DIFFICULTY_LEVELS.MEDIUM:
-                const sequence = [1, 4, 9, 16];
-                return {
-                    question: `🧮 **Продолжите последовательность:**\n\n${sequence.join(', ')}, ?`,
-                    answer: '25',
-                    acceptedAnswers: ['25'],
-                    hints: ['Квадраты чисел']
-                };
-                
+
+            case this.DIFFICULTY_LEVELS.HARD:
+                // Квадраты чисел или более сложные последовательности
+                if (Math.random() > 0.5) {
+                    const sequence = [1, 4, 9, 16];
+                    return {
+                        question: `🧮 **Продолжите последовательность:**\n\n${sequence.join(', ')}, ?`,
+                        answer: '25',
+                        acceptedAnswers: ['25'],
+                        hints: ['Квадраты чисел: 1², 2², 3², 4², ?']
+                    };
+                } else {
+                    const sequence = [2, 6, 12, 20];
+                    return {
+                        question: `🧠 **Какое число следующее:**\n\n${sequence.join(', ')}, ?`,
+                        answer: '30',
+                        acceptedAnswers: ['30'],
+                        hints: ['n×(n+1): 1×2, 2×3, 3×4, 4×5, ?']
+                    };
+                }
+
             default:
                 return this.generateNumberLogic(this.DIFFICULTY_LEVELS.EASY);
         }
