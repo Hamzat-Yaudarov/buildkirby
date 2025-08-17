@@ -585,6 +585,256 @@ async function handleBroadcastReferrals(bot, chatId, messageId) {
 
 // Custom broadcast handler - теперь работает через inline interface в main file
 
+// ============ CAPTCHA ADMIN FUNCTIONS ============
+
+async function handleAdminCaptcha(bot, chatId, messageId) {
+    console.log('[ADMIN-FINAL] handleAdminCaptcha called');
+
+    try {
+        const { captchaSystem } = require('./captcha-system');
+        const stats = await captchaSystem.getCaptchaStats(db);
+
+        const message = `🛡️ **Управление системой капчи**
+
+📊 **Статистика:**
+👥 Всего пользователей: ${stats?.total_users || 0}
+✅ Прошли проверку: ${stats?.verified_users || 0}
+⚠️ Подозрительные: ${stats?.suspicious_users || 0}
+⏱️ ��реднее время ответа: ${Math.round(stats?.avg_response_time/1000) || 0}с
+
+📈 **По типам капчи:**
+🧮 Математические: ${stats?.math_captchas || 0}
+😀 Emoji: ${stats?.emoji_captchas || 0}
+🧩 Логические: ${stats?.logic_captchas || 0}
+
+🛠️ **Команды:**
+• \`/captcha_stats\` - детальная статистика
+• \`/suspicious_users\` - список подозрительных
+• \`/reset_captcha USER_ID\` - сбросить статус пользователя
+• \`/captcha_settings\` - настройки системы`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📊 Подробная статистика', callback_data: 'admin_captcha_detailed' },
+                        { text: '⚠️ Подозрительные', callback_data: 'admin_captcha_suspicious' }
+                    ],
+                    [
+                        { text: '🧹 Очистка сессий', callback_data: 'admin_captcha_cleanup' },
+                        { text: '⚙️ Настройки', callback_data: 'admin_captcha_settings' }
+                    ],
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+
+        console.log('[ADMIN-FINAL] handleAdminCaptcha completed successfully');
+    } catch (error) {
+        console.error('[ADMIN-FINAL] Error in handleAdminCaptcha:', error);
+        await bot.editMessageText('❌ Ошибка загрузки управления капчей.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    }
+}
+
+async function handleAdminCaptchaDetailed(bot, chatId, messageId) {
+    try {
+        const stats = await db.getCaptchaStatistics();
+
+        let message = '📊 **Детальная статистика капчи**\n\n';
+
+        if (stats.length === 0) {
+            message += '❌ Нет данных о капче.\n\nСтатистика будет доступна после первых проверок.';
+        } else {
+            for (const stat of stats) {
+                const typeNames = {
+                    'math': '🧮 Математические',
+                    'emoji': '😀 Emoji',
+                    'logic': '🧩 Логические',
+                    'sequence': '🔢 Последовательности',
+                    'text': '✏️ Текстовые'
+                };
+
+                const typeName = typeNames[stat.captcha_type] || stat.captcha_type;
+                const successRate = Math.round(stat.success_rate || 0);
+                const avgTime = Math.round(stat.avg_response_time/1000) || 0;
+
+                message += `${typeName}:\n`;
+                message += `  📈 Создано: ${stat.total_generated}\n`;
+                message += `  ✅ Пройдено: ${stat.total_completed}\n`;
+                message += `  ❌ Провалено: ${stat.total_failed}\n`;
+                message += `  📊 Успешность: ${successRate}%\n`;
+                message += `  ⏱️ Среднее время: ${avgTime}с\n\n`;
+            }
+        }
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('[ADMIN-FINAL] Error in detailed captcha stats:', error);
+        await bot.editMessageText('❌ Ошибка загрузки статистики.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    }
+}
+
+async function handleAdminCaptchaSuspicious(bot, chatId, messageId) {
+    try {
+        const suspiciousUsers = await db.getSuspiciousUsers(20);
+
+        let message = '⚠️ **Подозрительные пользователи**\n\n';
+
+        if (suspiciousUsers.length === 0) {
+            message += '✅ Подозрительных пользователей не найдено.';
+        } else {
+            message += `Найдено: ${suspiciousUsers.length} пользователей\n\n`;
+
+            for (let i = 0; i < Math.min(suspiciousUsers.length, 10); i++) {
+                const user = suspiciousUsers[i];
+                const displayName = user.first_name || 'Неизвестно';
+                const username = user.username ? `@${user.username}` : '';
+                const responseTime = Math.round(user.response_time/1000) || 0;
+
+                message += `${i+1}. **${displayName}** ${username}\n`;
+                message += `   ID: ${user.user_id}\n`;
+                message += `   Капча: ${user.captcha_type || 'неизвестно'}\n`;
+                message += `   Время ответа: ${responseTime}с\n`;
+                message += `   Попыток: ${user.attempt_count}\n`;
+                message += `   Подозрительных действий: ${user.suspicious_activities}\n\n`;
+            }
+
+            if (suspiciousUsers.length > 10) {
+                message += `... и еще ${suspiciousUsers.length - 10} пользователей`;
+            }
+        }
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('[ADMIN-FINAL] Error getting suspicious users:', error);
+        await bot.editMessageText('❌ Ошибка загрузки подозрительных пользователей.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    }
+}
+
+async function handleAdminCaptchaCleanup(bot, chatId, messageId) {
+    try {
+        const cleaned = await db.cleanupExpiredCaptchaSessions();
+
+        const message = `🧹 **Очистка завершена**\n\n✅ Удалено устаревших сессий: ${cleaned}\n\n💡 Очистка происходит автоматически, но вы можете запускать её вручную для освобождения места в базе данных.`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 Очистить снова', callback_data: 'admin_captcha_cleanup' }],
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('[ADMIN-FINAL] Error in captcha cleanup:', error);
+        await bot.editMessageText('❌ Ошибка очистки сессий.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    }
+}
+
+async function handleAdminCaptchaSettings(bot, chatId, messageId) {
+    try {
+        const message = `⚙️ **Настройки системы капчи**
+
+🛡️ **Текущие настройки:**
+• Минимальное время ответа: 3 секунды
+• Максимальное время: 5 минут
+• Максимум попыток: 3
+• Типы капчи: математические, emoji, логические, последовательности, текстовые
+
+🎯 **Уровни сложности:**
+• Легкий: простые задачи
+• Средний: стандартная сложность (по умолчанию)
+• Сложный: для подозрительных пользователей
+• Экстремальный: для ботов
+
+⚠️ **Система безопасности:**
+• Анализ времени ответа
+• Выявление паттернов поведения
+• Автоматическое повышение сложности
+• Блокировка при превышении попыток
+
+💡 Изменение настроек требует модификации кода.`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('[ADMIN-FINAL] Error in captcha settings:', error);
+        await bot.editMessageText('❌ Ошибка загрузки настроек.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад к капче', callback_data: 'admin_captcha' }]
+                ]
+            }
+        });
+    }
+}
+
 console.log('[ADMIN-FINAL] All functions defined, exporting...');
 
 module.exports = {
@@ -598,7 +848,13 @@ module.exports = {
     handleAdminListTasks,
     handleAdminListChannels,
     handleAdminListLotteries,
-    handleAdminListPromos
+    handleAdminListPromos,
+    // Captcha admin functions
+    handleAdminCaptcha,
+    handleAdminCaptchaDetailed,
+    handleAdminCaptchaSuspicious,
+    handleAdminCaptchaCleanup,
+    handleAdminCaptchaSettings
 };
 
 console.log('[ADMIN-FINAL] Final admin handlers export completed');

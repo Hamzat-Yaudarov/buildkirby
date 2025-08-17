@@ -232,6 +232,62 @@ async function initializeDatabase() {
                 success BOOLEAN DEFAULT TRUE,
                 active_channels_count INTEGER DEFAULT 0
             );
+
+            -- User captcha status table
+            CREATE TABLE IF NOT EXISTS user_captcha_status (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT UNIQUE NOT NULL,
+                is_verified BOOLEAN DEFAULT FALSE,
+                captcha_type VARCHAR(20),
+                response_time INTEGER,
+                is_suspicious BOOLEAN DEFAULT FALSE,
+                verification_date TIMESTAMP,
+                attempt_count INTEGER DEFAULT 0,
+                last_attempt_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Captcha suspicious activity table
+            CREATE TABLE IF NOT EXISTS captcha_suspicious_activity (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                activity_type VARCHAR(50) NOT NULL,
+                activity_value TEXT,
+                detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                severity_level INTEGER DEFAULT 1
+            );
+
+            -- Active captcha sessions table
+            CREATE TABLE IF NOT EXISTS active_captcha_sessions (
+                id SERIAL PRIMARY KEY,
+                captcha_id VARCHAR(100) UNIQUE NOT NULL,
+                user_id BIGINT NOT NULL,
+                captcha_type VARCHAR(20) NOT NULL,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                accepted_answers TEXT[],
+                difficulty_level INTEGER DEFAULT 2,
+                max_attempts INTEGER DEFAULT 3,
+                current_attempts INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                is_completed BOOLEAN DEFAULT FALSE
+            );
+
+            -- Captcha performance statistics table
+            CREATE TABLE IF NOT EXISTS captcha_statistics (
+                id SERIAL PRIMARY KEY,
+                captcha_type VARCHAR(20) NOT NULL,
+                total_generated INTEGER DEFAULT 0,
+                total_completed INTEGER DEFAULT 0,
+                total_failed INTEGER DEFAULT 0,
+                avg_response_time DECIMAL(10,2) DEFAULT 0,
+                success_rate DECIMAL(5,2) DEFAULT 0,
+                date_recorded DATE DEFAULT CURRENT_DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(captcha_type, date_recorded)
+            );
         `);
 
         // Add missing columns if they don't exist
@@ -292,6 +348,12 @@ async function initializeDatabase() {
                 CREATE INDEX IF NOT EXISTS idx_channel_subscription_stats_channel ON channel_subscription_stats(channel_id);
                 CREATE INDEX IF NOT EXISTS idx_subscription_check_events_user ON subscription_check_events(user_id);
                 CREATE INDEX IF NOT EXISTS idx_subscription_check_events_checked_at ON subscription_check_events(checked_at);
+                CREATE INDEX IF NOT EXISTS idx_user_captcha_status_user ON user_captcha_status(user_id);
+                CREATE INDEX IF NOT EXISTS idx_user_captcha_status_suspicious ON user_captcha_status(is_suspicious);
+                CREATE INDEX IF NOT EXISTS idx_captcha_suspicious_activity_user ON captcha_suspicious_activity(user_id);
+                CREATE INDEX IF NOT EXISTS idx_active_captcha_sessions_user ON active_captcha_sessions(user_id);
+                CREATE INDEX IF NOT EXISTS idx_active_captcha_sessions_expires ON active_captcha_sessions(expires_at);
+                CREATE INDEX IF NOT EXISTS idx_captcha_statistics_type_date ON captcha_statistics(captcha_type, date_recorded);
             `);
 
             console.log('✅ Database columns updated');
@@ -1356,6 +1418,238 @@ async function getChannelStatsDetailed(channelId) {
     }
 }
 
+// Captcha functions
+async function saveCaptchaSession(captchaData) {
+    try {
+        const expiresAt = new Date(captchaData.createdAt + 300000); // 5 минут
+
+        await executeQuery(`
+            INSERT INTO active_captcha_sessions
+            (captcha_id, user_id, captcha_type, question, answer, accepted_answers,
+             difficulty_level, max_attempts, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
+            captchaData.id,
+            captchaData.userId,
+            captchaData.type,
+            captchaData.question,
+            captchaData.answer,
+            captchaData.acceptedAnswers || [captchaData.answer],
+            captchaData.difficulty,
+            captchaData.maxAttempts,
+            expiresAt
+        ]);
+
+        return true;
+    } catch (error) {
+        console.error('Error saving captcha session:', error);
+        throw error;
+    }
+}
+
+async function getCaptchaSession(captchaId) {
+    try {
+        const result = await executeQuery(`
+            SELECT * FROM active_captcha_sessions
+            WHERE captcha_id = $1 AND expires_at > NOW() AND is_completed = FALSE
+        `, [captchaId]);
+
+        return result.rows[0] || null;
+    } catch (error) {
+        console.error('Error getting captcha session:', error);
+        throw error;
+    }
+}
+
+async function completeCaptchaSession(captchaId) {
+    try {
+        await executeQuery(`
+            UPDATE active_captcha_sessions
+            SET is_completed = TRUE
+            WHERE captcha_id = $1
+        `, [captchaId]);
+
+        return true;
+    } catch (error) {
+        console.error('Error completing captcha session:', error);
+        throw error;
+    }
+}
+
+async function incrementCaptchaAttempt(captchaId) {
+    try {
+        const result = await executeQuery(`
+            UPDATE active_captcha_sessions
+            SET current_attempts = current_attempts + 1
+            WHERE captcha_id = $1
+            RETURNING current_attempts, max_attempts
+        `, [captchaId]);
+
+        return result.rows[0] || null;
+    } catch (error) {
+        console.error('Error incrementing captcha attempt:', error);
+        throw error;
+    }
+}
+
+async function getUserCaptchaStatus(userId) {
+    try {
+        const result = await executeQuery(`
+            SELECT * FROM user_captcha_status WHERE user_id = $1
+        `, [userId]);
+
+        return result.rows[0] || null;
+    } catch (error) {
+        console.error('Error getting user captcha status:', error);
+        throw error;
+    }
+}
+
+async function updateUserCaptchaStatus(userId, status) {
+    try {
+        await executeQuery(`
+            INSERT INTO user_captcha_status
+            (user_id, is_verified, captcha_type, response_time, is_suspicious, verification_date, attempt_count)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                is_verified = $2,
+                captcha_type = $3,
+                response_time = $4,
+                is_suspicious = $5,
+                verification_date = $6,
+                attempt_count = $7,
+                updated_at = CURRENT_TIMESTAMP
+        `, [
+            userId,
+            status.isVerified,
+            status.captchaType,
+            status.responseTime,
+            status.isSuspicious,
+            status.verificationDate || new Date(),
+            status.attemptCount || 0
+        ]);
+
+        return true;
+    } catch (error) {
+        console.error('Error updating user captcha status:', error);
+        throw error;
+    }
+}
+
+async function recordSuspiciousActivity(userId, activityType, activityValue, severityLevel = 1) {
+    try {
+        await executeQuery(`
+            INSERT INTO captcha_suspicious_activity
+            (user_id, activity_type, activity_value, severity_level)
+            VALUES ($1, $2, $3, $4)
+        `, [userId, activityType, activityValue, severityLevel]);
+
+        return true;
+    } catch (error) {
+        console.error('Error recording suspicious activity:', error);
+        throw error;
+    }
+}
+
+async function getCaptchaStatistics() {
+    try {
+        const result = await executeQuery(`
+            SELECT
+                captcha_type,
+                SUM(total_generated) as total_generated,
+                SUM(total_completed) as total_completed,
+                SUM(total_failed) as total_failed,
+                AVG(avg_response_time) as avg_response_time,
+                AVG(success_rate) as success_rate
+            FROM captcha_statistics
+            WHERE date_recorded >= CURRENT_DATE - INTERVAL '30 days'
+            GROUP BY captcha_type
+            ORDER BY total_generated DESC
+        `);
+
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting captcha statistics:', error);
+        throw error;
+    }
+}
+
+async function updateCaptchaStatistics(captchaType, generated = 0, completed = 0, failed = 0, responseTime = 0) {
+    try {
+        await executeQuery(`
+            INSERT INTO captcha_statistics
+            (captcha_type, total_generated, total_completed, total_failed, avg_response_time)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (captcha_type, date_recorded)
+            DO UPDATE SET
+                total_generated = captcha_statistics.total_generated + $2,
+                total_completed = captcha_statistics.total_completed + $3,
+                total_failed = captcha_statistics.total_failed + $4,
+                avg_response_time = CASE
+                    WHEN captcha_statistics.total_completed + $3 > 0
+                    THEN ((captcha_statistics.avg_response_time * captcha_statistics.total_completed) + ($5 * $3)) / (captcha_statistics.total_completed + $3)
+                    ELSE captcha_statistics.avg_response_time
+                END,
+                success_rate = CASE
+                    WHEN captcha_statistics.total_generated + $2 > 0
+                    THEN ((captcha_statistics.total_completed + $3) * 100.0) / (captcha_statistics.total_generated + $2)
+                    ELSE 0
+                END
+        `, [captchaType, generated, completed, failed, responseTime]);
+
+        return true;
+    } catch (error) {
+        console.error('Error updating captcha statistics:', error);
+        throw error;
+    }
+}
+
+async function getSuspiciousUsers(limit = 50) {
+    try {
+        const result = await executeQuery(`
+            SELECT
+                ucs.user_id,
+                u.first_name,
+                u.username,
+                ucs.is_suspicious,
+                ucs.captcha_type,
+                ucs.response_time,
+                ucs.attempt_count,
+                ucs.verification_date,
+                COUNT(csa.id) as suspicious_activities
+            FROM user_captcha_status ucs
+            JOIN users u ON ucs.user_id = u.id
+            LEFT JOIN captcha_suspicious_activity csa ON ucs.user_id = csa.user_id
+            WHERE ucs.is_suspicious = TRUE
+            GROUP BY ucs.user_id, u.first_name, u.username, ucs.is_suspicious,
+                     ucs.captcha_type, ucs.response_time, ucs.attempt_count, ucs.verification_date
+            ORDER BY suspicious_activities DESC, ucs.verification_date DESC
+            LIMIT $1
+        `, [limit]);
+
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting suspicious users:', error);
+        throw error;
+    }
+}
+
+async function cleanupExpiredCaptchaSessions() {
+    try {
+        const result = await executeQuery(`
+            DELETE FROM active_captcha_sessions
+            WHERE expires_at < NOW() OR is_completed = TRUE
+        `);
+
+        console.log(`[CAPTCHA-CLEANUP] Removed ${result.rowCount} expired captcha sessions`);
+        return result.rowCount;
+    } catch (error) {
+        console.error('Error cleaning up expired captcha sessions:', error);
+        throw error;
+    }
+}
+
 // Export functions
 module.exports = {
     pool,
@@ -1403,5 +1697,17 @@ module.exports = {
     recordSubscriptionCheck,
     getChannelSubscriptionStats,
     getSubscriptionCheckHistory,
-    getChannelStatsDetailed
+    getChannelStatsDetailed,
+    // Captcha functions
+    saveCaptchaSession,
+    getCaptchaSession,
+    completeCaptchaSession,
+    incrementCaptchaAttempt,
+    getUserCaptchaStatus,
+    updateUserCaptchaStatus,
+    recordSuspiciousActivity,
+    getCaptchaStatistics,
+    updateCaptchaStatistics,
+    getSuspiciousUsers,
+    cleanupExpiredCaptchaSessions
 };

@@ -16,6 +16,9 @@ console.log('[MAIN] adminHandlers.handleAdminTasks type:', typeof adminHandlers.
 const { throttler } = require('./message-throttler');
 console.log('[MAIN] message throttler imported');
 
+const { captchaSystem } = require('./captcha-system');
+console.log('[MAIN] captcha system imported');
+
 // Автоотправка звёзд удалена - только ручная обработ��а
 
 // Helper function to send throttled messages
@@ -246,7 +249,7 @@ function getMainMenuKeyboard() {
                     { text: '⭐ Вывод звёзд', callback_data: 'withdraw' }
                 ],
                 [
-                    { text: '📋 Задания', callback_data: 'tasks' },
+                    { text: '📋 З��дания', callback_data: 'tasks' },
                     { text: '📖 Инструкция по боту', callback_data: 'instruction' }
                 ],
                 [
@@ -365,6 +368,7 @@ function getAdminMenuKeyboard() {
                     { text: '📢 Рассылка сообщений', callback_data: 'admin_broadcast' }
                 ],
                 [
+                    { text: '🛡️ Система капчи', callback_data: 'admin_captcha' },
                     { text: '🏆 Недельные награды', callback_data: 'admin_weekly_rewards' }
                 ],
                 [
@@ -373,6 +377,219 @@ function getAdminMenuKeyboard() {
             ]
         }
     };
+}
+
+// ============ CAPTCHA FUNCTIONS ============
+
+// Генерация вариантов ответов для капчи
+function generateCaptchaVariants(captcha) {
+    const variants = [];
+    const correctAnswer = captcha.answer;
+
+    if (captcha.type === captchaSystem.CAPTCHA_TYPES.EMOJI) {
+        // Для emoji капчи добавляем случайные emoji
+        variants.push(correctAnswer);
+        // Получаем все эмодзи из всех категорий
+        const allEmojis = Object.values(captchaSystem.EMOJI_SETS).flat();
+        while (variants.length < 4) {
+            const randomEmoji = allEmojis[Math.floor(Math.random() * allEmojis.length)];
+            if (!variants.includes(randomEmoji)) {
+                variants.push(randomEmoji);
+            }
+        }
+    } else if (captcha.type === captchaSystem.CAPTCHA_TYPES.MATH) {
+        // Для математических задач добавляем близкие числа
+        const correct = parseInt(correctAnswer);
+        variants.push(correctAnswer);
+        for (let i = 0; i < 3; i++) {
+            const wrong = correct + (Math.random() > 0.5 ? 1 : -1) * (Math.floor(Math.random() * 5) + 1);
+            if (!variants.includes(wrong.toString()) && wrong > 0) {
+                variants.push(wrong.toString());
+            }
+        }
+    } else {
+        // Для других типов возвращаем пустой массив (только текстовый ввод)
+        return [];
+    }
+
+    // Перемешиваем варианты
+    return captchaSystem.shuffleArray(variants);
+}
+
+// Обработка ответа на капчу
+async function handleCaptchaAnswer(chatId, messageId, userId, captchaId, answer) {
+    try {
+        console.log(`[CAPTCHA] Processing answer from user ${userId} for captcha ${captchaId}`);
+
+        // Получаем сессию капчи
+        const session = await db.getCaptchaSession(captchaId);
+        if (!session) {
+            await bot.editMessageText('❌ Капча истекла или не найдена. Начните заново с /start', {
+                chat_id: chatId,
+                message_id: messageId
+            });
+            return;
+        }
+
+        // Проверяем что пользователь соответствует
+        if (session.user_id !== userId) {
+            await bot.editMessageText('❌ Ошибка проверки. Начните заново с /start', {
+                chat_id: chatId,
+                message_id: messageId
+            });
+            return;
+        }
+
+        const responseTime = Date.now() - new Date(session.created_at).getTime();
+
+        // Создаем объект капчи для проверки
+        const captcha = {
+            id: captchaId,
+            userId: userId,
+            type: session.captcha_type,
+            answer: session.answer,
+            acceptedAnswers: session.accepted_answers,
+            attempts: session.current_attempts,
+            maxAttempts: session.max_attempts
+        };
+
+        // Проверяем ответ
+        const result = await captchaSystem.verifyCaptcha(captcha, answer, responseTime, db);
+
+        if (result.success) {
+            // Успешное прохождение
+            await db.completeCaptchaSession(captchaId);
+            await db.updateCaptchaStatistics(session.captcha_type, 0, 1, 0, responseTime);
+
+            const successMessage = '✅ **Проверка пройдена успешно!**\n\nТеперь вы можете пользоваться ботом. Используйте /start для продолжения.';
+            const successKeyboard = {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🚀 Продолжить', callback_data: 'start_after_captcha' }]
+                    ]
+                }
+            };
+
+            if (messageId) {
+                await bot.editMessageText(successMessage, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    ...successKeyboard
+                });
+            } else {
+                await bot.sendMessage(chatId, successMessage, successKeyboard);
+            }
+
+        } else if (result.blocked) {
+            // Заблокирован за превышение попыток
+            await db.updateCaptchaStatistics(session.captcha_type, 0, 0, 1, 0);
+            await db.recordSuspiciousActivity(userId, 'max_attempts_exceeded', captcha.attempts, 3);
+
+            const blockedMessage = '🚫 **Доступ временно ограничен**\n\nВы превысили максимальное количество попыток. Обратитесь к администратору или попробуйте позже.';
+
+            if (messageId) {
+                await bot.editMessageText(blockedMessage, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown'
+                });
+            } else {
+                await bot.sendMessage(chatId, blockedMessage, { parse_mode: 'Markdown' });
+            }
+
+        } else if (result.suspicious) {
+            // Подозрительное поведение
+            await db.recordSuspiciousActivity(userId, 'suspicious_response_time', responseTime, 2);
+
+            const suspiciousMessage = '���️ **Подозрительная активность**\n\nВаш ответ был слишком быстрым. Попробуйте еще раз более внимательно.';
+            const suspiciousKeyboard = {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔄 Новая капча', callback_data: 'restart_captcha' }]
+                    ]
+                }
+            };
+
+            if (messageId) {
+                await bot.editMessageText(suspiciousMessage, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    ...suspiciousKeyboard
+                });
+            } else {
+                await bot.sendMessage(chatId, suspiciousMessage, suspiciousKeyboard);
+            }
+
+        } else {
+            // Неправильный ответ
+            await db.incrementCaptchaAttempt(captchaId);
+
+            let hintText = '';
+            if (captcha.hints && captcha.hints.length > 0) {
+                hintText = `\n\n💡 Подсказка: ${captcha.hints[0]}`;
+            }
+
+            const wrongMessage = `❌ **Неправильный ответ**\n\n${result.reason}${hintText}`;
+            const wrongKeyboard = {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔄 Попробовать снова', callback_data: `captcha_retry_${captchaId}` }]
+                    ]
+                }
+            };
+
+            if (messageId) {
+                await bot.editMessageText(wrongMessage, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    ...wrongKeyboard
+                });
+            } else {
+                await bot.sendMessage(chatId, wrongMessage, wrongKeyboard);
+            }
+        }
+
+    } catch (error) {
+        console.error('[CAPTCHA] Error handling captcha answer:', error);
+        await bot.editMessageText('❌ Произошла ошибка. Начните заново с /start', {
+            chat_id: chatId,
+            message_id: messageId
+        });
+    }
+}
+
+// Обработка текстового ввода капчи
+async function handleCaptchaTextInput(chatId, messageId, userId, captchaId) {
+    try {
+        // Получаем сессию капчи
+        const session = await db.getCaptchaSession(captchaId);
+        if (!session) {
+            await bot.editMessageText('❌ Капча истекла или не найдена. Начните заново с /start', {
+                chat_id: chatId,
+                message_id: messageId
+            });
+            return;
+        }
+
+        await bot.editMessageText(`✏️ **Введите ваш ответ:**\n\n${session.question}\n\n⌨️ Отправьте ответ следующим сообщением`, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown'
+        });
+
+        // Устанавливаем временное действие для пользователя
+        await db.updateUserField(userId, 'temp_action', `captcha_input_${captchaId}`);
+
+    } catch (error) {
+        console.error('[CAPTCHA] Error handling captcha text input:', error);
+        await bot.editMessageText('❌ Произошла ошибка. Начните заново с /start', {
+            chat_id: chatId,
+            message_id: messageId
+        });
+    }
 }
 
 // Remove keyboard buttons
@@ -428,7 +645,58 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                 }
             }
         }
-        
+
+        // МАКСИМАЛЬНО БЕЗОПАСНАЯ КАПЧА - ��роверяем ВСЕХ пользователей
+        const needsCaptcha = await captchaSystem.needsCaptcha(userId, db);
+        if (needsCaptcha) {
+            console.log(`[CAPTCHA] User ${userId} needs captcha verification`);
+
+            // Генерируем капчу
+            const difficulty = captchaSystem.DIFFICULTY_LEVELS.MEDIUM;
+            const captcha = captchaSystem.generateCaptcha(userId, difficulty);
+
+            // Сохраняем в БД
+            await db.saveCaptchaSession(captcha);
+            await db.updateCaptchaStatistics(captcha.type, 1, 0, 0, 0);
+
+            // Создаем клавиатуру с вариантами ответов для сложных капч
+            let keyboard = {
+                reply_markup: {
+                    inline_keyboard: []
+                }
+            };
+
+            // Для emoji и logic капч добавляем варианты ответов
+            if (captcha.type === captchaSystem.CAPTCHA_TYPES.EMOJI ||
+                captcha.type === captchaSystem.CAPTCHA_TYPES.LOGIC) {
+
+                const variants = generateCaptchaVariants(captcha);
+                const buttons = variants.map(variant => ({
+                    text: variant,
+                    callback_data: `captcha_answer_${captcha.id}_${variant}`
+                }));
+
+                // Разбиваем на строки по 2 кнопки
+                for (let i = 0; i < buttons.length; i += 2) {
+                    keyboard.reply_markup.inline_keyboard.push(buttons.slice(i, i + 2));
+                }
+            }
+
+            // Добавляем поле для текстового ввода
+            keyboard.reply_markup.inline_keyboard.push([
+                { text: '✏️ Ввести ответ', callback_data: `captcha_input_${captcha.id}` }
+            ]);
+
+            const captchaMessage = `🛡️ **ПРОВЕРКА ��ЕЗОПАСНОСТИ**\n\n${captcha.question}\n\n⏱️ У вас есть 5 минут для ответа\n🔄 Максимум попыток: ${captcha.maxAttempts}`;
+
+            await bot.sendMessage(chatId, captchaMessage, {
+                parse_mode: 'Markdown',
+                ...keyboard
+            });
+
+            return; // Прерываем выполнение до прохождения капчи
+        }
+
         // Check subscriptions
         const isSubscribed = await checkAllSubscriptions(userId);
         const requiredChannels = await getRequiredChannels();
@@ -514,7 +782,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         // Send main menu
         const welcomeMessage = `🌟 **Добро пожаловать в StarBot!**
 
-💰 **Ваш персональный помощник для заработка Telegram Stars**
+💰 **Ваш персональный помощник для за��аботка Telegram Stars**
 
  **Доступные возможности:**
 • Ежедневные награды в кликере
@@ -551,7 +819,7 @@ bot.onText(/\/throttler_status/, async (msg) => {
     const statusMessage = `📊 **Статус Throttler**
 
 📨 **Очередь сообщений:** ${status.queueLength}
-⚙️ **Обработка:** ${status.processing ? 'Активна' : 'Неактивна'}
+⚙️ **О��работка:** ${status.processing ? 'Активна' : 'Неактивна'}
 ⏱️ **Сообщений в секунду:** ${status.messagesPerSecond}
 ⏰ **Интервал между сообщениями:** ${status.intervalMs}ms
 
@@ -708,8 +976,8 @@ bot.onText(/\/admin/, async (msg) => {
 
 **Дополнительные команды:**
 🎰 **/endlottery [ID]** - завершить лотерею вручную
-👥 **/refupplayer [ID] [число]** - добавить рефералов пользователю
-⭐ **/starsupplayer [ID] [число]** - добавить звёзды пользователи
+��� **/refupplayer [ID] [число]** - добавить рефералов пользователю
+⭐ **/starsupplayer [ID] [число]** - добавить звёзд�� пользователи
 
 **Трекинговые ссылки:**
 🔗 **/create_tracking_link название** - создать ссылку для рекламы
@@ -742,7 +1010,7 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
     try {
         const params = match[1].split('|');
         if (params.length < 3) {
-            bot.sendMessage(chatId, '❌ Неверный формат!\n\nИспользуйте:\n`/create_task канал|название|награда|лимит`\n\nГде лимит - максимальное количество выполнений (необязательно).\n\nПримеры:\n• `/create_task @channel|Мой канал|1.5`\n• `/create_task @channel|Мой канал|1.5|100`', { parse_mode: 'Markdown' });
+            bot.sendMessage(chatId, '❌ Неверный формат!\n\nИспользуйте:\n`/create_task к��нал|название|награда|лимит`\n\nГде лимит - максимальное количество выполнений (необязательно).\n\nПримеры:\n• `/create_task @channel|Мой канал|1.5`\n• `/create_task @channel|Мой канал|1.5|100`', { parse_mode: 'Markdown' });
             return;
         }
 
@@ -761,7 +1029,7 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
         if (limit) {
             message += `\n   Лимит выполнений: ${limit}`;
         } else {
-            message += `\n🔢 Лимит выполнений: Без ограничений`;
+            message += `\n🔢 Лимит выполнений: Без о����раничений`;
         }
 
         bot.sendMessage(chatId, message);
@@ -866,7 +1134,7 @@ bot.onText(/\/create_lottery (.+)/, async (msg, match) => {
             [lotteryName, ticketPriceNum, maxTicketsNum, winnersCountNum, botPercentNum]
         );
 
-        bot.sendMessage(chatId, `✅ Лотерея создана!\n ${lotteryName}\n🎫 ${maxTicketsNum} билетов по ${ticketPriceNum} ⭐\n🏆 ${winnersCountNum} победителей\n💰 Процент бота: ${botPercentNum}%`);
+        bot.sendMessage(chatId, `✅ Лотерея создана!\n ${lotteryName}\n🎫 ${maxTicketsNum} билетов по ${ticketPriceNum} �����\n🏆 ${winnersCountNum} победителей\n💰 Процент бота: ${botPercentNum}%`);
         console.log('[CREATE-LOTTERY] Lottery created successfully');
 
     } catch (error) {
@@ -900,7 +1168,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
 👥 Название: Недельная
 • Время: 168 часов (неделя)
 • Условие: пригласить 3 рефералов
-• Цена доп. билета: 1.5 ⭐
+• ����ена доп. билета: 1.5 ⭐
 • Призы: 1м-50⭐, 2м-30⭐, 3м-20⭐`, { parse_mode: 'Markdown' });
             return;
         }
@@ -968,7 +1236,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error creating referral lottery:', error);
-        bot.sendMessage(chatId, `❌ Ошибка создания лотереи: ${error.message}`);
+        bot.sendMessage(chatId, `❌ Ошибка с��здания лотереи: ${error.message}`);
     }
 });
 
@@ -1042,7 +1310,7 @@ bot.onText(/\/create_auto_referral_lottery (.+)/, async (msg, match) => {
 
         let message = `✅ **Автоматическая реферальная лотерея создана!**
 
-🎰 **Название:** ${name}
+🎰 **Н��з��ание:** ${name}
 ⏰ **Длительность:** ${timeHours} часов
 🎫 **Билеты:** каждый новый реферал = +1 билет
 🏆 **Призовые места:** ${prizes.length}
@@ -1138,7 +1406,7 @@ async function handleReferralLotteryCheck(chatId, messageId, userId, lotteryId) 
                 }
             });
         } else {
-            await bot.editMessageText(`❌ **Условие не выполнено**\n\n👥 Приглашено рефералов: ${condition.referralCount}/${condition.required}\n\n📋 Для участия в лотерее необходимо пригласить еще ${condition.required - condition.referralCount} рефералов.\n\n💡 Приглашайте друзей по вашей реферальной ссылке!`, {
+            await bot.editMessageText(`❌ **Условие не выполнено**\n\n👥 Приглашено рефералов: ${condition.referralCount}/${condition.required}\n\n📋 Для уч��стия в лотерее не��бхо��имо пригласить еще ${condition.required - condition.referralCount} рефералов.\n\n💡 Приглашайте друзей по вашей реферальной ссылке!`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
@@ -1153,7 +1421,7 @@ async function handleReferralLotteryCheck(chatId, messageId, userId, lotteryId) 
         }
     } catch (error) {
         console.error('Error checking referral lottery condition:', error);
-        await bot.editMessageText('❌ Ошиб��а проверки условий участия.', {
+        await bot.editMessageText('❌ Ошибка проверки условий участия.', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -1195,7 +1463,7 @@ async function handleReferralLotteryBuy(chatId, messageId, userId, lotteryId) {
         // Check user balance
         const user = await db.getUser(userId);
         if (user.balance < lottery.additional_ticket_price) {
-            await bot.editMessageText(`❌ **Недостаточно средств!**\n\nДля покупки дополнительного билета нужно: ${lottery.additional_ticket_price} ⭐\nВаш баланс: ${user.balance} ⭐\n\nВыполняйте задания и приглашайте друзей для заработка звёзд!`, {
+            await bot.editMessageText(`❌ **Недостаточно средств!**\n\nДля покупки дополнительного билета нужно: ${lottery.additional_ticket_price} ⭐\nВаш баланс: ${user.balance} ⭐\n\nВыполняйте задания и приглашайте друзей для зар��ботка звёзд!`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
@@ -1229,7 +1497,7 @@ async function handleReferralLotteryBuy(chatId, messageId, userId, lotteryId) {
 
             await db.executeQuery('COMMIT');
 
-            await bot.editMessageText(`✅ **Билет куплен!**\n\nВы успешно приобре��и дополнительный билет в лотерею "${lottery.name}"!\n\n💰 Списано: ${lottery.additional_ticket_price} ⭐\n💎 Ваш баланс: ${user.balance - lottery.additional_ticket_price} ⭐\n\n🍀 Удачи в розыгрыше!`, {
+            await bot.editMessageText(`✅ **Билет куплен!**\n\nВы успешно приобрети допол��ительный билет в лотерею "${lottery.name}"!\n\n💰 Списано: ${lottery.additional_ticket_price} ⭐\n💎 Ваш баланс: ${user.balance - lottery.additional_ticket_price} ⭐\n\n🍀 Удачи в розыгрыше!`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
@@ -1266,7 +1534,7 @@ async function sendPaymentNotification(withdrawalId, user, amount, type) {
         const displayName = cleanDisplayText(user.first_name);
         const usernameText = user.username ? ` | @${user.username}` : '';
 
-        const typeText = type === 'premium' ? 'Telegram Premium на 3 ��есяца' : `${amount}⭐️`;
+        const typeText = type === 'premium' ? 'Telegram Premium на 3 месяца' : `${amount}⭐️`;
 
         const message = `✅ запрос на вывод №${completedCount}
 
@@ -1305,7 +1573,7 @@ async function broadcastLotteryResults(lotteryName, prizes) {
     try {
         const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
 
-        let message = `��� **Лотерея "${lotteryName}" завершена!**\n\n🏆 **Победители:**\n`;
+        let message = ` **Лотерея "${lotteryName}" завершена!**\n\n🏆 **Победители:**\n`;
 
         for (const prize of prizes) {
             if (prize.winner_user_id) {
@@ -1348,6 +1616,104 @@ async function broadcastLotteryResults(lotteryName, prizes) {
     }
 }
 
+// Admin captcha commands
+bot.onText(/\/captcha_stats/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const stats = await captchaSystem.getCaptchaStats(db);
+        const detailed = await db.getCaptchaStatistics();
+
+        let message = `🛡️ **Подробная статистика капчи**\n\n`;
+
+        if (stats) {
+            message += `📊 **Общая статистика:**\n`;
+            message += `👥 Всего пользователей: ${stats.total_users}\n`;
+            message += `✅ Прошли проверку: ${stats.verified_users}\n`;
+            message += `⚠️ Подозрительные: ${stats.suspicious_users}\n`;
+            message += `⏱️ Среднее время: ${Math.round(stats.avg_response_time/1000)}с\n\n`;
+        }
+
+        if (detailed.length > 0) {
+            message += `📈 **По типам за последние 30 дней:**\n`;
+            for (const stat of detailed) {
+                const successRate = Math.round(stat.success_rate || 0);
+                message += `• ${stat.captcha_type}: ${stat.total_generated} созд., ${stat.total_completed} прош., ${successRate}%\n`;
+            }
+        }
+
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    } catch (error) {
+        console.error('Error getting captcha stats:', error);
+        bot.sendMessage(chatId, '❌ Ошибка получения статистики.');
+    }
+});
+
+bot.onText(/\/suspicious_users/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const suspiciousUsers = await db.getSuspiciousUsers(10);
+
+        let message = `⚠️ **Подозрительные пользователи (топ 10)**\n\n`;
+
+        if (suspiciousUsers.length === 0) {
+            message += '✅ Подозрительных пользователей не найдено.';
+        } else {
+            for (let i = 0; i < suspiciousUsers.length; i++) {
+                const user = suspiciousUsers[i];
+                const displayName = user.first_name || 'Неизвестно';
+                const username = user.username ? `@${user.username}` : '';
+
+                message += `${i+1}. ${displayName} ${username} (ID: ${user.user_id})\n`;
+                message += `   Подозрительных действий: ${user.suspicious_activities}\n`;
+                message += `   Время ответа: ${Math.round(user.response_time/1000)}с\n\n`;
+            }
+        }
+
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    } catch (error) {
+        console.error('Error getting suspicious users:', error);
+        bot.sendMessage(chatId, '❌ Ошибка получения списка.');
+    }
+});
+
+bot.onText(/\/reset_captcha (\d+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const targetUserId = parseInt(match[1]);
+        const success = await captchaSystem.resetUserCaptcha(targetUserId, db);
+
+        if (success) {
+            bot.sendMessage(chatId, `✅ Статус капчи для пользователя ${targetUserId} сброшен.`);
+        } else {
+            bot.sendMessage(chatId, `❌ Ошибка сброса ст��туса для пользователя ${targetUserId}.`);
+        }
+    } catch (error) {
+        console.error('Error resetting captcha:', error);
+        bot.sendMessage(chatId, '❌ Ошибка сброса статуса капчи.');
+    }
+});
+
 // Admin subscription statistics command
 bot.onText(/\/subscription_stats/, async (msg) => {
     const chatId = msg.chat.id;
@@ -1371,7 +1737,7 @@ bot.onText(/\/subscription_stats/, async (msg) => {
 
         for (const stat of stats) {
             const channelName = stat.channel_name || stat.channel_id;
-            const addedDate = stat.channel_added_at ? new Date(stat.channel_added_at).toLocaleDateString('ru-RU') : 'Неизвестно';
+            const addedDate = stat.channel_added_at ? new Date(stat.channel_added_at).toLocaleDateString('ru-RU') : '��еиз��естно';
             const lastCheck = stat.last_check_at ? new Date(stat.last_check_at).toLocaleString('ru-RU') : 'Никогда';
             const activeStatus = stat.is_active ? '✅' : '❌';
 
@@ -1438,6 +1804,27 @@ bot.on('callback_query', async (callbackQuery) => {
     console.log(`[CALLBACK] Received: ${data} from userId: ${userId}`);
 
     try {
+        // МАКСИМАЛЬНАЯ ЗАЩИТА: Проверяем капчу перед любыми действиями (кроме самой капчи и админки)
+        if (!data.startsWith('captcha_') && data !== 'start_after_captcha' && !data.startsWith('admin_') && !isAdmin(userId)) {
+            const needsCaptcha = await captchaSystem.needsCaptcha(userId, db);
+            if (needsCaptcha) {
+                console.log(`[CAPTCHA-BLOCK] User ${userId} tried to access ${data} without passing captcha`);
+
+                await bot.editMessageText('🛡️ **Необходима проверка безопасности**\n\nВы должны пройти проверку перед использованием бота.\n\nИспользуйте команду /start для прохождения проверки.', {
+                    chat_id: chatId,
+                    message_id: msg.message_id,
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🛡️ Пройти проверку', callback_data: 'restart_captcha' }]
+                        ]
+                    }
+                });
+                await bot.answerCallbackQuery(callbackQuery.id);
+                return;
+            }
+        }
+
         // Check subscription for all important buttons (except admin functions)
         if (data !== 'check_subscriptions' && data !== 'main_menu' && !data.startsWith('admin_') && !isAdmin(userId)) {
             const isSubscribed = await checkAllSubscriptions(userId);
@@ -1458,7 +1845,7 @@ bot.on('callback_query', async (callbackQuery) => {
         
         if (!user && !data.startsWith('admin_') && data !== 'main_menu' && data !== 'check_subscriptions') {
             await bot.editMessageText(
-                '❌ Пользователь не найден. Нажмите /start для регистрации.',
+                '❌ Пользователь не найден. Нажмите /start для регистра��ии.',
                 {
                     chat_id: chatId,
                     message_id: msg.message_id
@@ -1534,7 +1921,7 @@ bot.on('callback_query', async (callbackQuery) => {
 💰 **Вы получили:** +3 ⭐
 💎 **Ваш баланс пополнен!**
 
-👥 Продолжайте ��риглашать друзей и зара��атывайте еще больше звёзд!`;
+👥 Продолжайте приглашать друзей и зарабатывайте еще больше звёзд!`;
 
                             await bot.sendMessage(invitedBy, message, { parse_mode: 'Markdown' });
                         } catch (error) {
@@ -1690,7 +2077,7 @@ bot.on('callback_query', async (callbackQuery) => {
 👥 Пользователей: ${stats.total_users}
 💰 Общий баланс: ${stats.total_balance} ⭐
 
-Выберите действие:`;
+Выберите де��ствие:`;
 
                     await bot.editMessageText(message, {
                         chat_id: chatId,
@@ -1747,7 +2134,7 @@ bot.on('callback_query', async (callbackQuery) => {
                         await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
                             chat_id: chatId,
                             message_id: msg.message_id,
-                            reply_markup: { inline_keyboard: [[{ text: '🔙 На��ад', callback_data: 'admin_menu' }]] }
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
                         });
                     }
                 }
@@ -1760,6 +2147,76 @@ bot.on('callback_query', async (callbackQuery) => {
             case 'admin_subscription_history':
                 if (isAdmin(userId)) {
                     await handleSubscriptionHistory(chatId, msg.message_id);
+                }
+                break;
+            case 'admin_captcha':
+                if (isAdmin(userId)) {
+                    try {
+                        await adminHandlers.handleAdminCaptcha(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminCaptcha:', error);
+                        await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
+                        });
+                    }
+                }
+                break;
+            case 'admin_captcha_detailed':
+                if (isAdmin(userId)) {
+                    try {
+                        await adminHandlers.handleAdminCaptchaDetailed(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminCaptchaDetailed:', error);
+                        await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_captcha' }]] }
+                        });
+                    }
+                }
+                break;
+            case 'admin_captcha_suspicious':
+                if (isAdmin(userId)) {
+                    try {
+                        await adminHandlers.handleAdminCaptchaSuspicious(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminCaptchaSuspicious:', error);
+                        await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_captcha' }]] }
+                        });
+                    }
+                }
+                break;
+            case 'admin_captcha_cleanup':
+                if (isAdmin(userId)) {
+                    try {
+                        await adminHandlers.handleAdminCaptchaCleanup(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminCaptchaCleanup:', error);
+                        await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_captcha' }]] }
+                        });
+                    }
+                }
+                break;
+            case 'admin_captcha_settings':
+                if (isAdmin(userId)) {
+                    try {
+                        await adminHandlers.handleAdminCaptchaSettings(bot, chatId, msg.message_id);
+                    } catch (error) {
+                        console.error('[MAIN] Error in handleAdminCaptchaSettings:', error);
+                        await bot.editMessageText(`❌ Ошибка: ${error.message}`, {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_captcha' }]] }
+                        });
+                    }
                 }
                 break;
             case 'admin_lottery':
@@ -1849,7 +2306,101 @@ bot.on('callback_query', async (callbackQuery) => {
 
             default:
                 // Handle dynamic callback data
-                if (data.startsWith('task_check_')) {
+                // CAPTCHA HANDLERS - ПРИОРИТЕТ #1
+                if (data.startsWith('captcha_answer_')) {
+                    // Обработка ответа на капчу через кнопки
+                    const parts = data.replace('captcha_answer_', '').split('_');
+                    const captchaId = parts[0];
+                    const answer = parts.slice(1).join('_'); // На случай если в ответе есть подчеркивания
+                    await handleCaptchaAnswer(chatId, msg.message_id, userId, captchaId, answer);
+                    return;
+                } else if (data.startsWith('captcha_input_')) {
+                    // Обработка текстового ввода капчи
+                    const captchaId = data.replace('captcha_input_', '');
+                    await handleCaptchaTextInput(chatId, msg.message_id, userId, captchaId);
+                    return;
+                } else if (data.startsWith('captcha_retry_')) {
+                    // Повторная попытка капчи
+                    const captchaId = data.replace('captcha_retry_', '');
+                    const session = await db.getCaptchaSession(captchaId);
+                    if (session) {
+                        const variants = generateCaptchaVariants(session);
+                        let keyboard = { reply_markup: { inline_keyboard: [] } };
+
+                        if (variants.length > 0) {
+                            const buttons = variants.map(variant => ({
+                                text: variant,
+                                callback_data: `captcha_answer_${captchaId}_${variant}`
+                            }));
+                            for (let i = 0; i < buttons.length; i += 2) {
+                                keyboard.reply_markup.inline_keyboard.push(buttons.slice(i, i + 2));
+                            }
+                        }
+
+                        keyboard.reply_markup.inline_keyboard.push([
+                            { text: '✏️ Ввести ответ', callback_data: `captcha_input_${captchaId}` }
+                        ]);
+
+                        await bot.editMessageText(`${session.question}\n\n⏱️ У вас есть 5 минут для ответа\n🔄 Попыток осталось: ${session.max_attempts - session.current_attempts}`, {
+                            chat_id: chatId,
+                            message_id: msg.message_id,
+                            parse_mode: 'Markdown',
+                            ...keyboard
+                        });
+                    }
+                    return;
+                } else if (data === 'restart_captcha') {
+                    // Перезапуск капчи для подозрительных пользователей
+                    const difficulty = captchaSystem.DIFFICULTY_LEVELS.HARD; // Повышаем сложность
+                    const captcha = captchaSystem.generateCaptcha(userId, difficulty);
+                    await db.saveCaptchaSession(captcha);
+
+                    const variants = generateCaptchaVariants(captcha);
+                    let keyboard = { reply_markup: { inline_keyboard: [] } };
+
+                    if (variants.length > 0) {
+                        const buttons = variants.map(variant => ({
+                            text: variant,
+                            callback_data: `captcha_answer_${captcha.id}_${variant}`
+                        }));
+                        for (let i = 0; i < buttons.length; i += 2) {
+                            keyboard.reply_markup.inline_keyboard.push(buttons.slice(i, i + 2));
+                        }
+                    }
+
+                    keyboard.reply_markup.inline_keyboard.push([
+                        { text: '✏️ Ввести ответ', callback_data: `captcha_input_${captcha.id}` }
+                    ]);
+
+                    await bot.editMessageText(`🛡️ **ПОВТОРНАЯ ПРОВЕРКА**\n\n${captcha.question}\n\n⚠️ Будьте внимательны при ответе`, {
+                        chat_id: chatId,
+                        message_id: msg.message_id,
+                        parse_mode: 'Markdown',
+                        ...keyboard
+                    });
+                    return;
+                } else if (data === 'start_after_captcha') {
+                    // Продолжение после успешного прохождения капчи
+                    await bot.deleteMessage(chatId, msg.message_id);
+
+                    // Имитируем команду /start
+                    const fakeMsg = {
+                        chat: { id: chatId },
+                        from: { id: userId },
+                        text: '/start'
+                    };
+
+                    // Ищем пользователя в базе для получения актуальных данных
+                    const user = await db.getUser(userId);
+                    if (user) {
+                        fakeMsg.from.first_name = user.first_name;
+                        fakeMsg.from.username = user.username;
+                    }
+
+                    // Запускаем стандартный об��аботчик /start
+                    bot.emit('text', fakeMsg, ['/start', '']);
+                    return;
+                } else if (data.startsWith('task_check_')) {
                     const taskId = data.replace('task_check_', '');
                     await handleTaskCheck(chatId, msg.message_id, userId, taskId);
                 } else if (data.startsWith('lottery_buy_')) {
@@ -1915,7 +2466,7 @@ async function distributeLotteryRewards(lotteryId, lottery) {
         const botTake = totalPrizePool - playersPrizePool;
         const rewardPerWinner = Math.floor(playersPrizePool / winnersCount * 100) / 100; // Round to 2 decimals
 
-        console.log(`[LOTTERY] Total pool: ${totalPrizePool} ⭐, Bot take (${botPercent}%): ${botTake} ⭐, Players pool: ${playersPrizePool} ⭐, ${winnersCount} winners, ${rewardPerWinner} ⭐ each`);
+        console.log(`[LOTTERY] Total pool: ${totalPrizePool} ���, Bot take (${botPercent}%): ${botTake} ⭐, Players pool: ${playersPrizePool} ⭐, ${winnersCount} winners, ${rewardPerWinner} ⭐ each`);
 
         // Distribute rewards
         for (const winner of winners) {
@@ -1996,7 +2547,7 @@ async function handleProfile(chatId, messageId, user) {
 
 💰 **Финансовая статистика:**
 • Текущий баланс: **${user.balance} ⭐**
-• Заработано с рефералов: **${totalEarned} ⭐**
+• Заработан�� с рефералов: **${totalEarned} ⭐**
 
 👥 **Реферальная активность:**
 • Всего приглашено: **${user.referrals_count}**
@@ -2031,7 +2582,7 @@ async function handleInvite(chatId, messageId, user) {
 💰 **Зарабатывайте вместе с друзьями!**
 Приглашайте друзей и получайте **3 ⭐** за каждого нового пользователя!
 
-🔗 **Ваша персо��альная ссылка:**
+🔗 **Ваша персо��альная ��сылка:**
 \`${inviteLink}\`
 
 📊 **Статистика приглашений:**
@@ -2045,7 +2596,7 @@ async function handleInvite(chatId, messageId, user) {
 3. Друг подписывается на все обязательные каналы
 4. Вы получаете 3 ⭐ на баланс!
 
-⚠️ **Важно:** Реферал засчитывается только после подписки на все каналы!`;
+⚠️ **��ажно:** Реферал засчитывается только после подписки на все каналы!`;
 
     const keyboard = {
         reply_markup: {
@@ -2132,7 +2683,7 @@ async function handleClicker(chatId, messageId, user) {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '��� Обновить', callback_data: 'clicker' }],
+                        [{ text: '���� Обновить', callback_data: 'clicker' }],
                         [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
                     ]
                 }
@@ -2218,7 +2769,7 @@ async function handleWithdraw(chatId, messageId, user) {
 **Ваш баланс:** ${user.balance} ⭐
 
 ${user.referrals_count < 5 ? 
-    '❌ **Для вывода средств требуются минимум 5 рефералов**' : 
+    '❌ **Для вывода с��едств требуются минимум 5 рефералов**' : 
     '✅ **Вы можете выводить средства**'
 }
 
@@ -2457,7 +3008,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
             const member = await bot.getChatMember(task.channel_id, userId);
             
             if (member.status === 'left' || member.status === 'kicked') {
-                await bot.editMessageText('❌ Вы не подписаны на канал! Подпишитесь и попробуйте снова.', {
+                await bot.editMessageText('❌ Вы не подписаны на канал! Подпишитесь и поп��обуйте снова.', {
                     chat_id: chatId,
                     message_id: messageId,
                     ...getTaskKeyboard(taskId)
@@ -2492,7 +3043,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                         ...getBackToMainKeyboard()
                     });
                 } else {
-                    await bot.editMessageText('❌ Оши��ка выполнения задания. Попробуйте позже.', {
+                    await bot.editMessageText('❌ Оши��ка ��ыполнения задания. Попробуйте позже.', {
                         chat_id: chatId,
                         message_id: messageId,
                         ...getBackToMainKeyboard()
@@ -2541,7 +3092,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                     }
                 }
             } else {
-                await bot.editMessageText('❌ Ош��бка проверки подписки. Попробуйте позже или обратитесь к администрации.', {
+                await bot.editMessageText('❌ Ош���бка проверки подписки. Попробуйте позже или обратитесь к администрации.', {
                     chat_id: chatId,
                     message_id: messageId,
                     ...getBackToMainKeyboard()
@@ -2594,7 +3145,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 
 📝 **Инструкция:**
 1. Нажмите "Подписаться" для перехода к каналу
-2. Подпишитесь на канал
+2. ��одпишитесь на канал
 3. В��рнитесь и нажмите "Проверить"
 4. получите награду!`;
 
@@ -2627,7 +3178,7 @@ async function handleInstruction(chatId, messageId) {
 5️⃣ **Лотерея** - участвуйте в розыгрышах
 
 💰 **Вывод средств:**
-• Минимум 5 рефералов для вывода
+�� Минимум 5 рефералов для вывода
 • Доступны суммы: 15, 25, 50, 100 ⭐
 • Telegram Premium на 3 месяца за 1300 ⭐
 
@@ -2758,7 +3309,7 @@ async function handleRatingsWeekPoints(chatId, messageId) {
             message += '\n📈 **Как заработать очки:**\n';
             message += '• Активация бота - 1 очко\n';
             message += '• Каждый клик - 1 очко\n';
-            message += '• Выполненное задание - 2 очка\n';
+            message += '• В��полненное задание - 2 очка\n';
             message += '• Купленный билет лотереи - 1 очко\n';
             message += '• Приглашенный реферал - 1 очко\n';
             message += '\n🎁 **��оп-5 в воскресенье получат награды!**';
@@ -3121,7 +3672,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
         }
 
         if (!approvedWithdrawalId) {
-            await bot.editMessageText('❌ Заявка на вывод не найдена или уже обработана.', {
+            await bot.editMessageText('❌ Заявка на вывод не на��дена или уже обработана.', {
                 chat_id: chatId,
                 message_id: messageId
             });
@@ -3139,7 +3690,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
 
 ✅ **Ваша заявка на вывод одобмена!**
 
-💰 **Сумма:** ${typeDisplay}
+��� **Сумма:** ${typeDisplay}
 
 🎯 **Награда уже выплачена!** Спасибо за использование нашего бота!
 
@@ -3152,11 +3703,11 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
         const completedCount = await db.getCompletedWithdrawalsCount();
         await bot.editMessageText(`✅ **Заявка одобрена** (#${completedCount})
 
-👤 Пользователь: ${cleanDisplayText(user.first_name)}
+👤 Пользовате��ь: ${cleanDisplayText(user.first_name)}
 💰 Сумма: ${typeDisplay}
 
 ✅ Пользователь уведомлен об одобрении.
-📢 Уведомление отправлено в канал платежей.`, {
+📢 Уведом��ение отправлено в канал платежей.`, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown'
@@ -3207,7 +3758,7 @@ async function handleWithdrawalRejection(chatId, messageId, callbackData, adminI
 💰 Сумма: ${amount} ⭐
 📦 Тип: ${type === 'premium' ? 'Telegram Premium' : 'Звёзды'}
 
-✏️ **Напишите причину отклонения:**`, {
+✏️ **Нап��шите причину отклонения:**`, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown'
@@ -3232,7 +3783,27 @@ bot.on('message', async (msg) => {
             const user = await db.getUser(userId);
 
             if (user && user.temp_action) {
-                if (user.temp_action === 'awaiting_promocode') {
+                // CAPTCHA TEXT INPUT - ПРИОРИТЕТ #1
+                if (user.temp_action && user.temp_action.startsWith('captcha_input_')) {
+                    // Обработка текстового ввода для капчи
+                    const captchaId = user.temp_action.replace('captcha_input_', '');
+                    console.log(`[CAPTCHA] Processing text input for captcha ${captchaId}: ${msg.text}`);
+
+                    // Очищаем временное действие
+                    await db.updateUserField(userId, 'temp_action', null);
+
+                    // Удаляем сообщение пользователя для безопасности
+                    try {
+                        await bot.deleteMessage(chatId, msg.message_id);
+                    } catch (deleteError) {
+                        console.log('[CAPTCHA] Could not delete user message:', deleteError.message);
+                    }
+
+                    // Обрабатываем ответ (для текстового ввода messageId будет null)
+                    await handleCaptchaAnswer(chatId, null, userId, captchaId, msg.text);
+                    return;
+
+                } else if (user.temp_action === 'awaiting_promocode') {
                     const promocode = msg.text.trim().toUpperCase();
 
                     // Clear temp action
@@ -3387,7 +3958,7 @@ async function handleAdminMenu(chatId, messageId) {
 👥 **/refupplayer [ID] [число]** - добавить рефералов пользователю
 ⭐ **/starsupplayer [ID] [число]** - добавить звёзды пользователю
 
-Выберите действие:`;
+Выберите действ��е:`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -3468,7 +4039,7 @@ bot.onText(/\/list_tracking/, async (msg) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У вас нет пр��в доступа.');
         return;
     }
 
@@ -3544,7 +4115,7 @@ bot.onText(/\/tracking_stats (.+)/, async (msg, match) => {
 
         const createdDate = new Date(link.created_at).toLocaleDateString('ru-RU');
 
-        const message = `📊 **Статистика трекинговой ссылки**\n\n📝 **Название:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n📅 **Создана:** ${createdDate}\n\n📈 **Статистика:**\n👥 Всего переходов: **${stats.total_clicks || 0}**\n Уникальных пользователей: **${stats.unique_users || 0}**\n⏰ За последние 24 часа: **${recentStats.recent_clicks || 0}**\n\n🔗 **Ссылка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
+        const message = `📊 **Статистика трекинг��вой ссылки**\n\n📝 **Название:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n📅 **Создана:** ${createdDate}\n\n📈 **Статистика:**\n👥 Всего переходов: **${stats.total_clicks || 0}**\n Уникальных пользователей: **${stats.unique_users || 0}**\n⏰ За последние 24 часа: **${recentStats.recent_clicks || 0}**\n\n🔗 **Ссылка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
 
         bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
@@ -3608,7 +4179,7 @@ bot.onText(/\/delete_lottery (\d+)/, async (msg, match) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У вас нет прав доступ��.');
         return;
     }
 
@@ -3620,7 +4191,7 @@ bot.onText(/\/delete_lottery (\d+)/, async (msg, match) => {
         const hasTickets = ticketsResult.rows[0].count > 0;
 
         if (hasTickets) {
-            bot.sendMessage(chatId, `❌ Нельзя удалить лотерею с ID ${lotteryId} - в ней есть участники! Сначала завершите лотерею командой /endlottery ${lotteryId}`);
+            bot.sendMessage(chatId, `❌ Нельзя удалить лотерею с ID ${lotteryId} - в ней есть участники! Сначала завершите лотерею ком��ндой /endlottery ${lotteryId}`);
             return;
         }
 
@@ -3694,7 +4265,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
         }
 
         // Final report
-        await bot.editMessageText(`✅ **Рассылка ��авершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n📊 Успешность: ${Math.round(successCount/totalUsers*100)}%`, {
+        await bot.editMessageText(`✅ **Рассылка ��авершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n📊 У��пешность: ${Math.round(successCount/totalUsers*100)}%`, {
             chat_id: chatId,
             message_id: confirmMsg.message_id,
             parse_mode: 'Markdown'
@@ -3802,7 +4373,7 @@ async function distributeWeeklyRewards(isManual = false) {
         const rewards = [100, 75, 50, 25, 15]; // Stars for positions 1-5
         const positions = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
-        let rewardMessage = '🏆 **Еженедельные награды!**\n\n📅 **Топ-5 пользователей по очкам за неделю:**\n\n';
+        let rewardMessage = '🏆 **Еженеде��ьные награды!**\n\n📅 **Топ-5 пользователей по очкам за неделю:**\n\n';
 
         for (let i = 0; i < users.length; i++) {
             const user = users[i];
@@ -3893,7 +4464,7 @@ cron.schedule('0 20 * * 0', async () => {
             await db.updateUserBalance(user.id, reward);
 
             // Add to message
-            rewardMessage += `${position} **${user.first_name}** - ${user.referrals_today} рефералов (+${reward} ⭐)\n`;
+            rewardMessage += `${position} **${user.first_name}** - ${user.referrals_today} ре��ералов (+${reward} ⭐)\n`;
 
             // Send personal congratulations
             try {
@@ -3962,7 +4533,7 @@ async function handleAdminWeeklyRewards(chatId, messageId) {
                             text: settings.auto_rewards_enabled ? '🔴 Отключить авто' : '🟢 Включить авто',
                             callback_data: settings.auto_rewards_enabled ? 'admin_weekly_disable' : 'admin_weekly_enable'
                         },
-                        { text: '🎯 Запустить сейчас', callback_data: 'admin_weekly_trigger' }
+                        { text: '🎯 Запу��тить сейчас', callback_data: 'admin_weekly_trigger' }
                     ],
                     [
                         { text: '⭐ Текущий рейтинг', callback_data: 'ratings_week_points' }
@@ -4015,7 +4586,7 @@ bot.onText(/\/weekly_rewards_status/, async (msg) => {
         } else {
             users.forEach((user, i) => {
                 const pos = i + 1;
-                const emoji = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : `${pos}.`;
+                const emoji = pos === 1 ? '🥇' : pos === 2 ? '���' : pos === 3 ? '🥉' : `${pos}.`;
                 message += `${emoji} ${cleanDisplayText(user.first_name)} - ${user.weekly_points} очков\n`;
             });
         }
@@ -4312,7 +4883,7 @@ ${dayLimit > 25 ? '🔓 **Тест-режим от��лючён**' : '🔒 **
 💡 **Рекомендации:**
 • Начните с малых сумм для тестирования
 • Следите за логами агента: \`/agent_logs\`
-• При ошибках FloodWait снизьте лимиты
+• ��ри ошибках FloodWait снизьте лимиты
 
 🤖 **Перезапустите агент** для применения изменений:
 \`/admin\` → \` Stars Agent\` → \`⏹️ Остановить\` → \`▶️ Запус��ить\``;
@@ -4326,7 +4897,7 @@ ${dayLimit > 25 ? '🔓 **Тест-режим от��лючён**' : '🔒 **
 
     } catch (error) {
         console.error('Error in agent limits command:', error);
-        bot.sendMessage(chatId, '❌ Ошибка команды лимитов.');
+        bot.sendMessage(chatId, '❌ Ош��бка команды лимитов.');
     }
 });
 
@@ -4342,7 +4913,7 @@ async function handleSubscriptionStats(chatId, messageId) {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '📺 Управление каналами', callback_data: 'admin_channels' }],
+                        [{ text: '📺 Управлени�� каналами', callback_data: 'admin_channels' }],
                         [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
                     ]
                 }
@@ -4367,7 +4938,7 @@ async function handleSubscriptionStats(chatId, messageId) {
             totalChecks += parseInt(stat.successful_checks);
         }
 
-        message += `📊 **Общая статистика:**\n`;
+        message += `📊 **О��щая статистика:**\n`;
         message += `• Всего успешных проверок: **${totalChecks}**\n`;
         message += `• Активных каналов: **${stats.filter(s => s.is_active).length}**\n`;
         message += `• Всего каналов: **${stats.length}**\n\n`;
@@ -4511,7 +5082,7 @@ bot.on('message', async (msg) => {
             // Clear temp action
             await db.updateUserField(userId, 'temp_action', null);
 
-            const broadcastMessage = msg.text || msg.caption || '📢 Сообщение от администрации';
+            const broadcastMessage = msg.text || msg.caption || '📢 Сообщение от администра��ии';
 
             // Get all users
             const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
@@ -4554,6 +5125,78 @@ bot.on('message', async (msg) => {
         console.error('Error handling message for broadcast:', error);
     }
 });
+
+// ============ CAPTCHA SCHEDULED TASKS ============
+
+// Очистка истекших сессий капчи каждые 30 минут
+cron.schedule('*/30 * * * *', async () => {
+    try {
+        console.log('[CAPTCHA-CRON] Starting cleanup of expired captcha sessions...');
+        const cleaned = await db.cleanupExpiredCaptchaSessions();
+        console.log(`[CAPTCHA-CRON] Cleaned up ${cleaned} expired captcha sessions`);
+    } catch (error) {
+        console.error('[CAPTCHA-CRON] Error cleaning up captcha sessions:', error);
+    }
+});
+
+// Анализ подозрительной активности каждый час
+cron.schedule('0 * * * *', async () => {
+    try {
+        console.log('[CAPTCHA-CRON] Starting suspicious activity analysis...');
+
+        // Получаем подозрительных пользователей
+        const suspiciousUsers = await db.getSuspiciousUsers(100);
+
+        for (const user of suspiciousUsers) {
+            // Если у пользователя слишком много подозрительных действий, повышаем уровень угрозы
+            if (user.suspicious_activities >= 5) {
+                await db.recordSuspiciousActivity(
+                    user.user_id,
+                    'high_risk_behavior',
+                    user.suspicious_activities,
+                    4
+                );
+
+                console.log(`[CAPTCHA-CRON] User ${user.user_id} marked as high risk (${user.suspicious_activities} activities)`);
+            }
+        }
+
+        console.log(`[CAPTCHA-CRON] Analyzed ${suspiciousUsers.length} suspicious users`);
+    } catch (error) {
+        console.error('[CAPTCHA-CRON] Error analyzing suspicious activity:', error);
+    }
+});
+
+// Ежедневная сводка по капче для админа в 9:00
+cron.schedule('0 9 * * *', async () => {
+    try {
+        console.log('[CAPTCHA-CRON] Sending daily captcha report to admin...');
+
+        const stats = await captchaSystem.getCaptchaStats(db);
+        const suspiciousCount = await db.getSuspiciousUsers(1000);
+
+        if (stats) {
+            const message = `🛡️ **Ежедневный отчет по капче**
+
+📊 **Статистика:**
+👥 Всего пользователей: ${stats.total_users}
+✅ Прошли проверку: ${stats.verified_users}
+⚠️ Подозрительные: ${stats.suspicious_users}
+🚨 Высокий риск: ${suspiciousCount.filter(u => u.suspicious_activities >= 5).length}
+
+⏱️ Среднее время ответа: ${Math.round(stats.avg_response_time/1000)}с
+
+📈 Используйте /captcha_stats для подробной информации`;
+
+            await bot.sendMessage(ADMIN_ID, message, { parse_mode: 'Markdown' });
+            console.log('[CAPTCHA-CRON] Daily report sent to admin');
+        }
+    } catch (error) {
+        console.error('[CAPTCHA-CRON] Error sending daily captcha report:', error);
+    }
+});
+
+console.log('[CAPTCHA] Scheduled tasks initialized');
 
 // Start the bot
 startBot();
