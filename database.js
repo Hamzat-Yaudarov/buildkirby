@@ -214,6 +214,24 @@ async function initializeDatabase() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT fk_weekly_points_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+
+            -- Channel subscription statistics table
+            CREATE TABLE IF NOT EXISTS channel_subscription_stats (
+                id SERIAL PRIMARY KEY,
+                channel_id VARCHAR(100) NOT NULL,
+                successful_checks INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(channel_id)
+            );
+
+            -- Subscription check events table
+            CREATE TABLE IF NOT EXISTS subscription_check_events (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                success BOOLEAN DEFAULT TRUE,
+                active_channels_count INTEGER DEFAULT 0
+            );
         `);
 
         // Add missing columns if they don't exist
@@ -271,6 +289,9 @@ async function initializeDatabase() {
                 CREATE INDEX IF NOT EXISTS idx_users_weekly_points ON users(weekly_points);
                 CREATE INDEX IF NOT EXISTS idx_withdrawal_requests_status ON withdrawal_requests(status);
                 CREATE INDEX IF NOT EXISTS idx_weekly_points_history_user_week ON weekly_points_history(user_id, week_start);
+                CREATE INDEX IF NOT EXISTS idx_channel_subscription_stats_channel ON channel_subscription_stats(channel_id);
+                CREATE INDEX IF NOT EXISTS idx_subscription_check_events_user ON subscription_check_events(user_id);
+                CREATE INDEX IF NOT EXISTS idx_subscription_check_events_checked_at ON subscription_check_events(checked_at);
             `);
 
             console.log('✅ Database columns updated');
@@ -1203,6 +1224,138 @@ async function getWithdrawalById(withdrawalId) {
     }
 }
 
+// Channel subscription statistics functions
+async function recordSubscriptionCheck(userId, success = true) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Get count of active channels at this moment
+        const activeChannelsResult = await executeQuery(
+            'SELECT COUNT(*) as count FROM required_channels WHERE is_active = TRUE'
+        );
+        const activeChannelsCount = parseInt(activeChannelsResult.rows[0].count);
+
+        // Record the subscription check event
+        await executeQuery(`
+            INSERT INTO subscription_check_events (user_id, checked_at, success, active_channels_count)
+            VALUES ($1, CURRENT_TIMESTAMP, $2, $3)
+        `, [userId, success, activeChannelsCount]);
+
+        // If successful, update statistics for all active channels
+        if (success) {
+            const activeChannels = await executeQuery(
+                'SELECT channel_id FROM required_channels WHERE is_active = TRUE'
+            );
+
+            for (const channel of activeChannels.rows) {
+                await executeQuery(`
+                    INSERT INTO channel_subscription_stats (channel_id, successful_checks, updated_at)
+                    VALUES ($1, 1, CURRENT_TIMESTAMP)
+                    ON CONFLICT (channel_id)
+                    DO UPDATE SET
+                        successful_checks = channel_subscription_stats.successful_checks + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                `, [channel.channel_id]);
+            }
+        }
+
+        await executeQuery('COMMIT');
+        return true;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error recording subscription check:', error);
+        return false;
+    }
+}
+
+async function getChannelSubscriptionStats() {
+    try {
+        const result = await executeQuery(`
+            SELECT
+                css.channel_id,
+                rc.channel_name,
+                css.successful_checks,
+                rc.created_at as channel_added_at,
+                css.updated_at as last_check_at,
+                rc.is_active
+            FROM channel_subscription_stats css
+            LEFT JOIN required_channels rc ON css.channel_id = rc.channel_id
+            ORDER BY rc.created_at ASC, css.successful_checks DESC
+        `);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting channel subscription stats:', error);
+        throw error;
+    }
+}
+
+async function getSubscriptionCheckHistory(limit = 100) {
+    try {
+        const result = await executeQuery(`
+            SELECT
+                sce.id,
+                sce.user_id,
+                u.first_name,
+                u.username,
+                sce.checked_at,
+                sce.success,
+                sce.active_channels_count
+            FROM subscription_check_events sce
+            LEFT JOIN users u ON sce.user_id = u.id
+            ORDER BY sce.checked_at DESC
+            LIMIT $1
+        `, [limit]);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting subscription check history:', error);
+        throw error;
+    }
+}
+
+async function getChannelStatsDetailed(channelId) {
+    try {
+        // Get channel info
+        const channelResult = await executeQuery(`
+            SELECT * FROM required_channels WHERE channel_id = $1
+        `, [channelId]);
+
+        if (channelResult.rows.length === 0) {
+            return null;
+        }
+
+        const channel = channelResult.rows[0];
+
+        // Get statistics
+        const statsResult = await executeQuery(`
+            SELECT successful_checks, updated_at FROM channel_subscription_stats
+            WHERE channel_id = $1
+        `, [channelId]);
+
+        const stats = statsResult.rows[0] || { successful_checks: 0, updated_at: null };
+
+        // Get recent checks count (last 24 hours)
+        const recentChecksResult = await executeQuery(`
+            SELECT COUNT(*) as recent_checks
+            FROM subscription_check_events
+            WHERE checked_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
+            AND success = TRUE
+            AND active_channels_count > 0
+        `);
+
+        const recentChecks = parseInt(recentChecksResult.rows[0].recent_checks);
+
+        return {
+            ...channel,
+            successful_checks: stats.successful_checks,
+            last_check_at: stats.updated_at,
+            recent_checks_24h: recentChecks
+        };
+    } catch (error) {
+        console.error('Error getting detailed channel stats:', error);
+        throw error;
+    }
+}
+
 // Export functions
 module.exports = {
     pool,
@@ -1245,5 +1398,10 @@ module.exports = {
     rejectWithdrawalRequest,
     rejectWithdrawalRequestById,
     getCompletedWithdrawalsCount,
-    getWithdrawalById
+    getWithdrawalById,
+    // Channel subscription statistics functions
+    recordSubscriptionCheck,
+    getChannelSubscriptionStats,
+    getSubscriptionCheckHistory,
+    getChannelStatsDetailed
 };
