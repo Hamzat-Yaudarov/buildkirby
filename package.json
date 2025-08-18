@@ -19,7 +19,9 @@
     "test-referrals": "node test-referral-system.js",
     "fix-referrals": "node fix-referral-duplicates.js",
     "monitor-referrals": "node monitor-referrals.js",
-    "railway-check": "node railway-diagnostic.js"
+    "railway-check": "node railway-diagnostic.js",
+    "reset-notifications": "node reset-subscription-notifications.js",
+    "test-subscription-fix": "node test-subscription-logic-fix.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",
