@@ -307,7 +307,7 @@ async function initializeDatabase() {
                 UNIQUE(user_id, channel_link)
             );
 
-            -- SubGram API requests log - для отслеживания запр��сов к API
+            -- SubGram API requests log - для отслеживания запросов к API
             CREATE TABLE IF NOT EXISTS subgram_api_requests (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -1464,6 +1464,91 @@ async function getWithdrawalById(withdrawalId) {
     }
 }
 
+// Get all pending withdrawal requests
+async function getAllPendingWithdrawals() {
+    try {
+        const result = await executeQuery(`
+            SELECT wr.*, u.first_name, u.username
+            FROM withdrawal_requests wr
+            JOIN users u ON wr.user_id = u.id
+            WHERE wr.status = 'pending'
+            ORDER BY wr.created_at ASC
+        `);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting pending withdrawals:', error);
+        throw error;
+    }
+}
+
+// Reject all pending withdrawals with the same reason
+async function rejectAllPendingWithdrawals(adminId, reason) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Get all pending withdrawals first
+        const pendingWithdrawals = await getAllPendingWithdrawals();
+
+        if (pendingWithdrawals.length === 0) {
+            await executeQuery('ROLLBACK');
+            return {
+                success: true,
+                count: 0,
+                message: 'No pending withdrawals to reject'
+            };
+        }
+
+        let rejectedCount = 0;
+        const rejectedUsers = [];
+
+        // Reject each withdrawal and return balance
+        for (const withdrawal of pendingWithdrawals) {
+            try {
+                // Update withdrawal status
+                await executeQuery(`
+                    UPDATE withdrawal_requests
+                    SET status = 'rejected',
+                        processed_at = CURRENT_TIMESTAMP,
+                        processed_by = $1,
+                        admin_notes = $2
+                    WHERE id = $3 AND status = 'pending'
+                `, [adminId, reason, withdrawal.id]);
+
+                // Return balance to user
+                await updateUserBalance(withdrawal.user_id, withdrawal.amount);
+
+                rejectedCount++;
+                rejectedUsers.push({
+                    id: withdrawal.user_id,
+                    name: withdrawal.first_name,
+                    username: withdrawal.username,
+                    amount: withdrawal.amount,
+                    type: withdrawal.type
+                });
+
+                console.log(`[WITHDRAWAL] Bulk rejected: User ${withdrawal.user_id}, Amount ${withdrawal.amount}, Reason: ${reason}`);
+            } catch (error) {
+                console.error(`Error rejecting withdrawal ${withdrawal.id}:`, error);
+                // Continue with other withdrawals even if one fails
+            }
+        }
+
+        await executeQuery('COMMIT');
+
+        return {
+            success: true,
+            count: rejectedCount,
+            users: rejectedUsers,
+            reason: reason
+        };
+
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error rejecting all pending withdrawals:', error);
+        throw error;
+    }
+}
+
 // Channel subscription statistics functions
 async function recordSubscriptionCheck(userId, success = true) {
     try {
@@ -1924,6 +2009,8 @@ module.exports = {
     rejectWithdrawalRequestById,
     getCompletedWithdrawalsCount,
     getWithdrawalById,
+    getAllPendingWithdrawals,
+    rejectAllPendingWithdrawals,
     // Channel subscription statistics functions
     recordSubscriptionCheck,
     getChannelSubscriptionStats,
