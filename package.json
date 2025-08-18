@@ -17,7 +17,10 @@
     "check-agent": "node check-agent-status.js",
     "test-subgram": "node test-subgram.js",
     "test-referrals": "node test-referral-system.js",
-    "test-moderation": "node test-moderation-status.js"
+    "test-moderation": "node test-moderation-status.js",
+    "diagnose": "node diagnose-bot.js",
+    "test-telegram": "node test-bot-interaction.js",
+    "clear-updates": "node clear-old-updates.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",
