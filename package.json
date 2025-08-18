@@ -28,7 +28,8 @@
     "node-telegram-bot-api": "^0.64.0",
     "sqlite3": "^5.1.6",
     "node-cron": "^3.0.3",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "axios": "^1.6.0"
   },
   "engines": {
     "node": ">=16.0.0",
