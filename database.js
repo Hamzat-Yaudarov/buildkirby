@@ -44,6 +44,17 @@ async function initializeDatabase() {
             console.log('ℹ���  referral_processed migration: table might not exist yet');
         }
 
+        // Add subscription_notified column if it doesn't exist (migration)
+        try {
+            await pool.query(`
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS subscription_notified BOOLEAN DEFAULT FALSE
+            `);
+            console.log('✅ subscription_notified column migration completed');
+        } catch (migrationError) {
+            console.log('ℹ️  subscription_notified migration: table might not exist yet');
+        }
+
         // Create tables without constraints to avoid conflicts
         await pool.query(`
             -- Users table
@@ -62,6 +73,7 @@ async function initializeDatabase() {
                 is_subscribed BOOLEAN DEFAULT FALSE,
                 captcha_passed BOOLEAN DEFAULT FALSE,
                 referral_processed BOOLEAN DEFAULT FALSE,
+                subscription_notified BOOLEAN DEFAULT FALSE,
                 temp_action VARCHAR(100),
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 clicks_today INTEGER DEFAULT 0,
@@ -357,6 +369,11 @@ async function initializeDatabase() {
             await pool.query(`
                 ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS weekly_points INTEGER DEFAULT 0;
+            `);
+
+            await pool.query(`
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS subscription_notified BOOLEAN DEFAULT FALSE;
             `);
 
             // Initialize weekly rewards settings if not exists
@@ -674,7 +691,8 @@ async function updateUserField(userId, field, value) {
         const allowedFields = [
             'username', 'first_name', 'balance', 'referrals_count', 'referrals_today',
             'invited_by', 'pending_referrer', 'last_click', 'last_case_open',
-            'is_subscribed', 'temp_action', 'clicks_today', 'weekly_points'
+            'is_subscribed', 'temp_action', 'clicks_today', 'weekly_points',
+            'subscription_notified'
         ];
 
         if (!allowedFields.includes(field)) {
@@ -2042,7 +2060,12 @@ module.exports = {
     updateSubGramChannelStatus,
     logSubGramAPIRequest,
     getSubGramAPIRequestHistory,
-    cleanupExpiredSubGramSessions
+    cleanupExpiredSubGramSessions,
+    // Subscription notification functions
+    setSubscriptionNotified,
+    isSubscriptionNotified,
+    resetSubscriptionNotified,
+    resetAllSubscriptionNotifications
 };
 
 // ==================== SubGram API Functions ====================
@@ -2305,6 +2328,51 @@ async function cleanupExpiredSubGramSessions() {
         return result.rowCount;
     } catch (error) {
         console.error('Error cleaning up expired SubGram sessions:', error);
+        return 0;
+    }
+}
+
+// Subscription notification status management functions
+async function setSubscriptionNotified(userId, notified = true) {
+    try {
+        await updateUserField(userId, 'subscription_notified', notified);
+        console.log(`[SUBSCRIPTION] User ${userId} notification status set to: ${notified}`);
+        return true;
+    } catch (error) {
+        console.error('Error setting subscription notification status:', error);
+        return false;
+    }
+}
+
+async function isSubscriptionNotified(userId) {
+    try {
+        const user = await getUser(userId);
+        return user ? user.subscription_notified : false;
+    } catch (error) {
+        console.error('Error checking subscription notification status:', error);
+        return false;
+    }
+}
+
+async function resetSubscriptionNotified(userId) {
+    try {
+        await setSubscriptionNotified(userId, false);
+        console.log(`[SUBSCRIPTION] User ${userId} notification status reset`);
+        return true;
+    } catch (error) {
+        console.error('Error resetting subscription notification status:', error);
+        return false;
+    }
+}
+
+// Reset notification status for all users (when channels are updated)
+async function resetAllSubscriptionNotifications() {
+    try {
+        const result = await executeQuery('UPDATE users SET subscription_notified = FALSE');
+        console.log(`[SUBSCRIPTION] Reset notification status for ${result.rowCount} users`);
+        return result.rowCount;
+    } catch (error) {
+        console.error('Error resetting all subscription notifications:', error);
         return 0;
     }
 }
