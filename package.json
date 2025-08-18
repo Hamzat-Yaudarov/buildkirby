@@ -16,7 +16,9 @@
     "test-stars": "python3 test-stars-sending.py",
     "check-agent": "node check-agent-status.js",
     "test-subgram": "node test-subgram.js",
-    "test-referrals": "node test-referral-system.js"
+    "test-referrals": "node test-referral-system.js",
+    "fix-referrals": "node fix-referral-duplicates.js",
+    "monitor-referrals": "node monitor-referrals.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",

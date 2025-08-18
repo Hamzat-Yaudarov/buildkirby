@@ -41,7 +41,7 @@ async function initializeDatabase() {
             `);
             console.log('✅ referral_processed column migration completed');
         } catch (migrationError) {
-            console.log('ℹ️  referral_processed migration: table might not exist yet');
+            console.log('ℹ���  referral_processed migration: table might not exist yet');
         }
 
         // Create tables without constraints to avoid conflicts
@@ -278,7 +278,7 @@ async function initializeDatabase() {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- SubGram user sessions - для отслеживания состояния пользователей
+            -- SubGram user sessions - для отслеживания состо��ния пользователей
             CREATE TABLE IF NOT EXISTS subgram_user_sessions (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -307,7 +307,7 @@ async function initializeDatabase() {
                 UNIQUE(user_id, channel_link)
             );
 
-            -- SubGram API requests log - для отслеживания запросов к API
+            -- SubGram API requests log - для отслеживания запр��сов к API
             CREATE TABLE IF NOT EXISTS subgram_api_requests (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -451,9 +451,9 @@ async function createOrUpdateUser(user, invitedBy = null) {
                 [id, username, first_name, invitedBy]
             );
             
-            // If user was invited, add referral bonus
+            // If user was invited, setup referral relationship (bonus will be awarded when qualified)
             if (invitedBy) {
-                await addReferralBonus(invitedBy);
+                await setupReferralRelationship(result.rows[0].id, invitedBy);
             }
             
             return result.rows[0];
@@ -566,30 +566,54 @@ async function activateRetroactiveReferral(userId) {
 
         const referrerId = activationCheck.referrerId;
 
-        // Award the referral bonus back
-        await executeQuery(`
-            UPDATE users
-            SET
-                balance = balance + 3,
-                referrals_count = referrals_count + 1
-            WHERE id = $1
-        `, [referrerId]);
+        // Use transaction to ensure atomicity and prevent race conditions
+        await executeQuery('BEGIN');
 
-        // Mark as processed
-        await executeQuery(`
-            UPDATE users
-            SET referral_processed = TRUE
-            WHERE id = $1
-        `, [userId]);
+        try {
+            // Double-check that user is still unprocessed (protect against race conditions)
+            const recheck = await executeQuery('SELECT referral_processed FROM users WHERE id = $1', [userId]);
+            if (recheck.rows.length === 0 || recheck.rows[0].referral_processed) {
+                await executeQuery('ROLLBACK');
+                return { success: false, reason: 'Already processed or user not found' };
+            }
 
-        console.log(`[REFERRAL] Retroactive activation: User ${userId} → Referrer ${referrerId} (+3⭐)`);
+            // Mark as processed first to prevent duplicate processing
+            const processedResult = await executeQuery(`
+                UPDATE users
+                SET referral_processed = TRUE
+                WHERE id = $1 AND referral_processed = FALSE
+                RETURNING id
+            `, [userId]);
 
-        return {
-            success: true,
-            referrerId: referrerId,
-            userName: activationCheck.userName,
-            starsAwarded: 3
-        };
+            if (processedResult.rows.length === 0) {
+                await executeQuery('ROLLBACK');
+                return { success: false, reason: 'Already processed by another thread' };
+            }
+
+            // Award the referral bonus back
+            await executeQuery(`
+                UPDATE users
+                SET
+                    balance = balance + 3,
+                    referrals_count = referrals_count + 1
+                WHERE id = $1
+            `, [referrerId]);
+
+            await executeQuery('COMMIT');
+
+            console.log(`[REFERRAL] Retroactive activation: User ${userId} → Referrer ${referrerId} (+3⭐)`);
+
+            return {
+                success: true,
+                referrerId: referrerId,
+                userName: activationCheck.userName,
+                starsAwarded: 3
+            };
+
+        } catch (error) {
+            await executeQuery('ROLLBACK');
+            throw error;
+        }
 
     } catch (error) {
         console.error('Error activating retroactive referral:', error);
@@ -597,36 +621,21 @@ async function activateRetroactiveReferral(userId) {
     }
 }
 
-// Legacy function kept for compatibility but now uses qualified system
+// Legacy function - DEPRECATED! Do not use!
+// This function is kept only for compatibility and should not be called
 async function addReferralBonus(referrerId, newUserName = 'Новый пользователь') {
-    console.log(`[REFERRAL] Legacy addReferralBonus called - using new qualified system`);
+    console.warn(`[REFERRAL] ⚠️ DEPRECATED: Legacy addReferralBonus called - this should not happen!`);
+    console.warn(`[REFERRAL] Stack trace:`, new Error().stack);
 
-    // In the new system, we need the new user ID to check qualification
-    // This function is kept for compatibility but should be replaced
-    const bonus = 3;
-
-    try {
-        await executeQuery(
-            `UPDATE users SET
-             referrals_count = referrals_count + 1,
-             referrals_today = referrals_today + 1,
-             updated_at = CURRENT_TIMESTAMP
-             WHERE id = $1`,
-            [referrerId]
-        );
-
-        // Check if this referrer should now be processed
-        await handleNewReferralEarned(referrerId);
-
-        return {
-            referrerId,
-            bonus,
-            newUserName
-        };
-    } catch (error) {
-        console.error('Error in legacy addReferralBonus:', error);
-        throw error;
-    }
+    // This function is deprecated and should not be used
+    // Return without doing anything to prevent duplicate processing
+    return {
+        referrerId,
+        bonus: 0,
+        newUserName,
+        deprecated: true,
+        message: 'Function deprecated - use qualified referral system instead'
+    };
 }
 
 async function updateUserBalance(userId, amount) {
@@ -1652,23 +1661,33 @@ async function checkReferralQualification(userId) {
         const user = await getUser(userId);
         if (!user) return { qualified: false, reason: 'User not found' };
 
-        // Check 1: Captcha passed
+        // Check 0: Must have a referrer to be qualified
+        if (!user.invited_by) {
+            return { qualified: false, reason: 'No referrer' };
+        }
+
+        // Check 1: Not already processed
+        if (user.referral_processed) {
+            return { qualified: false, reason: 'Already processed' };
+        }
+
+        // Check 2: Captcha passed
         if (!user.captcha_passed) {
             return { qualified: false, reason: 'Captcha not passed' };
         }
 
-        // Check 2: Subscribed to all channels
+        // Check 3: Subscribed to all channels
         if (!user.is_subscribed) {
             return { qualified: false, reason: 'Not subscribed to channels' };
         }
 
-        // Check 3: Has at least 1 referral - REMOVED
+        // Check 4: Has at least 1 referral - REMOVED
         // Referral now counts immediately after captcha + subscription
         // if (user.referrals_count < 1) {
         //     return { qualified: false, reason: 'No referrals yet' };
         // }
 
-        return { qualified: true, reason: 'Captcha and subscription completed' };
+        return { qualified: true, reason: 'Captcha and subscription completed, not yet processed' };
     } catch (error) {
         console.error('Error checking referral qualification:', error);
         return { qualified: false, reason: 'Database error' };
@@ -1698,24 +1717,42 @@ async function processQualifiedReferral(userId) {
             return { success: false, reason: 'No referrer found' };
         }
 
-        // Award referral bonus to the referrer
-        await executeQuery(
-            'UPDATE users SET referrals_count = referrals_count + 1, referrals_today = referrals_today + 1, balance = balance + 3 WHERE id = $1',
-            [invitedBy]
-        );
+        // Use transaction to ensure atomicity and prevent race conditions
+        await executeQuery('BEGIN');
 
-        // Mark this referral as processed
-        await executeQuery(
-            'UPDATE users SET referral_processed = TRUE WHERE id = $1',
-            [userId]
-        );
+        try {
+            // Double-check and mark as processed first to prevent duplicate processing
+            const processedResult = await executeQuery(`
+                UPDATE users
+                SET referral_processed = TRUE
+                WHERE id = $1 AND referral_processed = FALSE
+                RETURNING id
+            `, [userId]);
 
-        console.log(`[REFERRAL] Processed qualified referral: User ${userId} → Referrer ${invitedBy}`);
-        return {
-            success: true,
-            referrerId: invitedBy,
-            userName: user.first_name
-        };
+            if (processedResult.rows.length === 0) {
+                await executeQuery('ROLLBACK');
+                return { success: false, reason: 'Already processed by another thread' };
+            }
+
+            // Award referral bonus to the referrer
+            await executeQuery(
+                'UPDATE users SET referrals_count = referrals_count + 1, referrals_today = referrals_today + 1, balance = balance + 3 WHERE id = $1',
+                [invitedBy]
+            );
+
+            await executeQuery('COMMIT');
+
+            console.log(`[REFERRAL] Processed qualified referral: User ${userId} → Referrer ${invitedBy} (+3⭐)`);
+            return {
+                success: true,
+                referrerId: invitedBy,
+                userName: user.first_name
+            };
+
+        } catch (error) {
+            await executeQuery('ROLLBACK');
+            throw error;
+        }
 
     } catch (error) {
         console.error('Error processing qualified referral:', error);
@@ -1768,6 +1805,77 @@ async function getCaptchaStatus(userId) {
     } catch (error) {
         console.error('Error getting captcha status:', error);
         return false;
+    }
+}
+
+// Validation function to prevent referral anomalies
+async function validateReferralIntegrity(userId) {
+    try {
+        const user = await getUser(userId);
+        if (!user) return { valid: false, issues: ['User not found'] };
+
+        const issues = [];
+
+        // Check 1: If user has referral_processed = true, they must have captcha + subscription
+        if (user.referral_processed && (!user.captcha_passed || !user.is_subscribed)) {
+            issues.push('User marked as processed but missing captcha or subscription');
+        }
+
+        // Check 2: If user has captcha + subscription + referrer, they should be processed
+        if (user.invited_by && user.captcha_passed && user.is_subscribed && !user.referral_processed) {
+            issues.push('User qualifies but not yet processed (this is expected for new system)');
+        }
+
+        // Check 3: User cannot be their own referrer
+        if (user.invited_by === userId) {
+            issues.push('User cannot be their own referrer');
+        }
+
+        return {
+            valid: issues.length === 0,
+            issues: issues,
+            user: {
+                id: userId,
+                name: user.first_name,
+                invited_by: user.invited_by,
+                captcha_passed: user.captcha_passed,
+                is_subscribed: user.is_subscribed,
+                referral_processed: user.referral_processed
+            }
+        };
+    } catch (error) {
+        console.error('Error validating referral integrity:', error);
+        return { valid: false, issues: ['Database error'] };
+    }
+}
+
+// Safe referral processing function with multiple validations
+async function safeProcessReferral(userId, operation = 'qualification_check') {
+    try {
+        // Step 1: Validate integrity
+        const validation = await validateReferralIntegrity(userId);
+        if (!validation.valid) {
+            console.warn(`[REFERRAL-SAFE] Validation failed for user ${userId}:`, validation.issues);
+            return { success: false, reason: `Validation failed: ${validation.issues.join(', ')}` };
+        }
+
+        // Step 2: Check current qualification
+        const qualification = await checkReferralQualification(userId);
+        if (!qualification.qualified) {
+            return { success: false, reason: qualification.reason };
+        }
+
+        // Step 3: Use safe processing with transaction
+        const result = await processQualifiedReferral(userId);
+
+        if (result.success) {
+            console.log(`[REFERRAL-SAFE] Safely processed referral for user ${userId} (operation: ${operation})`);
+        }
+
+        return result;
+    } catch (error) {
+        console.error('Error in safe referral processing:', error);
+        return { success: false, reason: 'Database error' };
     }
 }
 
@@ -1832,6 +1940,9 @@ module.exports = {
     checkAndProcessPendingReferrals,
     checkRetroactiveReferralActivation,
     activateRetroactiveReferral,
+    // Referral safety functions
+    validateReferralIntegrity,
+    safeProcessReferral,
     // SubGram functions
     initializeSubGramSettings,
     getSubGramSettings,
