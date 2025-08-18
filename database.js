@@ -33,6 +33,17 @@ async function initializeDatabase() {
             console.log('ℹ️  captcha_passed migration: table might not exist yet');
         }
 
+        // Add referral_processed column if it doesn't exist (migration)
+        try {
+            await pool.query(`
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS referral_processed BOOLEAN DEFAULT FALSE
+            `);
+            console.log('✅ referral_processed column migration completed');
+        } catch (migrationError) {
+            console.log('ℹ️  referral_processed migration: table might not exist yet');
+        }
+
         // Create tables without constraints to avoid conflicts
         await pool.query(`
             -- Users table
@@ -50,6 +61,7 @@ async function initializeDatabase() {
                 registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_subscribed BOOLEAN DEFAULT FALSE,
                 captcha_passed BOOLEAN DEFAULT FALSE,
+                referral_processed BOOLEAN DEFAULT FALSE,
                 temp_action VARCHAR(100),
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 clicks_today INTEGER DEFAULT 0,
@@ -245,6 +257,69 @@ async function initializeDatabase() {
                 success BOOLEAN DEFAULT TRUE,
                 active_channels_count INTEGER DEFAULT 0
             );
+
+            -- Table to track unique users who had successful subscription checks
+            CREATE TABLE IF NOT EXISTS unique_subscription_users (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL UNIQUE,
+                first_success_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- SubGram API configuration table
+            CREATE TABLE IF NOT EXISTS subgram_settings (
+                id SERIAL PRIMARY KEY,
+                api_key VARCHAR(200),
+                api_url VARCHAR(500) DEFAULT 'https://api.subgram.ru/request-op/',
+                enabled BOOLEAN DEFAULT TRUE,
+                max_sponsors INTEGER DEFAULT 3,
+                default_action VARCHAR(20) DEFAULT 'subscribe',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- SubGram user sessions - для отслеживания состояния пользователей
+            CREATE TABLE IF NOT EXISTS subgram_user_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                session_data JSONB,
+                channels_data JSONB,
+                last_check_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status VARCHAR(20) DEFAULT 'active',
+                gender VARCHAR(10),
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id)
+            );
+
+            -- SubGram channels - для хранения полученных каналов
+            CREATE TABLE IF NOT EXISTS subgram_channels (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                channel_link VARCHAR(500) NOT NULL,
+                channel_name VARCHAR(200),
+                channel_logo VARCHAR(500),
+                channel_type VARCHAR(20) DEFAULT 'channel',
+                subscription_status VARCHAR(20) DEFAULT 'unsubscribed',
+                needs_subscription BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, channel_link)
+            );
+
+            -- SubGram API requests log - для отслеживания запросов к API
+            CREATE TABLE IF NOT EXISTS subgram_api_requests (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                request_type VARCHAR(20) DEFAULT 'request_sponsors',
+                request_params JSONB,
+                response_data JSONB,
+                success BOOLEAN DEFAULT FALSE,
+                error_message TEXT,
+                api_status VARCHAR(20),
+                api_code INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         `);
 
         // Add missing columns if they don't exist
@@ -305,12 +380,16 @@ async function initializeDatabase() {
                 CREATE INDEX IF NOT EXISTS idx_channel_subscription_stats_channel ON channel_subscription_stats(channel_id);
                 CREATE INDEX IF NOT EXISTS idx_subscription_check_events_user ON subscription_check_events(user_id);
                 CREATE INDEX IF NOT EXISTS idx_subscription_check_events_checked_at ON subscription_check_events(checked_at);
+                CREATE INDEX IF NOT EXISTS idx_unique_subscription_users_user ON unique_subscription_users(user_id);
             `);
 
             console.log('✅ Database columns updated');
         } catch (error) {
             console.log('ℹ️ Column update attempt (may already exist):', error.message);
         }
+
+        // Initialize SubGram settings
+        await initializeSubGramSettings();
 
         console.log('✅ PostgreSQL database initialized successfully');
         return true;
@@ -385,28 +464,167 @@ async function createOrUpdateUser(user, invitedBy = null) {
     }
 }
 
+// New qualified referral system - this function now sets up the referral relationship
+// but doesn't award bonus immediately
+async function setupReferralRelationship(newUserId, referrerId, newUserName = 'Новый пользователь') {
+    try {
+        // Set the invited_by relationship
+        await executeQuery(
+            'UPDATE users SET invited_by = $1 WHERE id = $2',
+            [referrerId, newUserId]
+        );
+
+        console.log(`[REFERRAL] Set up referral relationship: User ${newUserId} invited by ${referrerId}`);
+        console.log(`[REFERRAL] Bonus will be awarded when user ${newUserId} qualifies (captcha + subscription + 1 referral)`);
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error setting up referral relationship:', error);
+        throw error;
+    }
+}
+
+// Trigger referral qualification check when user gets their first referral
+async function handleNewReferralEarned(userId) {
+    try {
+        // This user just earned a referral, check if they now qualify
+        const qualification = await checkReferralQualification(userId);
+
+        if (qualification.qualified) {
+            const result = await checkAndProcessPendingReferrals(userId);
+            if (result.processed > 0) {
+                console.log(`[REFERRAL] User ${userId} qualified and processed for referrer ${result.referrerId}`);
+                return { qualified: true, processed: true, referrerId: result.referrerId };
+            }
+        } else {
+            console.log(`[REFERRAL] User ${userId} not yet qualified: ${qualification.reason}`);
+        }
+
+        return { qualified: qualification.qualified, processed: false };
+    } catch (error) {
+        console.error('Error handling new referral earned:', error);
+        return { qualified: false, processed: false };
+    }
+}
+
+// Check if user can now activate their referral (for retroactive system)
+// For old referrals, only captcha + subscription required (no need for own referral)
+async function checkRetroactiveReferralActivation(userId) {
+    try {
+        const user = await getUser(userId);
+        if (!user || !user.invited_by) {
+            return { canActivate: false, reason: 'No referrer' };
+        }
+
+        // Check if already processed
+        if (user.referral_processed) {
+            return { canActivate: false, reason: 'Already processed' };
+        }
+
+        // For retroactive activation: only captcha + subscription required
+        const hasCaptcha = user.captcha_passed;
+        const hasSubscription = user.is_subscribed;
+        const isNowActive = hasCaptcha && hasSubscription;
+
+        if (!isNowActive) {
+            const missing = [];
+            if (!hasCaptcha) missing.push('прохождение капчи');
+            if (!hasSubscription) missing.push('подписка на каналы');
+
+            return {
+                canActivate: false,
+                reason: `Отсутствует: ${missing.join(', ')}`,
+                captchaPassed: hasCaptcha,
+                isSubscribed: hasSubscription
+            };
+        }
+
+        return {
+            canActivate: true,
+            referrerId: user.invited_by,
+            userName: user.first_name
+        };
+
+    } catch (error) {
+        console.error('Error checking retroactive activation:', error);
+        return { canActivate: false, reason: 'Database error' };
+    }
+}
+
+// Activate retroactive referral and return stars
+async function activateRetroactiveReferral(userId) {
+    try {
+        const activationCheck = await checkRetroactiveReferralActivation(userId);
+
+        if (!activationCheck.canActivate) {
+            return {
+                success: false,
+                reason: activationCheck.reason,
+                details: activationCheck
+            };
+        }
+
+        const referrerId = activationCheck.referrerId;
+
+        // Award the referral bonus back
+        await executeQuery(`
+            UPDATE users
+            SET
+                balance = balance + 3,
+                referrals_count = referrals_count + 1
+            WHERE id = $1
+        `, [referrerId]);
+
+        // Mark as processed
+        await executeQuery(`
+            UPDATE users
+            SET referral_processed = TRUE
+            WHERE id = $1
+        `, [userId]);
+
+        console.log(`[REFERRAL] Retroactive activation: User ${userId} → Referrer ${referrerId} (+3⭐)`);
+
+        return {
+            success: true,
+            referrerId: referrerId,
+            userName: activationCheck.userName,
+            starsAwarded: 3
+        };
+
+    } catch (error) {
+        console.error('Error activating retroactive referral:', error);
+        return { success: false, reason: 'Database error' };
+    }
+}
+
+// Legacy function kept for compatibility but now uses qualified system
 async function addReferralBonus(referrerId, newUserName = 'Новый пользователь') {
-    const bonus = 3; // 3 stars for each referral
+    console.log(`[REFERRAL] Legacy addReferralBonus called - using new qualified system`);
+
+    // In the new system, we need the new user ID to check qualification
+    // This function is kept for compatibility but should be replaced
+    const bonus = 3;
 
     try {
         await executeQuery(
             `UPDATE users SET
-             balance = balance + $1,
              referrals_count = referrals_count + 1,
              referrals_today = referrals_today + 1,
              updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2`,
-            [bonus, referrerId]
+             WHERE id = $1`,
+            [referrerId]
         );
 
-        // Return referrer and bonus info for notification
+        // Check if this referrer should now be processed
+        await handleNewReferralEarned(referrerId);
+
         return {
             referrerId,
             bonus,
             newUserName
         };
     } catch (error) {
-        console.error('Error adding referral bonus:', error);
+        console.error('Error in legacy addReferralBonus:', error);
         throw error;
     }
 }
@@ -1254,21 +1472,46 @@ async function recordSubscriptionCheck(userId, success = true) {
             VALUES ($1, CURRENT_TIMESTAMP, $2, $3)
         `, [userId, success, activeChannelsCount]);
 
-        // If successful, update statistics for all active channels
+        // If successful, check if this is a new unique user and update statistics
         if (success) {
-            const activeChannels = await executeQuery(
-                'SELECT channel_id FROM required_channels WHERE is_active = TRUE'
+            // Check if this user already had a successful subscription check
+            const existingUser = await executeQuery(
+                'SELECT id FROM unique_subscription_users WHERE user_id = $1',
+                [userId]
             );
 
-            for (const channel of activeChannels.rows) {
+            let isNewUniqueUser = false;
+
+            // If user is not in unique users table, add them
+            if (existingUser.rows.length === 0) {
                 await executeQuery(`
-                    INSERT INTO channel_subscription_stats (channel_id, successful_checks, updated_at)
-                    VALUES ($1, 1, CURRENT_TIMESTAMP)
-                    ON CONFLICT (channel_id)
-                    DO UPDATE SET
-                        successful_checks = channel_subscription_stats.successful_checks + 1,
-                        updated_at = CURRENT_TIMESTAMP
-                `, [channel.channel_id]);
+                    INSERT INTO unique_subscription_users (user_id, first_success_at)
+                    VALUES ($1, CURRENT_TIMESTAMP)
+                `, [userId]);
+
+                isNewUniqueUser = true;
+                console.log(`[SUBSCRIPTION] New unique user ${userId} recorded for subscription stats`);
+            } else {
+                console.log(`[SUBSCRIPTION] User ${userId} already counted in subscription stats (not incrementing counter)`);
+            }
+
+            // Only increment counters for new unique users
+            if (isNewUniqueUser) {
+                const activeChannels = await executeQuery(
+                    'SELECT channel_id FROM required_channels WHERE is_active = TRUE'
+                );
+
+                for (const channel of activeChannels.rows) {
+                    await executeQuery(`
+                        INSERT INTO channel_subscription_stats (channel_id, successful_checks, updated_at)
+                        VALUES ($1, 1, CURRENT_TIMESTAMP)
+                        ON CONFLICT (channel_id)
+                        DO UPDATE SET
+                            successful_checks = channel_subscription_stats.successful_checks + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                    `, [channel.channel_id]);
+                }
+                console.log(`[SUBSCRIPTION] Incremented stats for ${activeChannels.rows.length} channels for new user ${userId}`);
             }
         }
 
@@ -1369,6 +1612,140 @@ async function getChannelStatsDetailed(channelId) {
     }
 }
 
+// Get unique subscription users statistics
+async function getUniqueSubscriptionUsersCount() {
+    try {
+        const result = await executeQuery(
+            'SELECT COUNT(*) as unique_users FROM unique_subscription_users'
+        );
+        return parseInt(result.rows[0].unique_users);
+    } catch (error) {
+        console.error('Error getting unique subscription users count:', error);
+        return 0;
+    }
+}
+
+// Get latest unique subscription users
+async function getLatestUniqueSubscriptionUsers(limit = 20) {
+    try {
+        const result = await executeQuery(`
+            SELECT
+                usu.user_id,
+                usu.first_success_at,
+                u.first_name,
+                u.username
+            FROM unique_subscription_users usu
+            LEFT JOIN users u ON usu.user_id = u.id
+            ORDER BY usu.first_success_at DESC
+            LIMIT $1
+        `, [limit]);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting latest unique subscription users:', error);
+        return [];
+    }
+}
+
+// Referral qualification checking
+async function checkReferralQualification(userId) {
+    try {
+        const user = await getUser(userId);
+        if (!user) return { qualified: false, reason: 'User not found' };
+
+        // Check 1: Captcha passed
+        if (!user.captcha_passed) {
+            return { qualified: false, reason: 'Captcha not passed' };
+        }
+
+        // Check 2: Subscribed to all channels
+        if (!user.is_subscribed) {
+            return { qualified: false, reason: 'Not subscribed to channels' };
+        }
+
+        // Check 3: Has at least 1 referral - REMOVED
+        // Referral now counts immediately after captcha + subscription
+        // if (user.referrals_count < 1) {
+        //     return { qualified: false, reason: 'No referrals yet' };
+        // }
+
+        return { qualified: true, reason: 'Captcha and subscription completed' };
+    } catch (error) {
+        console.error('Error checking referral qualification:', error);
+        return { qualified: false, reason: 'Database error' };
+    }
+}
+
+// Process pending referral for qualified user
+async function processQualifiedReferral(userId) {
+    try {
+        const user = await getUser(userId);
+        if (!user || !user.invited_by) {
+            return { success: false, reason: 'No pending referral to process' };
+        }
+
+        // Check if referral was already processed
+        if (user.referral_processed) {
+            return { success: false, reason: 'Referral already processed' };
+        }
+
+        const qualification = await checkReferralQualification(userId);
+        if (!qualification.qualified) {
+            return { success: false, reason: qualification.reason };
+        }
+
+        const invitedBy = user.invited_by;
+        if (!invitedBy) {
+            return { success: false, reason: 'No referrer found' };
+        }
+
+        // Award referral bonus to the referrer
+        await executeQuery(
+            'UPDATE users SET referrals_count = referrals_count + 1, referrals_today = referrals_today + 1, balance = balance + 3 WHERE id = $1',
+            [invitedBy]
+        );
+
+        // Mark this referral as processed
+        await executeQuery(
+            'UPDATE users SET referral_processed = TRUE WHERE id = $1',
+            [userId]
+        );
+
+        console.log(`[REFERRAL] Processed qualified referral: User ${userId} → Referrer ${invitedBy}`);
+        return {
+            success: true,
+            referrerId: invitedBy,
+            userName: user.first_name
+        };
+
+    } catch (error) {
+        console.error('Error processing qualified referral:', error);
+        return { success: false, reason: 'Database error' };
+    }
+}
+
+// Check and process all qualified referrals for a user who just became qualified
+async function checkAndProcessPendingReferrals(newlyQualifiedUserId) {
+    try {
+        // This user just became qualified, check if they should be processed for their referrer
+        const result = await processQualifiedReferral(newlyQualifiedUserId);
+
+        if (result.success) {
+            console.log(`[REFERRAL] User ${newlyQualifiedUserId} qualified - bonus awarded to referrer ${result.referrerId}`);
+            return {
+                processed: 1,
+                referrerId: result.referrerId,
+                userName: result.userName
+            };
+        } else {
+            console.log(`[REFERRAL] User ${newlyQualifiedUserId} could not be processed: ${result.reason}`);
+            return { processed: 0, reason: result.reason };
+        }
+    } catch (error) {
+        console.error('Error checking pending referrals:', error);
+        return { processed: 0, reason: 'Database error' };
+    }
+}
+
 // Captcha management functions
 async function setCaptchaPassed(userId, passed = true) {
     try {
@@ -1402,6 +1779,8 @@ module.exports = {
     getUser,
     createOrUpdateUser,
     addReferralBonus,
+    setupReferralRelationship,
+    handleNewReferralEarned,
     updateUserBalance,
     updateUserField,
     getTasks,
@@ -1442,7 +1821,294 @@ module.exports = {
     getChannelSubscriptionStats,
     getSubscriptionCheckHistory,
     getChannelStatsDetailed,
+    getUniqueSubscriptionUsersCount,
+    getLatestUniqueSubscriptionUsers,
     // Captcha functions
     setCaptchaPassed,
-    getCaptchaStatus
+    getCaptchaStatus,
+    // Referral qualification functions
+    checkReferralQualification,
+    processQualifiedReferral,
+    checkAndProcessPendingReferrals,
+    checkRetroactiveReferralActivation,
+    activateRetroactiveReferral,
+    // SubGram functions
+    initializeSubGramSettings,
+    getSubGramSettings,
+    updateSubGramSettings,
+    saveSubGramUserSession,
+    getSubGramUserSession,
+    deleteSubGramUserSession,
+    saveSubGramChannels,
+    getSubGramChannels,
+    updateSubGramChannelStatus,
+    logSubGramAPIRequest,
+    getSubGramAPIRequestHistory,
+    cleanupExpiredSubGramSessions
 };
+
+// ==================== SubGram API Functions ====================
+
+// Initialize SubGram settings
+async function initializeSubGramSettings() {
+    try {
+        // Check if settings already exist
+        const existing = await executeQuery('SELECT COUNT(*) as count FROM subgram_settings');
+        if (parseInt(existing.rows[0].count) === 0) {
+            // Insert default settings
+            await executeQuery(`
+                INSERT INTO subgram_settings (api_key, api_url, enabled, max_sponsors, default_action)
+                VALUES ($1, $2, $3, $4, $5)
+            `, [
+                '5d4c6c5283559a05a9558b677669871d6ab58e00e71587546b25b4940ea6029d',
+                'https://api.subgram.ru/request-op/',
+                true,
+                3,
+                'subscribe'
+            ]);
+            console.log('✅ SubGram settings initialized');
+        }
+        return true;
+    } catch (error) {
+        console.error('Error initializing SubGram settings:', error);
+        return false;
+    }
+}
+
+// Get SubGram settings
+async function getSubGramSettings() {
+    try {
+        const result = await executeQuery('SELECT * FROM subgram_settings ORDER BY id DESC LIMIT 1');
+        return result.rows[0] || null;
+    } catch (error) {
+        console.error('Error getting SubGram settings:', error);
+        throw error;
+    }
+}
+
+// Update SubGram settings
+async function updateSubGramSettings(settings) {
+    try {
+        const { apiKey, apiUrl, enabled, maxSponsors, defaultAction } = settings;
+
+        const result = await executeQuery(`
+            UPDATE subgram_settings
+            SET api_key = $1, api_url = $2, enabled = $3, max_sponsors = $4, default_action = $5, updated_at = CURRENT_TIMESTAMP
+            WHERE id = (SELECT id FROM subgram_settings ORDER BY id DESC LIMIT 1)
+            RETURNING *
+        `, [apiKey, apiUrl, enabled, maxSponsors, defaultAction]);
+
+        return result.rows[0];
+    } catch (error) {
+        console.error('Error updating SubGram settings:', error);
+        throw error;
+    }
+}
+
+// Save SubGram user session
+async function saveSubGramUserSession(userId, sessionData, channelsData, gender = null) {
+    try {
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 1); // Session expires in 1 hour
+
+        const result = await executeQuery(`
+            INSERT INTO subgram_user_sessions (user_id, session_data, channels_data, gender, expires_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                session_data = $2,
+                channels_data = $3,
+                gender = $4,
+                expires_at = $5,
+                last_check_at = CURRENT_TIMESTAMP,
+                status = 'active'
+            RETURNING *
+        `, [userId, JSON.stringify(sessionData), JSON.stringify(channelsData), gender, expiresAt]);
+
+        return result.rows[0];
+    } catch (error) {
+        console.error('Error saving SubGram user session:', error);
+        throw error;
+    }
+}
+
+// Get SubGram user session
+async function getSubGramUserSession(userId) {
+    try {
+        const result = await executeQuery(`
+            SELECT * FROM subgram_user_sessions
+            WHERE user_id = $1 AND expires_at > CURRENT_TIMESTAMP AND status = 'active'
+        `, [userId]);
+
+        if (result.rows.length > 0) {
+            const session = result.rows[0];
+            // Parse JSON data
+            if (session.session_data) {
+                session.session_data = JSON.parse(session.session_data);
+            }
+            if (session.channels_data) {
+                session.channels_data = JSON.parse(session.channels_data);
+            }
+            return session;
+        }
+        return null;
+    } catch (error) {
+        console.error('Error getting SubGram user session:', error);
+        throw error;
+    }
+}
+
+// Delete SubGram user session
+async function deleteSubGramUserSession(userId) {
+    try {
+        await executeQuery('DELETE FROM subgram_user_sessions WHERE user_id = $1', [userId]);
+        return true;
+    } catch (error) {
+        console.error('Error deleting SubGram user session:', error);
+        throw error;
+    }
+}
+
+// Save SubGram channels for user
+async function saveSubGramChannels(userId, channels) {
+    try {
+        await executeQuery('BEGIN');
+
+        // Clear existing channels for this user
+        await executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+
+        // Insert new channels
+        for (const channel of channels) {
+            await executeQuery(`
+                INSERT INTO subgram_channels
+                (user_id, channel_link, channel_name, channel_logo, channel_type, subscription_status, needs_subscription)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `, [
+                userId,
+                channel.link,
+                channel.name,
+                channel.logo,
+                channel.type,
+                channel.status,
+                channel.needsSubscription
+            ]);
+        }
+
+        await executeQuery('COMMIT');
+        return true;
+    } catch (error) {
+        await executeQuery('ROLLBACK');
+        console.error('Error saving SubGram channels:', error);
+        throw error;
+    }
+}
+
+// Get SubGram channels for user
+async function getSubGramChannels(userId) {
+    try {
+        const result = await executeQuery(`
+            SELECT * FROM subgram_channels
+            WHERE user_id = $1
+            ORDER BY created_at ASC
+        `, [userId]);
+        return result.rows;
+    } catch (error) {
+        console.error('Error getting SubGram channels:', error);
+        throw error;
+    }
+}
+
+// Update SubGram channel subscription status
+async function updateSubGramChannelStatus(userId, channelLink, status) {
+    try {
+        const result = await executeQuery(`
+            UPDATE subgram_channels
+            SET subscription_status = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $2 AND channel_link = $3
+            RETURNING *
+        `, [status, userId, channelLink]);
+
+        return result.rows[0];
+    } catch (error) {
+        console.error('Error updating SubGram channel status:', error);
+        throw error;
+    }
+}
+
+// Log SubGram API request
+async function logSubGramAPIRequest(userId, requestType, requestParams, responseData, success, errorMessage = null) {
+    try {
+        const apiStatus = responseData?.status || null;
+        const apiCode = responseData?.code || null;
+
+        await executeQuery(`
+            INSERT INTO subgram_api_requests
+            (user_id, request_type, request_params, response_data, success, error_message, api_status, api_code)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [
+            userId,
+            requestType,
+            JSON.stringify(requestParams),
+            JSON.stringify(responseData),
+            success,
+            errorMessage,
+            apiStatus,
+            apiCode
+        ]);
+
+        return true;
+    } catch (error) {
+        console.error('Error logging SubGram API request:', error);
+        return false;
+    }
+}
+
+// Get SubGram API request history
+async function getSubGramAPIRequestHistory(userId = null, limit = 50) {
+    try {
+        let query = `
+            SELECT sar.*, u.first_name, u.username
+            FROM subgram_api_requests sar
+            LEFT JOIN users u ON sar.user_id = u.id
+        `;
+        let params = [];
+
+        if (userId) {
+            query += ' WHERE sar.user_id = $1';
+            params.push(userId);
+        }
+
+        query += ' ORDER BY sar.created_at DESC LIMIT $' + (params.length + 1);
+        params.push(limit);
+
+        const result = await executeQuery(query, params);
+
+        // Parse JSON data safely
+        return result.rows.map(row => ({
+            ...row,
+            request_params: row.request_params ? (typeof row.request_params === 'string' ? JSON.parse(row.request_params) : row.request_params) : null,
+            response_data: row.response_data ? (typeof row.response_data === 'string' ? JSON.parse(row.response_data) : row.response_data) : null
+        }));
+    } catch (error) {
+        console.error('Error getting SubGram API request history:', error);
+        throw error;
+    }
+}
+
+// Cleanup expired SubGram sessions
+async function cleanupExpiredSubGramSessions() {
+    try {
+        const result = await executeQuery(`
+            DELETE FROM subgram_user_sessions
+            WHERE expires_at < CURRENT_TIMESTAMP OR status = 'expired'
+        `);
+
+        console.log(`[SUBGRAM] Cleaned up ${result.rowCount} expired sessions`);
+        return result.rowCount;
+    } catch (error) {
+        console.error('Error cleaning up expired SubGram sessions:', error);
+        return 0;
+    }
+}
+
+// SubGram functions are already exported above

@@ -19,7 +19,10 @@ console.log('[MAIN] message throttler imported');
 const { captchaSystem } = require('./captcha-system');
 console.log('[MAIN] captcha system imported');
 
-// Автоотправка звёзд удалена - только ручная обработ��а
+const { subgramAPI } = require('./subgram-api');
+console.log('[MAIN] SubGram API imported');
+
+// Автоотправка звёзд удалена - только ручная обр��бот���а
 
 // Helper function to send throttled messages
 async function sendThrottledMessage(userId, message, options = {}) {
@@ -119,7 +122,7 @@ function cleanDisplayText(text) {
     }
 
     // If name becomes empty after cleaning, use default
-    return cleanText || 'Пользователь';
+    return cleanText || 'Поль��ователь';
 }
 
 // Helper function to escape Markdown special characters (keep for backward compatibility)
@@ -235,6 +238,132 @@ async function getSubscriptionMessage() {
     return { message, buttons };
 }
 
+// Enhanced subscription message with SubGram integration
+async function getEnhancedSubscriptionMessage(userId) {
+    try {
+        let message = '🔔 Для использования бота необходимо подписаться на все каналы:\n\n';
+        let buttons = [];
+        let channelCount = 0;
+
+        // Get regular required channels
+        const regularChannels = await db.executeQuery('SELECT channel_id, channel_name FROM required_channels WHERE is_active = TRUE');
+
+        if (regularChannels.rows.length > 0) {
+            message += '📺 **Обязательные каналы:**\n';
+            regularChannels.rows.forEach((channel, index) => {
+                channelCount++;
+                message += `${channelCount}. ${channel.channel_name || channel.channel_id}\n`;
+
+                const channelLink = channel.channel_id.startsWith('@') ?
+                    `https://t.me/${channel.channel_id.substring(1)}` :
+                    channel.channel_id;
+
+                buttons.push([{ text: `📺 ${channel.channel_name || channel.channel_id}`, url: channelLink }]);
+            });
+        }
+
+        // Try to get SubGram channels
+        try {
+            console.log('[SUBGRAM] Getting SubGram channels for user:', userId);
+
+            const user = await db.getUser(userId);
+            if (!user) {
+                console.log('[SUBGRAM] User not found, skipping SubGram channels');
+                return { message, buttons, hasSubgram: false };
+            }
+
+            const subgramResponse = await subgramAPI.requestSponsors({
+                userId: userId.toString(),
+                chatId: userId.toString(), // Using userId as chatId for private messages
+                firstName: user.first_name || 'Пользователь',
+                languageCode: 'ru',
+                premium: false, // Default to false, можно улучшить позже
+                maxOP: 3,
+                action: 'subscribe',
+                excludeChannelIds: []
+            });
+
+            console.log('[SUBGRAM] API Response:', subgramResponse.success, subgramResponse.data?.status);
+
+            if (subgramResponse.success && subgramResponse.data) {
+                const processedData = subgramAPI.processAPIResponse(subgramResponse.data);
+
+                // Save API request log
+                await db.logSubGramAPIRequest(
+                    userId,
+                    'request_sponsors',
+                    { action: 'subscribe', maxOP: 3 },
+                    subgramResponse.data,
+                    true
+                );
+
+                // Save session data
+                await db.saveSubGramUserSession(userId, subgramResponse.data, processedData);
+
+                if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
+                    // Save channels to database
+                    await db.saveSubGramChannels(userId, processedData.channelsToSubscribe);
+
+                    message += '\n🎯 **Спонсорские каналы:**\n';
+                    processedData.channelsToSubscribe.forEach((channel, index) => {
+                        channelCount++;
+                        message += `${channelCount}. ${channel.name}\n`;
+                        buttons.push([{ text: `🎯 ${channel.name}`, url: channel.link }]);
+                    });
+                }
+
+                // Handle special SubGram statuses
+                if (processedData.needsGender) {
+                    message += '\n🤖 **SubGram требует уточнения п��ла для подбора каналов**';
+                    buttons.push([
+                        { text: '👨 Мужской', callback_data: 'subgram_gender_male' },
+                        { text: '👩 Женский', callback_data: 'subgram_gender_female' }
+                    ]);
+                }
+            } else {
+                console.log('[SUBGRAM] Failed to get sponsors or no sponsors available');
+
+                // Log failed request
+                await db.logSubGramAPIRequest(
+                    userId,
+                    'request_sponsors',
+                    { action: 'subscribe', maxOP: 3 },
+                    subgramResponse.data || {},
+                    false,
+                    subgramResponse.error || 'Unknown error'
+                );
+            }
+        } catch (subgramError) {
+            console.error('[SUBGRAM] Error getting SubGram channels:', subgramError);
+
+            // Log error
+            await db.logSubGramAPIRequest(
+                userId,
+                'request_sponsors',
+                { action: 'subscribe', maxOP: 3 },
+                {},
+                false,
+                subgramError.message
+            );
+        }
+
+        if (channelCount === 0) {
+            message = '✅ На данный момент нет обязательных каналов для подписки!\n\nВы можете продолжать использование бота.';
+            buttons.push([{ text: '🏠 В главное меню', callback_data: 'main_menu' }]);
+        } else {
+            message += '\n📌 После подписки на все каналы нажмите кнопку проверки';
+            buttons.push([{ text: '✅ Проверить подписки', callback_data: 'check_subscriptions_enhanced' }]);
+        }
+
+        return { message, buttons, hasSubgram: true };
+
+    } catch (error) {
+        console.error('Error getting enhanced subscription message:', error);
+        // Fallback to regular subscription message
+        return await getSubscriptionMessage();
+    }
+}
+
 // Create inline keyboards (RESTORED)
 function getMainMenuKeyboard() {
     return {
@@ -245,7 +374,7 @@ function getMainMenuKeyboard() {
                     { text: '👥 Пригласить друзей', callback_data: 'invite' }
                 ],
                 [
-                    { text: '🎯 Кликер', callback_data: 'clicker' },
+                    { text: '🎯 К��икер', callback_data: 'clicker' },
                     { text: '⭐ Вывод звёзд', callback_data: 'withdraw' }
                 ],
                 [
@@ -254,7 +383,7 @@ function getMainMenuKeyboard() {
                 ],
                 [
                     { text: '🏆 Рейтинги', callback_data: 'ratings' },
-                    { text: '🎁 Кейсы', callback_data: 'cases' }
+                    { text: '🎁 Ке��сы', callback_data: 'cases' }
                 ],
                 [
                     { text: '🎰 Лотерея', callback_data: 'lottery' }
@@ -269,7 +398,7 @@ function getProfileKeyboard() {
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: '🎁 Промокод', callback_data: 'promocode' },
+                    { text: '���� Промок��д', callback_data: 'promocode' },
                     { text: '👥 Пригласить друзей', callback_data: 'invite' }
                 ],
                 [
@@ -284,7 +413,7 @@ function getBackToMainKeyboard() {
     return {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
+                [{ text: '🏠 В главное м��ню', callback_data: 'main_menu' }]
             ]
         }
     };
@@ -322,7 +451,7 @@ function getWithdrawKeyboard() {
                     { text: '100 ⭐', callback_data: 'withdraw_100' }
                 ],
                 [
-                    { text: ' Telegram Premium на 3 месяца (1300⭐)', callback_data: 'withdraw_premium' }
+                    { text: ' Telegram Premium на 3 ме��яца (1300⭐)', callback_data: 'withdraw_premium' }
                 ],
                 [
                     { text: '🏠 В главное меню', callback_data: 'main_menu' }
@@ -364,11 +493,12 @@ function getAdminMenuKeyboard() {
                     { text: '🎰 Управление ��отереями', callback_data: 'admin_lottery' }
                 ],
                 [
-                    { text: '🎁 Управление промокодами', callback_data: 'admin_promocodes' },
-                    { text: '📢 Рассылка сообщений', callback_data: 'admin_broadcast' }
+                    { text: '🎁 Управление пр��мокодами', callback_data: 'admin_promocodes' },
+                    { text: '📢 Рассылка сообщен��й', callback_data: 'admin_broadcast' }
                 ],
                 [
-                    { text: '🏆 Недельные награды', callback_data: 'admin_weekly_rewards' }
+                    { text: '🏆 Недельные награды', callback_data: 'admin_weekly_rewards' },
+                    { text: '🎯 SubGram управление', callback_data: 'admin_subgram' }
                 ],
                 [
                     { text: '�� Статистика подписок', callback_data: 'admin_subscription_stats' }
@@ -458,12 +588,12 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                 const question = captchaSystem.generateCaptcha(userId);
                 await bot.sendMessage(chatId, `🤖 **Добро пожаловать!**
 
-Прежде чем начать пользоваться ботом, подтвердите, что вы не робот.
+Прежде чем начать пользова��ься ботом, подтвердите, что вы не робот.
 
-Решите простой пример:
+Решите простой ��ример:
 **${question}**
 
-💡 Введите только число (например: 26)`, {
+💡 Введите тольк�� число (например: 26)`, {
                     parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [
@@ -480,9 +610,10 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         const requiredChannels = await getRequiredChannels();
 
         if (!isSubscribed && requiredChannels.length > 0) {
-            const subData = await getSubscriptionMessage();
-            
+            const subData = await getEnhancedSubscriptionMessage(userId);
+
             await bot.sendMessage(chatId, subData.message, {
+                parse_mode: 'Markdown',
                 reply_markup: { inline_keyboard: subData.buttons }
             });
             return;
@@ -498,65 +629,89 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             console.error('Error adding weekly points for bot activation:', pointsError);
         }
         
-        // Process pending referral if exists
+        // Process pending referrer (set invited_by but don't award bonus yet)
         if (dbUser.pending_referrer) {
             const invitedBy = dbUser.pending_referrer;
 
-            // Update referrer stats
-            await db.executeQuery(
-                'UPDATE users SET referrals_count = referrals_count + 1, referrals_today = referrals_today + 1, balance = balance + 3 WHERE id = $1',
-                [invitedBy]
-            );
-
-            // Add tickets to active auto-referral lotteries
-            try {
-                const autoLotteries = await db.executeQuery(`
-                    SELECT l.id
-                    FROM lotteries l
-                    JOIN referral_lotteries rl ON l.id = rl.lottery_id
-                    WHERE l.is_active = TRUE
-                    AND l.lottery_type = 'referral_auto'
-                    AND rl.ends_at > NOW()
-                `);
-
-                for (const lottery of autoLotteries.rows) {
-                    await db.addReferralTicket(lottery.id, invitedBy, 'referral', userId);
-                }
-
-                console.log(`[AUTO-REFERRAL] Added tickets to ${autoLotteries.rows.length} auto-referral lotteries for user ${invitedBy}`);
-            } catch (error) {
-                console.error('Error adding auto-referral tickets:', error);
-            }
-
-            // Clear pending referrer
+            // Clear pending referrer and set invited_by
             await db.updateUserField(userId, 'pending_referrer', null);
             await db.updateUserField(userId, 'invited_by', invitedBy);
 
-            // Send notification to referrer
-            try {
-                const message = `🎉 **Поздравляем!**
+            console.log(`[REFERRAL] User ${userId} linked to referrer ${invitedBy} - bonus will be awarded when qualified`);
+        }
+        
+                // Check if user now qualifies for referral processing (new system)
+        try {
+            const qualification = await db.checkReferralQualification(userId);
+            if (qualification.qualified) {
+                const result = await db.checkAndProcessPendingReferrals(userId);
+                if (result.processed > 0) {
+                    // Send notification to referrer
+                    try {
+                        const message = `🎉 **Поздравляем!**
 
-👤 По вашей рефера��ьной ссылке присоединился новый пользов��тель: **${user.first_name}**
+👤 Приглашённый вами пользователь **${user.first_name}** выполнил все условия:
+✅ Прошёл капчу
+✅ Подписался на все каналы
+✅ Пригласил своего первого реферала
 
 💰 **Вы получили:** +3 ⭐
 💎 **Ваш баланс пополнен!**
 
 👥 Продолжайте приглашать друзей и зарабатывайте еще больше звёзд!`;
 
-                await bot.sendMessage(invitedBy, message, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
-                            [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
-                        ]
+                        await bot.sendMessage(result.referrerId, message, {
+                            parse_mode: 'Markdown',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                                    [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                                ]
+                            }
+                        });
+                    } catch (error) {
+                        console.error('Error sending qualified referral notification:', error);
                     }
-                });
-            } catch (error) {
-                console.error('Error sending referral notification:', error);
+                }
             }
+        } catch (error) {
+            console.error('Error checking referral qualification:', error);
         }
-        
+
+        // Check for retroactive referral activation (old referrals)
+        try {
+            const retroResult = await db.activateRetroactiveReferral(userId);
+            if (retroResult.success) {
+                // Send notification to referrer about retroactive activation
+                try {
+                    const message = `🔄 **В��зврат звёзд!**
+
+👤 Ваш реферал **${user.first_name}** активировался:
+✅ Прошёл капчу
+✅ Подписался на все каналы
+
+💰 **Возвращено:** +3 ⭐
+💎 **За активного реферала!**
+
+🎯 Теперь этот реферал засчитывается полностью!`;
+
+                    await bot.sendMessage(retroResult.referrerId, message, {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                                [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                            ]
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error sending retroactive activation notification:', error);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking retroactive activation:', error);
+        }
+
         // Send main menu
         const welcomeMessage = `🌟 **Добро пожаловать в StarBot!**
 
@@ -579,7 +734,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error in start command:', error);
-        bot.sendMessage(chatId, '❌ произошла ошибка. Попр��буйте позже.');
+        bot.sendMessage(chatId, '❌ произошла ошибка. Попр����буйте позже.');
     }
 });
 
@@ -618,7 +773,7 @@ bot.onText(/\/test_version/, async (msg) => {
 👤 ��аш ID: ${userId}
 🔧 Admin ID: ${isAdmin(userId) ? 'ВЫ АДМИН' : 'НЕ АДМИН'}
 
-✅ Если вы видите это сообщение - работает НОВАЯ версия!
+✅ Если вы видите это сообщени�� - работает НОВАЯ версия!
 🎯 Inline-кнопки восстановлены, улучшения сохранены!`;
 
     bot.sendMessage(chatId, testMessage, { parse_mode: 'Markdown' });
@@ -675,7 +830,7 @@ bot.onText(/\/reset_captcha (\d+)/, async (msg, match) => {
         await db.setCaptchaPassed(targetUserId, false);
 
         const message = sessionCleared
-            ? `✅ Капча сброшена для пользователя ${targetUserId}. Активная сессия очищена.`
+            ? `✅ Капча сброшена для пользователя ${targetUserId}. Активная сесс��я очищена.`
             : `✅ Капча сброшена для пользователя ${targetUserId}. Активной сессии не было.`;
 
         bot.sendMessage(chatId, message);
@@ -700,10 +855,133 @@ bot.onText(/\/test_my_captcha/, async (msg) => {
         captchaSystem.clearSession(userId);
         await db.setCaptchaPassed(userId, false);
 
-        bot.sendMessage(chatId, '✅ Ваша капча сброшена для тестирования. Нажмите /start для прохождения капчи.');
+        bot.sendMessage(chatId, '✅ Ваша капч�� сброшена для тестирования. Нажмите /start для прохождения капчи.');
     } catch (error) {
         console.error('Error resetting captcha for test:', error);
         bot.sendMessage(chatId, '❌ Ошибка при сбросе капчи для тестирования.');
+    }
+});
+
+// Admin command to run referral audit (dry run)
+bot.onText(/\/audit_referrals/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        bot.sendMessage(chatId, '🔍 Запуск аудита реферальной системы...');
+
+        const auditSystem = require('./referral-audit-system');
+        const auditResults = await auditSystem.analyzeExistingReferrals();
+
+        // Generate summary
+        const summary = await auditSystem.applyReferralCorrections(auditResults, true); // dry run
+
+        let message = `📊 **АУДИТ РЕФЕРАЛЬНОЙ СИСТЕМЫ**\n\n`;
+        message += `👥 Пользователей с рефералами: ${auditResults.length}\n`;
+        message += `⚠️ Требуют корректировки: ${summary.totalUsersAffected}\n`;
+        message += `💸 Зв��зд к списанию: ${summary.totalStarsDeducted}⭐\n\n`;
+
+        if (summary.totalUsersAffected > 0) {
+            message += `🔴 **ПРОБЛЕМЫ НАЙДЕНЫ!**\n`;
+            message += `Используйте /apply_referral_corrections для применения изменений.\n\n`;
+            message += `⚠️ **ВНИМАНИЕ**: Это спишет звёзды у пользователей за не��ктивных рефералов!`;
+        } else {
+            message += `✅ **ВСЁ В ПОРЯДКЕ!**\nВсе рефералы соответствуют новым требованиям.`;
+        }
+
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+        console.error('Error running referral audit:', error);
+        bot.sendMessage(chatId, '❌ Ошибка при выполнении аудита.');
+    }
+});
+
+// Admin command to apply referral corrections
+bot.onText(/\/apply_referral_corrections/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет ��рав доступа.');
+        return;
+    }
+
+    try {
+        bot.sendMessage(chatId, '⚠️ Применение корректировок реферальной системы...');
+
+        const auditSystem = require('./referral-audit-system');
+        const auditResults = await auditSystem.analyzeExistingReferrals();
+
+        // Apply corrections
+        const summary = await auditSystem.applyReferralCorrections(auditResults, false); // real application
+
+        let message = `✅ **КОРРЕКТИРОВКИ ПРИМЕНЕНЫ!**\n\n`;
+        message += `👥 Пользователей скорректировано: ${summary.totalUsersAffected}\n`;
+        message += `💸 Звёзд списано: ${summary.totalStarsDeducted}⭐\n\n`;
+
+        if (summary.totalUsersAffected > 0) {
+            message += `📋 **ЧТО ИЗМЕНИЛОСЬ:**\n`;
+            for (const correction of summary.corrections.slice(0, 10)) { // Show first 10
+                message += `��� ${correction.referrerName}: -${correction.starsDeducted}⭐ (${correction.inactiveReferrals} неактивных)\n`;
+            }
+
+            if (summary.corrections.length > 10) {
+                message += `... и еще ${summary.corrections.length - 10} пользователей\n`;
+            }
+
+            message += `\n🔄 **Звёзды вернутся когда рефералы станут активными!**`;
+        }
+
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+        console.error('Error applying referral corrections:', error);
+        bot.sendMessage(chatId, '❌ Ошибка при применении корректировок.');
+    }
+});
+
+// Admin command to get detailed audit report
+bot.onText(/\/detailed_audit_report/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        bot.sendMessage(chatId, '📊 Генерация детального отчёта...');
+
+        const auditSystem = require('./referral-audit-system');
+        const auditResults = await auditSystem.analyzeExistingReferrals();
+        const report = await auditSystem.generateAuditReport(auditResults);
+
+        // Split long report into chunks
+        const maxLength = 4000;
+        if (report.length <= maxLength) {
+            bot.sendMessage(chatId, report);
+        } else {
+            const chunks = [];
+            for (let i = 0; i < report.length; i += maxLength) {
+                chunks.push(report.substring(i, i + maxLength));
+            }
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunkHeader = i === 0 ? '' : `📄 **Часть ${i + 1}/${chunks.length}**\n\n`;
+                bot.sendMessage(chatId, chunkHeader + chunks[i]);
+            }
+        }
+
+    } catch (error) {
+        console.error('Error generating detailed audit report:', error);
+        bot.sendMessage(chatId, '❌ Ошибка при генерации отчёта.');
     }
 });
 
@@ -766,8 +1044,26 @@ bot.onText(/\/refupplayer (\d+) (\d+)/, async (msg, match) => {
         );
 
         if (result.rowCount > 0) {
-            bot.sendMessage(chatId, `✅ Пользователю ${targetUserId} добавлено ${refCount} рефералов!`);
-            
+            // Check if this user now qualifies for referral processing
+            try {
+                const qualificationResult = await db.handleNewReferralEarned(targetUserId);
+
+                let message = `✅ Пользователю ${targetUserId} добавлено ${refCount} рефералов!`;
+
+                if (qualificationResult.qualified && qualificationResult.processed) {
+                    message += `\n🎉 Пользователь квалифицирован - бонус выплачен рефереру!`;
+                } else if (qualificationResult.qualified) {
+                    message += `\n✅ Пользователь квалифицирован (все условия выполнены)`;
+                } else {
+                    message += `\n⏳ Пользователь пока не квалифицирован (нужны: капча + подписка + 1 реферал)`;
+                }
+
+                bot.sendMessage(chatId, message);
+            } catch (error) {
+                bot.sendMessage(chatId, `✅ Пользователю ${targetUserId} добавлено ${refCount} рефералов!`);
+                console.error('Error checking qualification:', error);
+            }
+
             try {
                 await bot.sendMessage(targetUserId, `⭐ **Бонус от администрации!**\n\nВам добавлено **${refCount} рефералов** от администрации!\n\n💫 Спасибо за активность!`, { parse_mode: 'Markdown' });
             } catch (error) {
@@ -801,7 +1097,7 @@ bot.onText(/\/starsupplayer (\d+) (\d+)/, async (msg, match) => {
             bot.sendMessage(chatId, `✅ Пользователю ${targetUserId} д��бавлено ${starsCount} ⭐!`);
             
             try {
-                await bot.sendMessage(targetUserId, `🎉 **Бон��с от администрации!**\n\nВам добавлено **${starsCount} ⭐** от администрации!\n\n💫 Спасибо за активность!`, { parse_mode: 'Markdown' });
+                await bot.sendMessage(targetUserId, `🎉 **Бон��с от а��министрации!**\n\nВам добавлено **${starsCount} ⭐** от администрации!\n\n💫 Спасибо за активность!`, { parse_mode: 'Markdown' });
             } catch (error) {
                 console.log('Could not notify user about stars bonus');
             }
@@ -842,7 +1138,7 @@ bot.onText(/\/admin/, async (msg) => {
 
 **Трекинговые ссылки:**
 🔗 **/create_tracking_link название** - создать ссылку для рекламы
-📊 **/list_tracking** - список всех ссылок
+📊 **/list_tracking** - спи��ок всех ссылок
 📈 **/tracking_stats ID** - статистика ссылки
 
 Выберите действие:`;
@@ -886,11 +1182,11 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
             [channelId.trim(), channelName.trim(), rewardAmount, limit]
         );
 
-        let message = `✅ Задание создано!\n📺 Канал: ${channelId.trim()}\n📝 Название: ${channelName.trim()}\n💰 Награда: ${rewardAmount} `;
+        let message = `✅ Задание создано!\n📺 Канал: ${channelId.trim()}\n📝 Названи��: ${channelName.trim()}\n💰 Награда: ${rewardAmount} `;
         if (limit) {
             message += `\n   Лимит выполнен��й: ${limit}`;
         } else {
-            message += `\n🔢 Лимит выполнений: Без ограничений`;
+            message += `\n🔢 Лимит выполнений: Без ограничени��`;
         }
 
         bot.sendMessage(chatId, message);
@@ -1018,7 +1314,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
     try {
         const params = match[1].split('|');
         if (params.length < 5) {
-            bot.sendMessage(chatId, `❌ Неверный формат!
+            bot.sendMessage(chatId, `❌ Неверны�� формат!
 
 Используйте:
 \`/create_referral_lottery название|время_часов|мин_рефералов|цена_билета|место1:приз1|мессо2:приз2|...\`
@@ -1076,10 +1372,10 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
 
         let message = `✅ **Реферальная ло��ерея создана!**
 
-🎰 **Название:** ${name}
+🎰 **Н��звание:** ${name}
    **Длительность:** ${timeHours} часов
 👥 **Условие:** пригласить ${minReferrals} рефералов
-💰 **Цена доп. билета:** ${ticketPrice} ⭐
+💰 **Цена до��. билета:** ${ticketPrice} ⭐
 🏆 **Призовые места:** ${prizes.length}
 
 **Призы:**`;
@@ -1090,7 +1386,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
             message += `\n${emoji} ${place} место: ${prizes[i]} ⭐`;
         }
 
-        message += `\n\n⏰ **Завершение:** ${endsAt.toLocaleString('ru-RU')}`;
+        message += `\n\n⏰ **��авершение:** ${endsAt.toLocaleString('ru-RU')}`;
 
         bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         console.log('[CREATE-REF-LOTTERY] Referral lottery created successfully, ID:', lotteryId);
@@ -1107,7 +1403,7 @@ bot.onText(/\/create_auto_referral_lottery (.+)/, async (msg, match) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У в��с нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У в���� нет прав доступа.');
         return;
     }
 
@@ -1143,7 +1439,7 @@ bot.onText(/\/create_auto_referral_lottery (.+)/, async (msg, match) => {
         }
 
         if (prizes.length === 0) {
-            bot.sendMessage(chatId, '❌ Необходимо указать хотя бы один приз!');
+            bot.sendMessage(chatId, '❌ Необход��мо указать хотя бы один приз!');
             return;
         }
 
@@ -1174,14 +1470,14 @@ bot.onText(/\/create_auto_referral_lottery (.+)/, async (msg, match) => {
 🎰 **Название:** ${name}
 ⏰ **Длительность:** ${timeHours} часов
 🎫 **Билеты:** каждый новый реферал = +1 билет
-🏆 **Призовые места:** ${prizes.length}
+🏆 **Приз��вые места:** ${prizes.length}
 
 **Призы:**`;
 
         for (let i = 0; i < prizes.length; i++) {
             const place = i + 1;
             const emoji = place === 1 ? '🥇' : place === 2 ? '����' : place === 3 ? '🥉' : '🏅';
-            message += `\n${emoji} ${place} место: ${prizes[i]} ⭐`;
+            message += `\n${emoji} ${place} мест��: ${prizes[i]} ⭐`;
         }
 
         message += `\n\n⏰ **Завершение:** ${endsAt.toLocaleString('ru-RU')}`;
@@ -1213,7 +1509,7 @@ bot.onText(/\/select_lottery_winners (\d+) (.+)/, async (msg, match) => {
         for (const winnerStr of winnersData) {
             const [place, winnerUserId] = winnerStr.split(':');
             if (!place || !winnerUserId) {
-                bot.sendMessage(chatId, '❌ Неверный формат! Используйт��: /select_lottery_winners ID место1:userID место2:userID');
+                bot.sendMessage(chatId, '❌ Неверный форма��! Используйт��: /select_lottery_winners ID место1:userID место2:userID');
                 return;
             }
             winners[place] = parseInt(winnerUserId);
@@ -1267,14 +1563,14 @@ async function handleReferralLotteryCheck(chatId, messageId, userId, lotteryId) 
                 }
             });
         } else {
-            await bot.editMessageText(`❌ **Условие не выполнено**\n\n👥 Приглашено рефералов: ${condition.referralCount}/${condition.required}\n\n📋 Для участия в лотерее необходимо пригласить еще ${condition.required - condition.referralCount} рефералов.\n\n💡 Приглашайте друзей по вашей реферальной ссылке!`, {
+            await bot.editMessageText(`❌ **Условие не выполнено**\n\n👥 Приг��ашено рефералов: ${condition.referralCount}/${condition.required}\n\n📋 Для участия в лотерее необходимо пригласить еще ${condition.required - condition.referralCount} рефералов.\n\n💡 Приглашайте друзей по вашей реферальной ссылке!`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [{ text: '👥 Пригласить друзей', callback_data: 'invite' }],
-                        [{ text: '🎰 К лотереям', callback_data: 'lottery' }],
+                        [{ text: '🎰 �� лотереям', callback_data: 'lottery' }],
                         [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
                     ]
                 }
@@ -1313,7 +1609,7 @@ async function handleReferralLotteryBuy(chatId, messageId, userId, lotteryId) {
 
         // Check if lottery is still active
         if (new Date() > new Date(lottery.ends_at)) {
-            await bot.editMessageText('❌ Лотерея уже завершена.', {
+            await bot.editMessageText('❌ Лотерея уже завершен��.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -1358,7 +1654,7 @@ async function handleReferralLotteryBuy(chatId, messageId, userId, lotteryId) {
 
             await db.executeQuery('COMMIT');
 
-            await bot.editMessageText(`✅ **Билет куплен!**\n\nВы успешно приобрети дополнительный билет в лотерею "${lottery.name}"!\n\n💰 Списано: ${lottery.additional_ticket_price} ⭐\n💎 Ваш баланс: ${user.balance - lottery.additional_ticket_price} ⭐\n\n🍀 Удачи в розыгрыше!`, {
+            await bot.editMessageText(`✅ **Билет куплен!**\n\nВы успешно приобрети дополнительный билет в лотерею "${lottery.name}"!\n\n💰 Списано: ${lottery.additional_ticket_price} ⭐\n💎 ��аш баланс: ${user.balance - lottery.additional_ticket_price} ⭐\n\n🍀 Удачи в розыгрыше!`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
@@ -1483,19 +1779,23 @@ bot.onText(/\/subscription_stats/, async (msg) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У в��с нет прав доступа.');
         return;
     }
 
     try {
         const stats = await db.getChannelSubscriptionStats();
+        const uniqueUsersCount = await db.getUniqueSubscriptionUsersCount();
 
         if (stats.length === 0) {
-            bot.sendMessage(chatId, `📈 **Статистика подписок**\n\n❌ Нет данных о подписках.\n\nДобав��те обяза��ельные каналы и дождитесь первых проверок подписок.`, { parse_mode: 'Markdown' });
+            bot.sendMessage(chatId, `📈 **Статистика подписок**\n\n❌ Нет данных о подписках.\n\nДобав�����е обяза��ельные каналы и дождитесь первых проверок подписок.`, { parse_mode: 'Markdown' });
             return;
         }
 
         let message = `📈 **Статистика подписок по кана��ам**\n\n`;
+        message += `👥 **Уникальных пользователей прошло проверку:** ${uniqueUsersCount}\n`;
+        message += `🔄 *(Каждый пользователь считается только один раз)*\n\n`;
+
         let totalChecks = 0;
 
         for (const stat of stats) {
@@ -1505,7 +1805,7 @@ bot.onText(/\/subscription_stats/, async (msg) => {
             const activeStatus = stat.is_active ? '✅' : '❌';
 
             message += `${activeStatus} **${channelName}**\n`;
-            message += `   📊 Успешных проверок: **${stat.successful_checks}**\n`;
+            message += `   📊 Уникальных проверок: **${stat.successful_checks}**\n`;
             message += `   📅 Добавлен: ${addedDate}\n`;
             message += `   ⏰ Последняя проверка: ${lastCheck}\n\n`;
 
@@ -1513,15 +1813,64 @@ bot.onText(/\/subscription_stats/, async (msg) => {
         }
 
         message += `📊 **Общая статист��ка:**\n`;
-        message += `• Всего успешных проверок: **${totalChecks}**\n`;
+        message += `• Всего уникальных пользователей: **${uniqueUsersCount}**\n`;
         message += `• Активных каналов: **${stats.filter(s => s.is_active).length}**\n`;
         message += `• Всего каналов: **${stats.length}**`;
 
-        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '👥 Последние пользователи', callback_data: 'admin_unique_users' }]
+                ]
+            }
+        });
 
     } catch (error) {
         console.error('Error getting subscription stats:', error);
-        bot.sendMessage(chatId, '❌ Ошибка загрузки статистики подписок.');
+        bot.sendMessage(chatId, '❌ Ошибка загрузки статистики ��одписок.');
+    }
+});
+
+// Admin command to view latest unique subscription users
+bot.onText(/\/unique_users/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+
+    if (!isAdmin(userId)) {
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        return;
+    }
+
+    try {
+        const uniqueUsers = await db.getLatestUniqueSubscriptionUsers(15);
+        const totalCount = await db.getUniqueSubscriptionUsersCount();
+
+        let message = `👥 **Последние уникальные пользователи** (${totalCount} всего)\n\n`;
+
+        if (uniqueUsers.length === 0) {
+            message += '📋 Нет данных о пользователях.';
+        } else {
+            for (let i = 0; i < uniqueUsers.length; i++) {
+                const user = uniqueUsers[i];
+                const cleanName = cleanDisplayText(user.first_name || 'Неизвестный');
+                const date = new Date(user.first_success_at).toLocaleString('ru-RU');
+
+                message += `${i + 1}. **${cleanName}**\n`;
+                message += `   🆔 ID: ${user.user_id}\n`;
+                if (user.username) {
+                    message += `   📱 @${user.username}\n`;
+                }
+                message += `   📅 Первая проверка: ${date}\n\n`;
+            }
+        }
+
+        bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown'
+        });
+    } catch (error) {
+        console.error('Error getting unique users:', error);
+        bot.sendMessage(chatId, '❌ Ошибка получения данных о пользо��ателях.');
     }
 });
 
@@ -1538,7 +1887,7 @@ bot.onText(/\/create_promo (.+)/, async (msg, match) => {
     try {
         const params = match[1].split('|');
         if (params.length !== 3) {
-            bot.sendMessage(chatId, '❌ Неверный формат! Используйт��: /create_promo КОД|награда|использования');
+            bot.sendMessage(chatId, '❌ Неверный форма��! Используйт��: /create_promo КОД|награда|использования');
             return;
         }
 
@@ -1549,7 +1898,7 @@ bot.onText(/\/create_promo (.+)/, async (msg, match) => {
             [code.trim().toUpperCase(), parseFloat(reward), parseInt(maxUses), userId]
         );
 
-        bot.sendMessage(chatId, `✅ Промокод создан!\n🎁 Код: ${code.toUpperCase()}\n💰 Награда: ${reward} ⭐\n📊 Использований: ${maxUses}`);
+        bot.sendMessage(chatId, `�� Промок��д создан!\n🎁 Код: ${code.toUpperCase()}\n💰 Награда: ${reward} ⭐\n📊 Использований: ${maxUses}`);
 
     } catch (error) {
         console.error('Error creating promocode:', error);
@@ -1574,7 +1923,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 // User hasn't passed captcha - show captcha
                 if (captchaSystem.hasActiveSession(userId)) {
                     const currentQuestion = captchaSystem.getCurrentQuestion(userId);
-                    await bot.editMessageText(`🤖 **Подтвердите, что вы не робот**
+                    await bot.editMessageText(`🤖 **Подтвердите, что вы не робо��**
 
 Решите простой пример:
 **${currentQuestion}**
@@ -1616,10 +1965,11 @@ bot.on('callback_query', async (callbackQuery) => {
         if (data !== 'check_subscriptions' && data !== 'main_menu' && data !== 'new_captcha' && data !== 'restart_after_captcha' && !data.startsWith('admin_') && !isAdmin(userId)) {
             const isSubscribed = await checkAllSubscriptions(userId);
             if (!isSubscribed) {
-                const subData = await getSubscriptionMessage();
+                const subData = await getEnhancedSubscriptionMessage(userId);
                 await bot.editMessageText(subData.message, {
                     chat_id: chatId,
                     message_id: msg.message_id,
+                    parse_mode: 'Markdown',
                     reply_markup: { inline_keyboard: subData.buttons }
                 });
                 await bot.answerCallbackQuery(callbackQuery.id);
@@ -1666,7 +2016,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
             case 'restart_after_captcha':
                 // User passed captcha and wants to restart bot
-                await bot.editMessageText('🔄 Перезапуск...', {
+                await bot.editMessageText('�� Перез��пуск...', {
                     chat_id: chatId,
                     message_id: msg.message_id
                 });
@@ -1680,7 +2030,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
 🎯 **Доступные возможности:**
 • Ежедневные награды в кликере
-• Выполнение заданий за вознаграждение
+��� Выпол��ение заданий за вознаграждение
 • Реферальная программа (3⭐ за друга)
 • Участие в лотереях и розыгрышах
 • Открытие призовых кейсов
@@ -1713,66 +2063,92 @@ bot.on('callback_query', async (callbackQuery) => {
                         console.error('Error adding weekly points for bot activation:', pointsError);
                     }
                     
-                    // Process pending referral if exists
+                    // Process pending referrer (set invited_by but don't award bonus yet)
                     const user = await db.getUser(userId);
                     if (user && user.pending_referrer) {
                         const invitedBy = user.pending_referrer;
 
-                        // Update referrer stats
-                        await db.executeQuery(
-                            'UPDATE users SET referrals_count = referrals_count + 1, referrals_today = referrals_today + 1, balance = balance + 3 WHERE id = $1',
-                            [invitedBy]
-                        );
-
-                        // Add weekly points for successful referral
-                        try {
-                            await db.addWeeklyPoints(invitedBy, 1, 'referral_success');
-                        } catch (pointsError) {
-                            console.error('Error adding weekly points for referral:', pointsError);
-                        }
-
-                        // Add tickets to active auto-referral lotteries
-                        try {
-                            const autoLotteries = await db.executeQuery(`
-                                SELECT l.id
-                                FROM lotteries l
-                                JOIN referral_lotteries rl ON l.id = rl.lottery_id
-                                WHERE l.is_active = TRUE
-                                AND l.lottery_type = 'referral_auto'
-                                AND rl.ends_at > NOW()
-                            `);
-
-                            for (const lottery of autoLotteries.rows) {
-                                await db.addReferralTicket(lottery.id, invitedBy, 'referral', userId);
-                            }
-
-                            console.log(`[AUTO-REFERRAL] Added tickets to ${autoLotteries.rows.length} auto-referral lotteries for user ${invitedBy}`);
-                        } catch (error) {
-                            console.error('Error adding auto-referral tickets:', error);
-                        }
-
-                        // Clear pending referrer
+                        // Clear pending referrer and set invited_by
                         await db.updateUserField(userId, 'pending_referrer', null);
                         await db.updateUserField(userId, 'invited_by', invitedBy);
 
-                        // Send notification to referrer
-                        try {
-                            const userInfo = await db.getUser(userId);
-                            const message = `🎉 **Поздравляем!**
+                        console.log(`[REFERRAL] User ${userId} linked to referrer ${invitedBy} - bonus will be awarded when qualified`);
+                    }
 
-🎉 По вашей реферальной ссылке присоединился новый пользователь: **${userInfo.first_name}**
+                    // Check if user now qualifies for referral processing (new system)
+                    try {
+                        const qualification = await db.checkReferralQualification(userId);
+                        if (qualification.qualified) {
+                            const result = await db.checkAndProcessPendingReferrals(userId);
+                            if (result.processed > 0) {
+                                // Send notification to referrer
+                                try {
+                                    const userInfo = await db.getUser(userId);
+                                    const message = `🎉 **Поздравляем!**
+
+👤 Приглашённый вами пользователь **${userInfo.first_name}** выполнил все условия:
+✅ Прошёл капчу
+✅ Подписался на все каналы
+��� Пригласил своего первого реферала
 
 💰 **Вы получили:** +3 ⭐
-💎 **Ваш баланс пополнен!**
+💎 **Ваш баланс попол��ен!**
 
 👥 Продолжайте приглашать друзей и зарабатывайте еще больше звёзд!`;
 
-                            await bot.sendMessage(invitedBy, message, { parse_mode: 'Markdown' });
-                        } catch (error) {
-                            console.error('Error sending referral notification:', error);
+                                    await bot.sendMessage(result.referrerId, message, {
+                                        parse_mode: 'Markdown',
+                                        reply_markup: {
+                                            inline_keyboard: [
+                                                [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                                                [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                                            ]
+                                        }
+                                    });
+                                } catch (error) {
+                                    console.error('Error sending qualified referral notification:', error);
+                                }
+                            }
                         }
+                    } catch (error) {
+                        console.error('Error checking referral qualification:', error);
                     }
-                    
+
+                    // Check for retroactive referral activation (old referrals)
+                    try {
+                        const retroResult = await db.activateRetroactiveReferral(userId);
+                        if (retroResult.success) {
+                            // Send notification to referrer about retroactive activation
+                            try {
+                                const userInfo = await db.getUser(userId);
+                                const message = `🔄 **Воз��рат звёзд!**
+
+👤 Ваш реферал **${userInfo.first_name}** активировался:
+✅ Прошёл капчу
+✅ Подписался на все каналы
+
+💰 **Возвращено:** +3 ⭐
+💎 **За активного реферала!**
+
+🎯 Теперь этот реферал засчитывается полностью!`;
+
+                                await bot.sendMessage(retroResult.referrerId, message, {
+                                    parse_mode: 'Markdown',
+                                    reply_markup: {
+                                        inline_keyboard: [
+                                            [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                                            [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                                        ]
+                                    }
+                                });
+                            } catch (error) {
+                                console.error('Error sending retroactive activation notification:', error);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error checking retroactive activation:', error);
+                    }
+
                     await handleMainMenu(chatId, msg.message_id);
                 } else {
                     await bot.answerCallbackQuery(callbackQuery.id, {
@@ -1862,14 +2238,14 @@ bot.on('callback_query', async (callbackQuery) => {
                 if (isAdmin(userId)) {
                     await db.updateWeeklyRewardsSettings(false);
                     await handleAdminWeeklyRewards(chatId, msg.message_id);
-                    await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Автоматические награды отключены!' });
+                    await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Автоматические награды отклю��ены!' });
                 } else {
                     await bot.answerCallbackQuery(callbackQuery.id, { text: '❌ У вас нет прав доступа!', show_alert: true });
                 }
                 break;
             case 'admin_weekly_trigger':
                 if (isAdmin(userId)) {
-                    await bot.answerCallbackQuery(callbackQuery.id, { text: '🏆 Запускаю распределение наград...' });
+                    await bot.answerCallbackQuery(callbackQuery.id, { text: '🏆 Запускаю р��спределение наград...' });
                     try {
                         const result = await distributeWeeklyRewards(true);
                         if (result.success) {
@@ -1932,7 +2308,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 }
                 break;
 
-            // Stars Agent функциона������ность удалена - только ручная обработка заявок
+            // Stars Agent функциона������ность уд��лена - только ручная обработка заявок
 
             case 'admin_tasks':
                 console.log(`[MAIN] Admin tasks called by userId: ${userId}, isAdmin: ${isAdmin(userId)}`);
@@ -1988,9 +2364,34 @@ bot.on('callback_query', async (callbackQuery) => {
                     await handleSubscriptionStats(chatId, msg.message_id);
                 }
                 break;
+            case 'admin_subgram':
+                if (isAdmin(userId)) {
+                    await handleAdminSubGram(chatId, msg.message_id);
+                }
+                break;
+            case 'admin_subgram_settings':
+                if (isAdmin(userId)) {
+                    await handleAdminSubGramSettings(chatId, msg.message_id);
+                }
+                break;
+            case 'admin_subgram_stats':
+                if (isAdmin(userId)) {
+                    await handleAdminSubGramStats(chatId, msg.message_id);
+                }
+                break;
+            case 'admin_subgram_logs':
+                if (isAdmin(userId)) {
+                    await handleAdminSubGramLogs(chatId, msg.message_id);
+                }
+                break;
             case 'admin_subscription_history':
                 if (isAdmin(userId)) {
                     await handleSubscriptionHistory(chatId, msg.message_id);
+                }
+                break;
+            case 'admin_unique_users':
+                if (isAdmin(userId)) {
+                    await handleUniqueUsers(chatId, msg.message_id);
                 }
                 break;
             case 'admin_lottery':
@@ -2001,7 +2402,7 @@ bot.on('callback_query', async (callbackQuery) => {
                         await adminHandlers.handleAdminLottery(bot, chatId, msg.message_id);
                     } catch (error) {
                         console.error('[MAIN] Error in handleAdminLottery:', error);
-                        await bot.editMessageText('❌ Ошибка загрузки управления лотереями.', {
+                        await bot.editMessageText('❌ Ошибка загрузки управления лот��реями.', {
                             chat_id: chatId,
                             message_id: msg.message_id,
                             reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
@@ -2017,7 +2418,7 @@ bot.on('callback_query', async (callbackQuery) => {
                         await adminHandlers.handleAdminPromocodes(bot, chatId, msg.message_id);
                     } catch (error) {
                         console.error('[MAIN] Error in handleAdminPromocodes:', error);
-                        await bot.editMessageText('❌ Ошибка загрузки управления промокодами.', {
+                        await bot.editMessageText('��� Ошибка загрузки управления промокодами.', {
                             chat_id: chatId,
                             message_id: msg.message_id,
                             reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
@@ -2045,7 +2446,7 @@ bot.on('callback_query', async (callbackQuery) => {
                         await bot.editMessageText('❌ Ошибка загрузки кастомной рассылки.', {
                             chat_id: chatId,
                             message_id: msg.message_id,
-                            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]] }
+                            reply_markup: { inline_keyboard: [[{ text: '���� Назад к рассыл��е', callback_data: 'admin_broadcast' }]] }
                         });
                     }
                 }
@@ -2076,6 +2477,20 @@ bot.on('callback_query', async (callbackQuery) => {
                         }
                     });
                 }
+                break;
+
+            // SubGram handlers
+            case 'check_subscriptions_enhanced':
+                await handleEnhancedSubscriptionCheck(chatId, msg.message_id, userId);
+                break;
+            case 'subgram_check':
+                await handleSubGramCheck(chatId, msg.message_id, userId);
+                break;
+            case 'subgram_gender_male':
+                await handleSubGramGender(chatId, msg.message_id, userId, 'male');
+                break;
+            case 'subgram_gender_female':
+                await handleSubGramGender(chatId, msg.message_id, userId, 'female');
                 break;
 
             default:
@@ -2161,7 +2576,7 @@ async function distributeLotteryRewards(lotteryId, lottery) {
 💰 Ваш выигрыш: **${rewardPerWinner} ⭐**
 🏆 Всего победителей: ${winnersCount}
 
-🎉 Награда зачислена на в��ш баланс!`;
+🎉 Награда зачислена на ����ш баланс!`;
 
                 await bot.sendMessage(winner.user_id, message, {
                     parse_mode: 'Markdown',
@@ -2195,14 +2610,14 @@ async function distributeLotteryRewards(lotteryId, lottery) {
 async function handleMainMenu(chatId, messageId) {
     const welcomeMessage = `🌟 **Главное меню StarBot**
 
-💰 **Ваш персональный цент заработка Telegram Stars**
+💰 **Ваш пер��ональный цент заработка Telegram Stars**
 
 🎯 **Дост��пные возможности:**
 • ���� **Кликер** - ежедневная награда 0.1 ⭐
 • 📋 **Задания** - выполняйте задачи за вознагражд��ние
 • 👥 **��ефералы** - ��риглашайте друзей (3 ⭐ за каждого)
 • 🎁 **Кейсы** - призы от 1 до 10 ⭐
-• 🎰 **Лотерея** - участвуйте в розыгрышах
+• 🎰 **Ло��ерея** - участвуйте в розыгрышах
 
 Выберите нужный ��азд��л:`;
 
@@ -2227,7 +2642,7 @@ async function handleProfile(chatId, messageId, user) {
 
 💰 **Финансовая статистика:**
 • Текущий баланс: **${user.balance} ⭐**
-• Заработано с рефералов: **${totalEarned} ⭐**
+• Зараб��тано с рефералов: **${totalEarned} ⭐**
 
 👥 **Реферальная активность:**
 • Всего приглашено: **${user.referrals_count}**
@@ -2259,10 +2674,10 @@ async function handleInvite(chatId, messageId, user) {
 
     const message = `🌟 **Реферальная программа**
 
-💰 **Зарабатывайте вместе с друзьями!**
+💰 **Зарабатывай��е вместе с друзьями!**
 Приглашайте друзей и получайте **3 ⭐** за каждого нового пользователя!
 
-🔗 **Ваша персо��альная ссылка:**
+🔗 **Ваша персо����альная ссылка:**
 \`${inviteLink}\`
 
 📊 **Статистика приглашений:**
@@ -2276,12 +2691,12 @@ async function handleInvite(chatId, messageId, user) {
 3. Друг подписывается на все обязательные каналы
 4. Вы получаете 3 ⭐ на баланс!
 
-⚠️ **Важно:** Реферал засчитывается только после подписки на все каналы!`;
+⚠️ **Важно:** Рефе��ал засчитывается только после подписки на все каналы!`;
 
     const keyboard = {
         reply_markup: {
             inline_keyboard: [
-                [{ text: '📥 поделиться', switch_inline_query: `Присоединяйся к боту для заработка звёзд! ${inviteLink}` }],
+                [{ text: '📥 по��елиться', switch_inline_query: `Присоединяйся к боту для заработка зв��зд! ${inviteLink}` }],
                 [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
             ]
         }
@@ -2316,15 +2731,15 @@ async function handleClicker(chatId, messageId, user) {
 
         const message = `🎯 **Кликер**
 
-❌ **Лимит кликов исчерпан!**
+❌ **Лимит кликов ис��ерпан!**
 
 📊 **Сег��дня кликнуто:** ${currentClicks}/10
-💰 **Ваш баланс:** ${user.balance} ⭐
+💰 **Ваш бал��нс:** ${user.balance} ⭐
 
-⏳ **До обновления:** ${hoursLeft}ч ${minutesLeft}��
+⏳ **До обновления:** ${hoursLeft}ч ${minutesLeft}���
 🎁 **Завтра дост��пно:** 10 новых кликов
 
-💡 **Совет:** Выполняйте задания и приглашайте друзей!`;
+💡 **Совет:** Выполняйт�� задания и приглашайте друзей!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -2355,7 +2770,7 @@ async function handleClicker(chatId, messageId, user) {
 ⏳ **До следующего клика:** ${minutesLeft} мин
 ⏰ **Следующая награда:** 0.1 ⭐
 
-⌛ **Время ��жидания:** ${delayMinutes} мин (увеличивается с каждым кликом)`;
+⌛ **Время ���жидания:** ${delayMinutes} мин (увеличивается с каждым кликом)`;
 
             await bot.editMessageText(message, {
                 chat_id: chatId,
@@ -2418,17 +2833,17 @@ async function handleClicker(chatId, messageId, user) {
     const nextDelayMinutes = newClicks < 10 ? newClicks * 5 : 'Завтра';
     const remainingClicks = 10 - newClicks;
 
-    const message = `🎯 **Кликер**
+    const message = `🎯 **Кл��кер**
 
 🎉 **Отлично!** Клик ${newClicks}/10 выполнен!
-💰 Начислено: **+${reward} ⭐** (+1 очко)
+💰 На��ислено: **+${reward} ⭐** (+1 очко)
 
  **Статистика:**
 💎 Ваш баланс: ${(parseFloat(user.balance) + parseFloat(reward)).toFixed(1)} ⭐
 🔢 Осталось кликов: ${remainingClicks}
 ${remainingClicks > 0 ? `⏰ Следующий кли�� через: ${nextDelayMinutes} мин` : '🎉 Все клики на сегодня использованы!'}
 
- **Совет:** С ��аждым кликом время ожидания увеличивается на 5 минут`;
+ **Совет:** С ��аждым кликом время ожид��ния увеличивается на 5 минут`;
 
     await bot.editMessageText(message, {
         chat_id: chatId,
@@ -2449,11 +2864,11 @@ async function handleWithdraw(chatId, messageId, user) {
 **Ваш баланс:** ${user.balance} ⭐
 
 ${user.referrals_count < 5 ? 
-    '❌ **Для вывода средств требуются минимум 5 рефералов**' : 
+    '❌ **Для вывода средств требуются минимум 5 рефера��ов**' : 
     '✅ **Вы можете выводить средства**'
 }
 
-Выберите сумму для вывода:`;
+В��б��рите сумму для вывода:`;
 
     await bot.editMessageText(message, {
         chat_id: chatId,
@@ -2468,7 +2883,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
         const user = await db.getUser(userId);
 
         if (!user) {
-            await bot.editMessageText('❌ Пользователь не найден.', {
+            await bot.editMessageText('❌ ��ользователь не найден.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2497,7 +2912,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
         const type = data === 'withdraw_premium' ? 'premium' : 'stars';
 
         if (!amount) {
-            await bot.editMessageText('❌ Неверный тип вывода.', {
+            await bot.editMessageText('❌ Неверный ти�� вывода.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2507,7 +2922,7 @@ async function handleWithdrawRequest(chatId, messageId, userId, data) {
 
         // Проверка баланса
         if (parseFloat(user.balance) < amount) {
-            await bot.editMessageText('❌ Недостаточно звёзд для вывода!', {
+            await bot.editMessageText('❌ Недостаточно з��ёзд для вывода!', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2537,7 +2952,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
 
 💰 **Сумма:** ${amount} ⭐
 📦 **Тип:** ${type === 'premium' ? 'Telegram Premium на 3 месяца' : 'Звёзды'}
-💎 **Баланс после вывода:** ${(parseFloat(user.balance) - amount).toFixed(2)} ⭐`;
+💎 **Баланс по��ле вывода:** ${(parseFloat(user.balance) - amount).toFixed(2)} ⭐`;
 
             const adminKeyboard = {
                 reply_markup: {
@@ -2574,7 +2989,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
         } catch (error) {
             console.error('[WITHDRAWAL] Error processing withdrawal:', error);
 
-            await bot.editMessageText('❌ Ошибка обработки заявки. Попробуйте позже.', {
+            await bot.editMessageText('❌ Оши��ка обработки заявки. Попробуйте позже.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2584,7 +2999,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
     } catch (error) {
         console.error('[WITHDRAWAL] Main error:', error?.message || error);
 
-        await bot.editMessageText('❌ Произошла ошибка. Попробуйте позже.', {
+        await bot.editMessageText('❌ Произо��ла ошибка. Попробуйте позже.', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -2605,7 +3020,7 @@ async function handleTasks(chatId, messageId, user) {
         const availableTasks = allTasks.filter(task => !completedTaskIds.includes(task.id));
 
         if (availableTasks.length === 0) {
-            await bot.editMessageText('✅ Все задания выполнено! Ожидайте новых заданий.', {
+            await bot.editMessageText('✅ Все задания выполнено! Ожидайте новы�� заданий.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -2619,7 +3034,7 @@ async function handleTasks(chatId, messageId, user) {
             `https://t.me/${task.channel_id.substring(1)}` :
             task.channel_id;
 
-        const message = `📋 **Активные задания**
+        const message = `📋 **Активные зада��ия**
 
 📋 **Текущее задание:**
 Подписк�� на канал **${task.channel_name || task.channel_id}**
@@ -2628,10 +3043,10 @@ async function handleTasks(chatId, messageId, user) {
 📊 **Про��ресс:** ${completedTasks.length}/${allTasks.length} заданий выполнено
 
 📝 **Инструкция:**
-1. Нажмите "Подписать��я" для перехода к каналу
+1. Нажмите "Подписат����я" для перехода к каналу
 2. Подпишитесь на канал
-3. Вернитесь и нажмите "проверить"
-4. Получите награду!`;
+3. Вернитесь и нажмит�� "проверить"
+4. Получите награ��у!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -2671,7 +3086,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
             const member = await bot.getChatMember(task.channel_id, userId);
             
             if (member.status === 'left' || member.status === 'kicked') {
-                await bot.editMessageText('❌ Вы не подпи��аны на канал! Подпишитесь и попробуйте снова.', {
+                await bot.editMessageText('��� Вы не подпи��аны на канал! Подпишитесь и попробуйте снова.', {
                     chat_id: chatId,
                     message_id: messageId,
                     ...getTaskKeyboard(taskId)
@@ -2699,7 +3114,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                 }
             } catch (taskError) {
                 if (taskError.message === 'Task completion limit reached') {
-                    await bot.editMessageText('❌ **Лимит выполнений достигнут!**\n\nЭто задание больше недоступно для выполнения.\n\nпопробуйте другие задания!', {
+                    await bot.editMessageText('❌ **Лимит выполнений достигнут!**\n\nЭто задание больше недоступно для выпо��нения.\n\nпопробуй��е другие задания!', {
                         chat_id: chatId,
                         message_id: messageId,
                         parse_mode: 'Markdown',
@@ -2740,14 +3155,14 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                     }
                 } catch (taskError) {
                     if (taskError.message === 'Task completion limit reached') {
-                        await bot.editMessageText(' **Лимит выполнений достигнут!**\n\nЭто зада��ие больше недоступно для выполнения.', {
+                        await bot.editMessageText(' **Лимит выполнений достигнут!**\n\nЭто зада��ие бо��ьше недоступно для выполнения.', {
                             chat_id: chatId,
                             message_id: messageId,
                             parse_mode: 'Markdown',
                             ...getBackToMainKeyboard()
                         });
                     } else {
-                        await bot.editMessageText('❌ Ошибка выполнения задания. Попробуйте позже.', {
+                        await bot.editMessageText('❌ Ошибка выполнения зад��ния. Попробуйте позже.', {
                             chat_id: chatId,
                             message_id: messageId,
                             ...getBackToMainKeyboard()
@@ -2836,11 +3251,11 @@ async function handleInstruction(chatId, messageId) {
 
 1��⃣ **Кликер** - нажимайте к��ждый день и получайте 0.1 ⭐
 2️⃣ **Задания** - подписывайтес�� на каналы за награды
-3️⃣ **Рефералы** - приглашайте друзей и получайте 3 ⭐ за ��аждого
+3️⃣ **Рефералы** - приглашайте ��рузей и получайте 3 ⭐ за ��аждого
 4️⃣ **Кейсы** - открывайте кейсы с призами (нужно 3+ рефералов в день)
-5️⃣ **Лотерея** - участвуйте в розыгрышах
+5️⃣ **��отерея** - участвуйте в розыгрышах
 
-💰 **Вывод средств:**
+💰 **Вывод средс��в:**
 • Минимум 5 рефералов для вывода
 • Доступны суммы: 15, 25, 50, 100 ⭐
 • Telegram Premium на 3 месяца за 1300 ⭐
@@ -2850,7 +3265,7 @@ async function handleInstruction(chatId, messageId) {
 • Приглашайте активных друзей
 • Выполняйте все задания
 
-⚠️ **Важно:** Рефералы засчитываются только после подписки на все каналы!`;
+⚠️ **Важно:** Рефералы засчи��ываются только после подписки на все каналы!`;
 
     await bot.editMessageText(message, {
         chat_id: chatId,
@@ -2886,14 +3301,14 @@ async function handleRatingsAll(chatId, messageId) {
         let message = '🏆 Общий рейтинг по рефералам\n\n';
 
         if (result.rows.length === 0) {
-            message += '📊 Пока нет пользователей с рефералами.\n\n Станьте первым - пригласите друзей и получайте 3 ⭐ за каждого!';
+            message += '📊 Пок�� нет пользоват��лей с рефералами.\n\n Станьте первым - пригласите друзей и получайте 3 ⭐ за каждого!';
         } else {
             result.rows.forEach((user, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
                 const safeName = cleanDisplayText(user.first_name);
                 message += `${medal} ${safeName} - ${user.referrals_count} рефералов\n`;
             });
-            message += '\n💪 Приглашайте друзей и поднимайтесь в рейтинге!';
+            message += '\n�� Приглашайте друзей и поднимайтесь в рейтинге!';
         }
 
         await bot.editMessageText(message, {
@@ -2959,9 +3374,9 @@ async function handleRatingsWeekPoints(chatId, messageId) {
         let message = '⭐ **Недельный рейтинг по очкам**\n\n';
 
         if (users.length === 0) {
-            message += 'Пока нет активных пользователей за эту неделю.';
+            message += 'Пока нет активных пользователей за ��ту неде��ю.';
         } else {
-            message += '🏆 **Топ-10 по очкам за неделю:**\n\n';
+            message += '🏆 **Топ-10 по очкам ��а неделю:**\n\n';
 
             users.forEach((user, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
@@ -2969,12 +3384,12 @@ async function handleRatingsWeekPoints(chatId, messageId) {
                 message += `${medal} ${safeName} - ${user.weekly_points} очков\n`;
             });
 
-            message += '\n📈 **Как заработать очки:**\n';
+            message += '\n📈 **Как зар��ботать очки:**\n';
             message += '• Активация бота - 1 очко\n';
             message += '• Каждый клик - 1 очко\n';
             message += '• Выполненное задание - 2 очка\n';
             message += '• Купленный билет лотереи - 1 очко\n';
-            message += '• Приглашенный реферал - 1 очко\n';
+            message += '�� Приглашенный реферал - 1 очко\n';
             message += '\n🎁 **��оп-5 в воскресенье получат награды!**';
         }
 
@@ -3001,13 +3416,13 @@ async function handleCases(chatId, messageId, user) {
     const hasEnoughReferrals = user.referrals_today >= 3;
 
     if (!hasEnoughReferrals) {
-        const message = `🎁 **Кейсы**
+        const message = `🎁 **Кейс��**
 
 ❌ **Для открытия кейса нужно привести 3+ рефе��алов в день**
 
 **Ваши рефералы сегодня:** ${user.referrals_today}/3
 
-Приглашайте друзей и возвращайтесь!`;
+Приглашайте друзей и возвращай��есь!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -3041,9 +3456,9 @@ async function handleCases(chatId, messageId, user) {
 
     const message = `🎁 **Кейсы**
 
-🎉 **Поздравляем!** Вы откры��и кейс и получили **${reward} ⭐**
+🎉 **��оздравляем!** Вы откры��и кейс и получили **${reward} ⭐**
 
-💰 **Ваш баланс:** ${user.balance + reward} ⭐
+💰 **Ваш ��аланс:** ${user.balance + reward} ⭐
 
 ⏰ Возврашайтесь завтра за новым кейсом!`;
 
@@ -3137,7 +3552,7 @@ async function handleLottery(chatId, messageId, userId = null) {
             if (refLottery.lottery_type === 'referral_condition') {
                 message += `👥 **${refLottery.name}** (реферальная)\n`;
                 message += `⏰ Осталось: ${hoursLeft} часов\n`;
-                message += `📋 Условие: пригласить ${refLottery.required_referrals} рефер��лов\n`;
+                message += `📋 Условие: пригласить ${refLottery.required_referrals} ��ефер��лов\n`;
                 message += `💰 Доп. билет: ${refLottery.additional_ticket_price} 🎫\n`;
                 message += `🎫 Ваши билеты: ${totalTickets}\n`;
 
@@ -3146,16 +3561,16 @@ async function handleLottery(chatId, messageId, userId = null) {
                     keyboards.push([{ text: `🎫 Купить доп. билет - ${refLottery.name}`, callback_data: `ref_lottery_buy_${refLottery.id}` }]);
                 } else {
                     message += `❌ Пригласите ${refLottery.required_referrals} рефералов для участия\n\n`;
-                    keyboards.push([{ text: `👥 Проверить условие - ${refLottery.name}`, callback_data: `ref_lottery_check_${refLottery.id}` }]);
+                    keyboards.push([{ text: `👥 Про��ерить условие - ${refLottery.name}`, callback_data: `ref_lottery_check_${refLottery.id}` }]);
                 }
 
             } else if (refLottery.lottery_type === 'referral_auto') {
                 message += `👥 **${refLottery.name}** (авто-реферальная)\n`;
-                message += `⏰ Осталось: ${hoursLeft} часов\n`;
+                message += `��� Осталось: ${hoursLeft} часов\n`;
                 message += `🎫 Билеты за рефералов: ${totalTickets}\n`;
                 message += `📋 каждый новый реферал = +1 билет\n\n`;
 
-                keyboards.push([{ text: `👥 ��ригласить друзей - ${refLottery.name}`, callback_data: 'invite' }]);
+                keyboards.push([{ text: `👥 ��риглас��ть друзей - ${refLottery.name}`, callback_data: 'invite' }]);
             }
         }
 
@@ -3186,7 +3601,7 @@ async function handleLotteryBuy(chatId, messageId, userId, lotteryId) {
         const lotteryResult = await db.executeQuery('SELECT * FROM lotteries WHERE id = $1 AND is_active = TRUE', [lotteryId]);
         
         if (lotteryResult.rows.length === 0) {
-            await bot.editMessageText('❌ Ло����ерея не найдена.', {
+            await bot.editMessageText('❌ Ло����ерея не най��ена.', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -3213,7 +3628,7 @@ async function handleLotteryBuy(chatId, messageId, userId, lotteryId) {
 
         // Check balance
         if (user.balance < lottery.ticket_price) {
-            await bot.editMessageText('❌ Недостаточно средств для покупки билета!', {
+            await bot.editMessageText('❌ Недостаточно средст�� для покупки билета!', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -3223,7 +3638,7 @@ async function handleLotteryBuy(chatId, messageId, userId, lotteryId) {
 
         // Check if lottery is full
         if (lottery.current_tickets >= lottery.max_tickets) {
-            await bot.editMessageText('❌ Все билеты в лотерею продан��!', {
+            await bot.editMessageText('❌ Все билеты в лотерею про��ан��!', {
                 chat_id: chatId,
                 message_id: messageId,
                 ...getBackToMainKeyboard()
@@ -3355,7 +3770,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
 
 💰 **Сумма:** ${typeDisplay}
 
-🎯 **Награда уже выплачена!** Спасибо за использование нашего бота!
+🎯 **Награда уже выплачена!** Спасибо за использование нашего бот��!
 
 👥 Продолжайте приглашать друзей и зарабатывать еще больше!`;
 
@@ -3417,7 +3832,7 @@ async function handleWithdrawalRejection(chatId, messageId, callbackData, adminI
         const rejectionTitle = withdrawalId ? `❌ **Отклонение заявки #${withdrawalId}**` : `❌ **Отклонение заявки**`;
         await bot.editMessageText(`${rejectionTitle}
 
-👤 Пользователь: ${user.first_name}
+���� Пользователь: ${user.first_name}
 💰 Сумма: ${amount} ⭐
 📦 Тип: ${type === 'premium' ? 'Telegram Premium' : 'Звёзды'}
 
@@ -3454,6 +3869,42 @@ bot.on('message', async (msg) => {
                 if (result.success) {
                     // Captcha passed - update database and send success message
                     await db.setCaptchaPassed(userId, true);
+
+                    // Check for retroactive referral activation after captcha
+                    try {
+                        const retroResult = await db.activateRetroactiveReferral(userId);
+                        if (retroResult.success) {
+                            // Send notification to referrer about retroactive activation
+                            try {
+                                const userInfo = await db.getUser(userId);
+                                const message = `🔄 **Возврат звёзд!**
+
+👤 Ваш реферал **${userInfo.first_name}** активировался:
+✅ Прошёл капчу
+✅ Подписался на все каналы
+
+💰 **Возвращено:** +3 ⭐
+💎 **За активного реферала!**
+
+🎯 Теперь этот реферал засчитывается полностью!`;
+
+                                await bot.sendMessage(retroResult.referrerId, message, {
+                                    parse_mode: 'Markdown',
+                                    reply_markup: {
+                                        inline_keyboard: [
+                                            [{ text: '👥 Пр��гласить еще', callback_data: 'invite' }],
+                                            [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                                        ]
+                                    }
+                                });
+                            } catch (error) {
+                                console.error('Error sending retroactive activation notification:', error);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error checking retroactive activation after captcha:', error);
+                    }
+
                     await bot.sendMessage(chatId, `${result.message}
 
 🎉 Теперь вы можете пользоваться ботом! Нажмите /start для продолжения.`, {
@@ -3521,7 +3972,7 @@ bot.on('message', async (msg) => {
                     if (success) {
                         bot.sendMessage(chatId, `✅ Промокод активирован! Вы получили ${promoResult.reward} ⭐`);
                     } else {
-                        bot.sendMessage(chatId, '❌ Промокод уже использован или недействителен!');
+                        bot.sendMessage(chatId, '❌ Промокод уже использован или неде��ствителен!');
                     }
                 } else if (user.temp_action.startsWith('rejecting_withdrawal_')) {
                     console.log('[REJECTION] Processing rejection reason:', msg.text);
@@ -3549,7 +4000,7 @@ bot.on('message', async (msg) => {
                     }
 
                     if (!rejectedWithdrawalId) {
-                        await bot.sendMessage(chatId, '❌ Заявка на вывод не найдена или уже о��работана.');
+                        await bot.sendMessage(chatId, '❌ Заявка на вывод не найдена ил�� уже о��работана.');
                         return;
                     }
 
@@ -3571,7 +4022,7 @@ ${rejectionReason}
 
 💸 **Средства возвращены на баланс.**
 
-Если у вас есть вопросы, обратитесь к администрации.`;
+Если у вас есть во��росы, обратитесь к администрации.`;
 
                     await sendThrottledMessage(targetUserId, rejectionMessage, { parse_mode: 'Markdown' });
                     console.log('[REJECTION] Rejection message sent to user');
@@ -3615,8 +4066,8 @@ async function handleAdminStats(chatId, messageId) {
 
         const message = `📊 **Статистика бота**
 
-👥 **Всего пользователей:** ${stats.total_users}
-📅 **Активные за неде��ю:** ${weeklyResult.rows[0]?.weekly_active || 0}
+👥 **Всего пользователе��:** ${stats.total_users}
+📅 **Активные ��а неде��ю:** ${weeklyResult.rows[0]?.weekly_active || 0}
 📅 **Активные за день:** ${dailyResult.rows[0]?.daily_active || 0}
 💰 **Общий баланс:** ${stats.total_balance} ⭐
 👥 **Всего рефералов:** ${stats.total_referrals}`;
@@ -3647,11 +4098,11 @@ async function handleAdminMenu(chatId, messageId) {
 
         const message = `🔧 **Админ-панель**
 
-📊 **Быстрая статистика:**
+📊 **Быстр��я ста��истика:**
 👥 Пользователей: ${stats.total_users}
 💰 общий баланс: ${stats.total_balance} ⭐
 
-**Дополнительные команды:**
+**Дополнительные ко��анды:**
 🎰 **/endlottery [ID]** - завершить лотерею вручную
 👥 **/refupplayer [ID] [число]** - добавить рефералов пользователю
 ⭐ **/starsupplayer [ID] [число]** - добавить звёзды пользователю
@@ -3713,7 +4164,7 @@ bot.onText(/\/create_tracking_link (.+)/, async (msg, match) => {
             [trackingId, linkName, userId]
         );
 
-        const message = `✅ **Трекинговая ссылка создана!**
+        const message = `✅ **Трекин��овая ссылка создана!**
 
 📝 **Название:** ${linkName}
 🔗 **Ссылка:** \`${trackingLink}\`
@@ -3751,7 +4202,7 @@ bot.onText(/\/list_tracking/, async (msg) => {
             return;
         }
 
-        let message = '📋 **Списо�� трекинговых ссылок**\n\n';
+        let message = '📋 **Списо�� тр��кинговых ссылок**\n\n';
 
         result.rows.forEach((link, index) => {
             const date = new Date(link.created_at).toLocaleDateString('ru-RU');
@@ -3767,7 +4218,7 @@ bot.onText(/\/list_tracking/, async (msg) => {
 
     } catch (error) {
         console.error('Error listing tracking links:', error);
-        bot.sendMessage(chatId, `❌ Ошибка загрузки ��писка: ${error.message}`);
+        bot.sendMessage(chatId, `❌ Ошибк�� загрузки ��писка: ${error.message}`);
     }
 });
 
@@ -3791,7 +4242,7 @@ bot.onText(/\/tracking_stats (.+)/, async (msg, match) => {
         );
 
         if (linkResult.rows.length === 0) {
-            bot.sendMessage(chatId, '❌ тренинговая ссылка не найдена.');
+            bot.sendMessage(chatId, '❌ трени��говая ссылка не найдена.');
             return;
         }
 
@@ -3813,7 +4264,7 @@ bot.onText(/\/tracking_stats (.+)/, async (msg, match) => {
 
         const createdDate = new Date(link.created_at).toLocaleDateString('ru-RU');
 
-        const message = `📊 **Статистика трекинговой ссылки**\n\n📝 **Название:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n📅 **Создана:** ${createdDate}\n\n📈 **Статистика:**\n👥 Всего переходо��: **${stats.total_clicks || 0}**\n Уникальных пользователей: **${stats.unique_users || 0}**\n⏰ За последние 24 часа: **${recentStats.recent_clicks || 0}**\n\n🔗 **Ссылка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
+        const message = `📊 **Статистика трекинговой ссылки**\n\n📝 **Название:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n📅 **Создана:** ${createdDate}\n\n📈 **Статистика:**\n👥 Всего переходо��: **${stats.total_clicks || 0}**\n Уникальных пользователей: **${stats.unique_users || 0}**\n⏰ З�� последние 24 часа: **${recentStats.recent_clicks || 0}**\n\n🔗 **Ссылка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
 
         bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
@@ -3844,7 +4295,7 @@ bot.onText(/\/delete_task (\d+)/, async (msg, match) => {
         }
     } catch (error) {
         console.error('Error deleting task:', error);
-        bot.sendMessage(chatId, '❌ Ошибка удаления задания.');
+        bot.sendMessage(chatId, '❌ Ошибка удаления задани��.');
     }
 });
 
@@ -3889,7 +4340,7 @@ bot.onText(/\/delete_lottery (\d+)/, async (msg, match) => {
         const hasTickets = ticketsResult.rows[0].count > 0;
 
         if (hasTickets) {
-            bot.sendMessage(chatId, `❌ Нельзя удалить лотерею с ID ${lotteryId} - в ней есть участники! Сначала завершите лотерею командой /endlottery ${lotteryId}`);
+            bot.sendMessage(chatId, `❌ Нельзя удалить лотерею с ID ${lotteryId} - в ней есть участники! Сначала завершите лотерею ��омандой /endlottery ${lotteryId}`);
             return;
         }
 
@@ -3948,7 +4399,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
             if (i % 10 === 0 || i === users.rows.length - 1) {
                 const progress = Math.round((i + 1) / totalUsers * 100);
                 try {
-                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Пользователей: ${totalUsers}\n✅ Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ прогресс: ${progress}%`, {
+                    await bot.editMessageText(`📤 **Рассылка в процессе...**\n\n👥 Пользователей: ${totalUsers}\n��� Отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n⏳ прогресс: ${progress}%`, {
                         chat_id: chatId,
                         message_id: confirmMsg.message_id,
                         parse_mode: 'Markdown'
@@ -3963,7 +4414,7 @@ bot.onText(/\/custom_broadcast\s+([\s\S]+)/, async (msg, match) => {
         }
 
         // Final report
-        await bot.editMessageText(`✅ **Рассылка ��авершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n📊 Успешность: ${Math.round(successCount/totalUsers*100)}%`, {
+        await bot.editMessageText(`��� **Рассылка ��авершена!**\n\n👥 Всего пользователей: ${totalUsers}\n✅ Успешно отправлено: ${successCount}\n❌ Ошибок: ${failCount}\n📊 Успешность: ${Math.round(successCount/totalUsers*100)}%`, {
             chat_id: chatId,
             message_id: confirmMsg.message_id,
             parse_mode: 'Markdown'
@@ -3989,7 +4440,7 @@ async function handleBroadcastCustom(chatId, messageId, userId) {
 
 Бот будет ждать ваше сообщение и разошлет его всем пользо��ателям.
 
-⚠️ **Внимание:** Рассылка будет отправлена сразу после получения сообщения!
+⚠️ **Внимание:** Рассылка будет о��правлена сразу пос��е получения сообщения!
 
 ���� **Поддерживается Markdown-форматирование**`;
 
@@ -3999,7 +4450,7 @@ async function handleBroadcastCustom(chatId, messageId, userId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '❌ Отменить', callback_data: 'cancel_broadcast' }],
+                    [{ text: '��� Отменить', callback_data: 'cancel_broadcast' }],
                     [{ text: '🔙 Назад к рассылке', callback_data: 'admin_broadcast' }]
                 ]
             }
@@ -4044,7 +4495,7 @@ cron.schedule('0 0 * * *', async () => {
         console.error('❌ Critical error in daily reset:', error);
         // Send alert to admin if possible
         try {
-            await bot.sendMessage(ADMIN_CHANNEL, ` **Ошибка сброса данных**\n\nОшибка: ${error.message}\nВремя: ${new Date().toLocaleString('ru-RU')}`, { parse_mode: 'Markdown' });
+            await bot.sendMessage(ADMIN_CHANNEL, ` **Ошиб��а сброса данных**\n\nОшибка: ${error.message}\nВремя: ${new Date().toLocaleString('ru-RU')}`, { parse_mode: 'Markdown' });
         } catch (alertError) {
             console.error('Failed to send alert to admin:', alertError);
         }
@@ -4151,7 +4602,7 @@ cron.schedule('0 20 * * 0', async () => {
         const rewards = [100, 75, 50, 25, 15]; // Stars for positions 1-5
         const positions = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
-        let rewardMessage = '🏆 **Еженедельные награды!**\n\n📅 **Топ-5 пользователей по рефералам за неделю:**\n\n';
+        let rewardMessage = '🏆 **Еженедельные награды!**\n\n📅 **Топ-5 пользователей по рефер��лам за неделю:**\n\n';
 
         for (let i = 0; i < result.rows.length; i++) {
             const user = result.rows[i];
@@ -4166,7 +4617,7 @@ cron.schedule('0 20 * * 0', async () => {
 
             // Send personal congratulations
             try {
-                const personalMessage = `🎉 **Поздравляем!**\n\n${position} **Вы заняли ${i + 1} место в недельном рейтинге!**\n\n👥 **Рефералов за неделю:** ${user.referrals_today}\n💰 **Награда:** +${reward} ⭐\n\n🎯 Отличная работа! продолжайте приглашать друзей!`;
+                const personalMessage = `🎉 **Поздравляем!**\n\n${position} **Вы заняли ${i + 1} место в недельном рейтинге!**\n\n👥 **Реферал��в за неделю:** ${user.referrals_today}\n💰 **Награда:** +${reward} ⭐\n\n🎯 Отличная работа! продолжайте приглашать друзей!`;
 
                 await sendThrottledMessage(user.id, personalMessage, { parse_mode: 'Markdown' });
                 console.log(`[WEEKLY-REWARDS] Reward sent to ${user.first_name}: ${reward} stars`);
@@ -4207,7 +4658,7 @@ async function handleAdminWeeklyRewards(chatId, messageId) {
 ���� **Текущее состояние:**
 🔄 Автоматические награды: ${status}
 ⏰ Время запуска: Воскресенье 20:00 МСК
-📅 Посл��дний ручной запуск: ${lastManual}
+📅 Посл��дний ручной зап��ск: ${lastManual}
 
 💡 **Ситтема очков:**
 • Активация бот�� - 1 очко
@@ -4228,7 +4679,7 @@ async function handleAdminWeeklyRewards(chatId, messageId) {
                 inline_keyboard: [
                     [
                         {
-                            text: settings.auto_rewards_enabled ? '🔴 Отключить авто' : '🟢 Включить авто',
+                            text: settings.auto_rewards_enabled ? '🔴 Отключить авто' : '�� Включить авто',
                             callback_data: settings.auto_rewards_enabled ? 'admin_weekly_disable' : 'admin_weekly_enable'
                         },
                         { text: '🎯 Запустить сейчас', callback_data: 'admin_weekly_trigger' }
@@ -4328,7 +4779,7 @@ bot.onText(/\/weekly_rewards_disable/, async (msg) => {
         bot.sendMessage(chatId, '❌ Автоматические недельные награды отключены!');
     } catch (error) {
         console.error('Error disabling weekly rewards:', error);
-        bot.sendMessage(chatId, '��� Ошибка отключения наград.');
+        bot.sendMessage(chatId, '��� Ошибка ��тключения наград.');
     }
 });
 
@@ -4347,7 +4798,7 @@ bot.onText(/\/weekly_rewards_trigger/, async (msg) => {
         const result = await distributeWeeklyRewards(true);
 
         if (result.success) {
-            bot.sendMessage(chatId, `✅ ${result.message}!\n\n🎯 Очки пользователей сброшены, новая неделя началась.`);
+            bot.sendMessage(chatId, `��� ${result.message}!\n\n🎯 Очки пользователей сброшены, новая неделя началась.`);
         } else {
             bot.sendMessage(chatId, `❌ ${result.message}`);
         }
@@ -4419,7 +4870,7 @@ bot.onText(/\/process_old_withdrawals/, async (msg) => {
 
         for (const withdrawal of oldWithdrawals.rows) {
             try {
-                // Получить информацию о пользователе
+                // Получить информацию о п��льзователе
                 const user = await db.getUser(withdrawal.user_id);
                 if (!user) {
                     skippedCount++;
@@ -4428,7 +4879,7 @@ bot.onText(/\/process_old_withdrawals/, async (msg) => {
 
                 const cleanName = cleanDisplayText(user.first_name);
 
-                // Автоматически обрабатывать звёзды до 200
+                // Автомат��чески обрабатывать звёзды до 200
                 if (withdrawal.type === 'stars' && withdrawal.amount <= 200) {
                     // Автоотправка Stars Agent отключена
                     const result = { success: false, error: 'Stars Agent отключен, только ручная обработка' };
@@ -4458,8 +4909,8 @@ bot.onText(/\/process_old_withdrawals/, async (msg) => {
 
         message += `\n📊 **Итого:**\n`;
         message += `✅ Обработано автоматически: ${processedCount}\n`;
-        message += `🔶 Требуют р��чной обработки: ${skippedCount}\n`;
-        message += `\n💡 Крупные суммы и Premium подписки обрабатывайте вручную через кнопки в уведомлен��ях.`;
+        message += `🔶 Требуют р��чной о��работки: ${skippedCount}\n`;
+        message += `\n💡 Крупные сумм�� и Premium подписки обрабатывайте вручную через кнопки в уведомлен��ях.`;
 
         bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
@@ -4475,24 +4926,24 @@ bot.onText(/\/agent_limits(?:\s+(\d+)\s+(\d+)\s+(\d+))?/, async (msg, match) => 
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У вас нет прав доступ��.');
         return;
     }
 
     try {
         if (!match[1] || !match[2] || !match[3]) {
             // Показать текущие лимиты
-            const message = `⚙️ **Текущие лимиты Stars Agent:**
+            const message = `⚙️ **Тек��щие лимиты Stars Agent:**
 
 🔢 **Звёзд в ��ас:** 10 максиму��
 📅 **Звёзд в ��ень:** 80 максимум
-🎯 **За раз (тест-режим):** 25 максимум
+🎯 **За ра�� (тест-режим):** 25 максимум
 
 💡 **Для изменения используйте:**
 \`/agent_limits ДЕНЬ ЧАС ЗАРАЗР��З\`
 
 **Примеры:**
-• \`/agent_limits 150 20 50\` - 150/день, 20/час, 50 за раз
+• \`/agent_limits 150 20 50\` - 150/день, 20/час, 50 ��а раз
 • \`/agent_limits 200 25 100\` - снять тест-режим
 
 ⚠️ **ОСТОРОЖНО:** Высокие лимиты увеличивают риск блокировки!
@@ -4522,7 +4973,7 @@ bot.onText(/\/agent_limits(?:\s+(\d+)\s+(\d+)\s+(\d+))?/, async (msg, match) => 
         }
 
         if (maxAmount < 5 || maxAmount > 500) {
-            bot.sendMessage(chatId, '❌ Макс��мум за раз должен быть от 5 до 500 звёзд.');
+            bot.sendMessage(chatId, '❌ Макс��мум за раз должен б��ть от 5 до 500 звёзд.');
             return;
         }
 
@@ -4590,7 +5041,7 @@ ${dayLimit > 25 ? '🔓 **Тест-режим от��лючён**' : '🔒 **
 
         } catch (error) {
             console.error('Error updating agent limits:', error);
-            bot.sendMessage(chatId, '❌ Ошибка обновления лимитов. Попробуйте позже.');
+            bot.sendMessage(chatId, '❌ Ошибка обновления лим��тов. Попр��буйте позже.');
         }
 
     } catch (error) {
@@ -4605,7 +5056,7 @@ async function handleSubscriptionStats(chatId, messageId) {
         const stats = await db.getChannelSubscriptionStats();
 
         if (stats.length === 0) {
-            await bot.editMessageText(`📈 **Статистика подписок**\n\n❌ Нет данных о подписках.\n\nДобавьте обязательные каналы и дождитесь первых пр��верок подписок.`, {
+            await bot.editMessageText(`📈 **Статистика подписок**\n\n❌ Нет данных о подп��сках.\n\nДобавьте обязательные каналы и дождитесь первых пр��верок подписок.`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown',
@@ -4619,7 +5070,12 @@ async function handleSubscriptionStats(chatId, messageId) {
             return;
         }
 
-        let message = `📈 **Статистика подписок по каналам**\n\n`;
+        const uniqueUsersCount = await db.getUniqueSubscriptionUsersCount();
+
+        let message = `📈 **Ст��тистика подписок по каналам**\n\n`;
+        message += `👥 **Уникальных пользователей прошло проверку:** ${uniqueUsersCount}\n`;
+        message += `🔄 *(Каждый пользователь считается только один раз)*\n\n`;
+
         let totalChecks = 0;
 
         for (const stat of stats) {
@@ -4629,7 +5085,7 @@ async function handleSubscriptionStats(chatId, messageId) {
             const activeStatus = stat.is_active ? '✅' : '❌';
 
             message += `${activeStatus} **${channelName}**\n`;
-            message += `   📊 Успешных проверок: **${stat.successful_checks}**\n`;
+            message += `   📊 Уникальных проверок: **${stat.successful_checks}**\n`;
             message += `   📅 Добавлен: ${addedDate}\n`;
             message += `   ⏰ Последн��я проверка: ${lastCheck}\n\n`;
 
@@ -4637,11 +5093,11 @@ async function handleSubscriptionStats(chatId, messageId) {
         }
 
         message += `📊 **Общая статистика:**\n`;
-        message += `• Всего успешных проверок: **${totalChecks}**\n`;
+        message += `• Всего уникал��ных пользователей: **${uniqueUsersCount}**\n`;
         message += `• Активных каналов: **${stats.filter(s => s.is_active).length}**\n`;
-        message += `• Всего каналов: **${stats.length}**\n\n`;
+        message += `• Всего канало��: **${stats.length}**\n\n`;
 
-        message += `💡 **Как работае��:**\nКогда пользователь успешно проходит проверку подписки, счетчик увеличивается для всех каналов, которые были активны на момент проверки.`;
+        message += `💡 **Как работае��:**\nКаждый пользователь может увеличить счетчик только один раз - при первой успешной проверке подписки. Повторные проверки того же пользователя не увеличивают счётчик.`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -4649,6 +5105,7 @@ async function handleSubscriptionStats(chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
+                    [{ text: '👥 Уникальные пользователи', callback_data: 'admin_unique_users' }],
                     [{ text: '🔄 Обновить', callback_data: 'admin_subscription_stats' }],
                     [{ text: '📋 История проверок', callback_data: 'admin_subscription_history' }],
                     [{ text: '📺 Управление каналами', callback_data: 'admin_channels' }],
@@ -4659,7 +5116,60 @@ async function handleSubscriptionStats(chatId, messageId) {
 
     } catch (error) {
         console.error('Error displaying subscription stats:', error);
-        await bot.editMessageText('❌ Ошибка загрузки статистики подписок.', {
+        await bot.editMessageText('❌ Ошибка загрузки статис��ики подписок.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+    }
+}
+
+// Handle unique subscription users display
+async function handleUniqueUsers(chatId, messageId) {
+    try {
+        const uniqueUsers = await db.getLatestUniqueSubscriptionUsers(15);
+        const totalCount = await db.getUniqueSubscriptionUsersCount();
+
+        let message = `👥 **Последние уникальные пользователи** (${totalCount} всего)\n\n`;
+
+        if (uniqueUsers.length === 0) {
+            message += '📋 Нет д��нных о пользователях.';
+        } else {
+            for (let i = 0; i < uniqueUsers.length; i++) {
+                const user = uniqueUsers[i];
+                const cleanName = cleanDisplayText(user.first_name || 'Неизвестный');
+                const date = new Date(user.first_success_at).toLocaleString('ru-RU');
+
+                message += `${i + 1}. **${cleanName}**\n`;
+                message += `   �� ID: ${user.user_id}\n`;
+                if (user.username) {
+                    message += `   📱 @${user.username}\n`;
+                }
+                message += `   📅 Первая проверка: ${date}\n\n`;
+            }
+        }
+
+        message += `💡 **Пояснение:**\nКаждый пользователь учитывается в стати��тике только один раз - при первой успешной проверке подписки. Повторные проверки этого же пользователя не увеличивают счётчик.`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📊 К статистике', callback_data: 'admin_subscription_stats' }],
+                    [{ text: '🔙 Назад', callback_data: 'admin_menu' }]
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Error displaying unique users:', error);
+        await bot.editMessageText('❌ Ошиб��а загрузки данных о пользователях.', {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {
@@ -4780,14 +5290,14 @@ bot.on('message', async (msg) => {
             // Clear temp action
             await db.updateUserField(userId, 'temp_action', null);
 
-            const broadcastMessage = msg.text || msg.caption || '📢 Сообщение от администрации';
+            const broadcastMessage = msg.text || msg.caption || '📢 Сообщение от ��дминистрации';
 
             // Get all users
             const users = await db.executeQuery('SELECT id FROM users WHERE is_subscribed = TRUE');
             const totalUsers = users.rows.length;
 
             // Send confirmation
-            const confirmMsg = await bot.sendMessage(chatId, `📤 **Начинаю рассылку...**\n\n👥 Пользователей: ${totalUsers}\n⏳ Прогресс: 0%`, { parse_mode: 'Markdown' });
+            const confirmMsg = await bot.sendMessage(chatId, `📤 **Начинаю рассылку...**\n\n👥 Пользователей: ${totalUsers}\n⏳ П��огресс: 0%`, { parse_mode: 'Markdown' });
 
             // Use throttler for broadcast with progress tracking
             const result = await throttler.broadcastMessages(
@@ -4823,6 +5333,574 @@ bot.on('message', async (msg) => {
         console.error('Error handling message for broadcast:', error);
     }
 });
+
+// ==================== SubGram Handlers ====================
+
+// Enhanced subscription check with SubGram integration
+async function handleEnhancedSubscriptionCheck(chatId, messageId, userId) {
+    try {
+        console.log('[SUBGRAM] Enhanced subscription check for user:', userId);
+
+        // Check regular required channels first
+        const requiredChannels = await getRequiredChannels();
+        let allSubscribed = true;
+
+        if (requiredChannels.length > 0) {
+            allSubscribed = await checkAllSubscriptions(userId, true);
+        }
+
+        // Check SubGram channels
+        let subgramAllowed = true;
+        try {
+            const user = await db.getUser(userId);
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            // Get current SubGram session if exists
+            const session = await db.getSubGramUserSession(userId);
+            let subgramResponse;
+
+            if (session && session.session_data) {
+                // Use existing session data for checking
+                console.log('[SUBGRAM] Using existing session data for check');
+                subgramResponse = await subgramAPI.checkUserStatus({
+                    userId: userId.toString(),
+                    chatId: userId.toString(),
+                    firstName: user.first_name || 'Пользователь',
+                    languageCode: 'ru',
+                    premium: false,
+                    gender: session.gender || undefined,
+                    maxOP: 3,
+                    action: 'subscribe'
+                });
+            } else {
+                // Make new request
+                console.log('[SUBGRAM] Making new SubGram check request');
+                subgramResponse = await subgramAPI.requestSponsors({
+                    userId: userId.toString(),
+                    chatId: userId.toString(),
+                    firstName: user.first_name || 'Пользователь',
+                    languageCode: 'ru',
+                    premium: false,
+                    maxOP: 3,
+                    action: 'subscribe'
+                });
+            }
+
+            if (subgramResponse.success && subgramResponse.data) {
+                const processedData = subgramAPI.processAPIResponse(subgramResponse.data);
+
+                // Log the check
+                await db.logSubGramAPIRequest(
+                    userId,
+                    'check_status',
+                    { action: 'subscribe' },
+                    subgramResponse.data,
+                    true
+                );
+
+                // Update session if needed
+                await db.saveSubGramUserSession(userId, subgramResponse.data, processedData);
+
+                if (processedData.needsGender) {
+                    const genderMessage = subgramAPI.formatChannelsMessage(processedData);
+                    await bot.editMessageText(genderMessage.message, {
+                        chat_id: chatId,
+                        message_id: messageId,
+                        parse_mode: 'Markdown',
+                        reply_markup: { inline_keyboard: genderMessage.buttons }
+                    });
+                    return;
+                }
+
+                if (processedData.needsSubscription) {
+                    subgramAllowed = false;
+                    console.log('[SUBGRAM] User needs to subscribe to SubGram channels');
+                } else if (processedData.allSubscribed || processedData.canProceed) {
+                    subgramAllowed = true;
+                    console.log('[SUBGRAM] SubGram subscriptions OK');
+                }
+            }
+        } catch (subgramError) {
+            console.error('[SUBGRAM] Error checking SubGram status:', subgramError);
+            // Don't block user if SubGram service is down
+            subgramAllowed = true;
+        }
+
+        if (allSubscribed && subgramAllowed) {
+            // User has passed all checks
+            await db.updateUserField(userId, 'is_subscribed', true);
+
+            // Process referral logic like in the original handler
+            const user = await db.getUser(userId);
+            if (user && user.pending_referrer) {
+                await db.updateUserField(userId, 'pending_referrer', null);
+                await db.updateUserField(userId, 'invited_by', user.pending_referrer);
+            }
+
+            // Check referral qualification
+            try {
+                const qualification = await db.checkReferralQualification(userId);
+                if (qualification.qualified) {
+                    const result = await db.checkAndProcessPendingReferrals(userId);
+                    if (result.processed > 0) {
+                        // Notify referrer about successful qualification
+                        try {
+                            const userInfo = await db.getUser(userId);
+                            const message = `🎉 **Поздравляем!**\n\n👤 Приглашённый вами пользователь **${userInfo.first_name}** выполнил все условия:\n✅ Прошёл капчу\n✅ Подписался на все каналы\n✅ Пригласил своего первого реферала\n\n💰 **Вы получили:** +3 ⭐\n💎 **Ваш баланс пополнен!**`;
+
+                            await bot.sendMessage(result.referrerId, message, {
+                                parse_mode: 'Markdown',
+                                reply_markup: {
+                                    inline_keyboard: [
+                                        [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                                        [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                                    ]
+                                }
+                            });
+                        } catch (error) {
+                            console.error('Error sending qualified referral notification:', error);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking referral qualification:', error);
+            }
+
+            // Check retroactive referral activation
+            try {
+                const retroResult = await db.activateRetroactiveReferral(userId);
+                if (retroResult.success) {
+                    try {
+                        const userInfo = await db.getUser(userId);
+                        const message = `🔄 **Возврат звё��д!**\n\n👤 Ваш реферал **${userInfo.first_name}** активировался:\n✅ Прошёл капчу\n✅ Подписался на все каналы\n\n💰 **Возвращено:** +3 ⭐\n💎 **За активного реферала!**`;
+
+                        await bot.sendMessage(retroResult.referrerId, message, {
+                            parse_mode: 'Markdown',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                                    [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                                ]
+                            }
+                        });
+                    } catch (error) {
+                        console.error('Error sending retroactive activation notification:', error);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking retroactive activation:', error);
+            }
+
+            // Show main menu
+            await handleMainMenu(chatId, messageId);
+        } else {
+            // Show subscription requirements again
+            const subData = await getEnhancedSubscriptionMessage(userId);
+            await bot.editMessageText(subData.message, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: subData.buttons }
+            });
+        }
+
+    } catch (error) {
+        console.error('Error in enhanced subscription check:', error);
+        await bot.editMessageText('❌ Ошибка проверки подписок. Попробуйте позже.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 Попробовать снова', callback_data: 'check_subscriptions_enhanced' }],
+                    [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
+                ]
+            }
+        });
+    }
+}
+
+// Handle SubGram subscription check
+async function handleSubGramCheck(chatId, messageId, userId) {
+    try {
+        console.log('[SUBGRAM] Checking SubGram subscriptions for user:', userId);
+
+        const user = await db.getUser(userId);
+        if (!user) {
+            await bot.editMessageText('❌ Пользователь не найден.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: { inline_keyboard: [[{ text: '🏠 Главное меню', callback_data: 'main_menu' }]] }
+            });
+            return;
+        }
+
+        // Get current session
+        const session = await db.getSubGramUserSession(userId);
+
+        const checkResponse = await subgramAPI.checkUserStatus({
+            userId: userId.toString(),
+            chatId: userId.toString(),
+            firstName: user.first_name || 'Пользователь',
+            languageCode: 'ru',
+            premium: false,
+            gender: session?.gender || undefined,
+            maxOP: 3,
+            action: 'subscribe'
+        });
+
+        if (!checkResponse.success) {
+            await bot.editMessageText('❌ Ошибка проверки SubGram каналов. Попробуйте позже.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔄 Попробовать снова', callback_data: 'subgram_check' }],
+                        [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                    ]
+                }
+            });
+            return;
+        }
+
+        const processedData = subgramAPI.processAPIResponse(checkResponse.data);
+
+        // Log the check
+        await db.logSubGramAPIRequest(
+            userId,
+            'check_subgram',
+            { action: 'subscribe' },
+            checkResponse.data,
+            true
+        );
+
+        // Update session
+        await db.saveSubGramUserSession(userId, checkResponse.data, processedData);
+
+        if (processedData.allSubscribed || processedData.canProceed) {
+            await bot.editMessageText('✅ **Отлично!**\n\nВы подписались на все спонсорские каналы!\n\n🎉 Теперь проверим все подписки...', {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '✅ Проверить все подписки', callback_data: 'check_subscriptions_enhanced' }]
+                    ]
+                }
+            });
+        } else {
+            // Format message with current status
+            const channelsMessage = subgramAPI.formatChannelsMessage(processedData);
+            await bot.editMessageText(channelsMessage.message, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: channelsMessage.buttons }
+            });
+        }
+
+    } catch (error) {
+        console.error('Error in SubGram check:', error);
+        await bot.editMessageText('❌ Ошибка проверки спонсорских каналов.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 Попробовать снова', callback_data: 'subgram_check' }],
+                    [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                ]
+            }
+        });
+    }
+}
+
+// Handle SubGram gender selection
+async function handleSubGramGender(chatId, messageId, userId, gender) {
+    try {
+        console.log('[SUBGRAM] Setting gender for user:', userId, 'gender:', gender);
+
+        const user = await db.getUser(userId);
+        if (!user) {
+            await bot.editMessageText('❌ Пользователь не найден.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: { inline_keyboard: [[{ text: '🏠 Главное меню', callback_data: 'main_menu' }]] }
+            });
+            return;
+        }
+
+        // Make request with gender
+        const genderResponse = await subgramAPI.requestSponsors({
+            userId: userId.toString(),
+            chatId: userId.toString(),
+            firstName: user.first_name || 'Пользователь',
+            languageCode: 'ru',
+            premium: false,
+            gender: gender,
+            maxOP: 3,
+            action: 'subscribe'
+        });
+
+        if (!genderResponse.success) {
+            await bot.editMessageText('❌ Ошибка получения каналов с указанным полом.', {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🔄 Попробовать снова', callback_data: 'check_subscriptions_enhanced' }],
+                        [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                    ]
+                }
+            });
+            return;
+        }
+
+        const processedData = subgramAPI.processAPIResponse(genderResponse.data);
+
+        // Log the request
+        await db.logSubGramAPIRequest(
+            userId,
+            'gender_request',
+            { gender, action: 'subscribe' },
+            genderResponse.data,
+            true
+        );
+
+        // Save session with gender
+        await db.saveSubGramUserSession(userId, genderResponse.data, processedData, gender);
+
+        // Save channels
+        if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
+            await db.saveSubGramChannels(userId, processedData.channelsToSubscribe);
+        }
+
+        // Format and show channels
+        const channelsMessage = subgramAPI.formatChannelsMessage(processedData);
+        await bot.editMessageText(channelsMessage.message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: channelsMessage.buttons }
+        });
+
+    } catch (error) {
+        console.error('Error handling SubGram gender:', error);
+        await bot.editMessageText('❌ Ошибка обработки выбора пола.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 Попробовать снова', callback_data: 'check_subscriptions_enhanced' }],
+                    [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                ]
+            }
+        });
+    }
+}
+
+// ==================== Admin SubGram Handlers ====================
+
+// Main SubGram admin menu
+async function handleAdminSubGram(chatId, messageId) {
+    try {
+        const settings = await db.getSubGramSettings();
+        const config = subgramAPI.getConfig();
+
+        const message = `🎯 **SubGram Управление**\n\n📊 **Статус интеграции:**\n• ${settings?.enabled ? '✅ Включена' : '❌ Отключена'}\n• API ключ: ${config.hasApiKey ? '✅ Настроен' : '❌ Не настроен'}\n• Максимум спонсоров: ${settings?.max_sponsors || 3}\n\n🔧 **Доступные действия:**`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '⚙️ Настройки', callback_data: 'admin_subgram_settings' },
+                        { text: '📊 Статистика', callback_data: 'admin_subgram_stats' }
+                    ],
+                    [
+                        { text: '📋 Логи запросов', callback_data: 'admin_subgram_logs' },
+                        { text: '🧹 Очистить сессии', callback_data: 'admin_subgram_cleanup' }
+                    ],
+                    [
+                        { text: settings?.enabled ? '⏸️ Отключить' : '▶️ Включить', callback_data: `admin_subgram_toggle_${settings?.enabled ? 'off' : 'on'}` }
+                    ],
+                    [
+                        { text: '🔙 Админ панель', callback_data: 'admin_menu' }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in admin SubGram handler:', error);
+        await bot.editMessageText('❌ Ошибка загрузки SubGram управления.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_menu' }]] }
+        });
+    }
+}
+
+// SubGram settings management
+async function handleAdminSubGramSettings(chatId, messageId) {
+    try {
+        const settings = await db.getSubGramSettings();
+
+        const message = `⚙️ **SubGram Настройки**\n\n🔧 **Текущие настройки:**\n• **Статус:** ${settings?.enabled ? '✅ Включена' : '❌ Отключена'}\n• **API URL:** \`${settings?.api_url || 'Не настроен'}\`\n• **Максимум спонсоров:** ${settings?.max_sponsors || 3}\n• **Действие по умолчанию:** ${settings?.default_action || 'subscribe'}\n\n📝 **Последнее обновление:** ${settings?.updated_at ? new Date(settings.updated_at).toLocaleString('ru-RU') : 'Нет данных'}`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🔄 Обновить настройки', callback_data: 'admin_subgram_refresh_settings' }
+                    ],
+                    [
+                        { text: '🔙 SubGram управление', callback_data: 'admin_subgram' }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in admin SubGram settings:', error);
+        await bot.editMessageText('❌ Ошибка загрузки настроек SubGram.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_subgram' }]] }
+        });
+    }
+}
+
+// SubGram statistics
+async function handleAdminSubGramStats(chatId, messageId) {
+    try {
+        // Get recent API requests
+        const recentLogs = await db.getSubGramAPIRequestHistory(null, 10);
+
+        // Count statistics
+        const totalRequests = recentLogs.length;
+        const successfulRequests = recentLogs.filter(log => log.success).length;
+        const errorRequests = totalRequests - successfulRequests;
+
+        // Get unique users who used SubGram
+        const uniqueUsers = new Set(recentLogs.map(log => log.user_id)).size;
+
+        // Get latest requests by status
+        const statusCounts = {};
+        recentLogs.forEach(log => {
+            if (log.api_status) {
+                statusCounts[log.api_status] = (statusCounts[log.api_status] || 0) + 1;
+            }
+        });
+
+        let message = `📊 **SubGram Статистика**\n\n📈 **Общая статистика (последние ${totalRequests} запросов):**\n• Всего запросов: ${totalRequests}\n• Успешных: ${successfulRequests}\n• Ошибок: ${errorRequests}\n• Уникальных пользователей: ${uniqueUsers}\n`;
+
+        if (Object.keys(statusCounts).length > 0) {
+            message += '\n🎯 **Статусы ответов API:**\n';
+            for (const [status, count] of Object.entries(statusCounts)) {
+                const emoji = status === 'ok' ? '✅' : status === 'warning' ? '⚠️' : status === 'gender' ? '👤' : '❓';
+                message += `• ${emoji} ${status}: ${count}\n`;
+            }
+        }
+
+        if (recentLogs.length > 0) {
+            const latestLog = recentLogs[0];
+            message += `\n⏰ **Последний запрос:**\n• ${new Date(latestLog.created_at).toLocaleString('ru-RU')}\n• Пользователь: ${latestLog.first_name || 'Неизвестен'}\n• Статус: ${latestLog.success ? '✅' : '❌'}\n• API ответ: ${latestLog.api_status || 'Нет данных'}`;
+        }
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🔄 Обновить', callback_data: 'admin_subgram_stats' },
+                        { text: '📋 Детальные логи', callback_data: 'admin_subgram_logs' }
+                    ],
+                    [
+                        { text: '🔙 SubGram управление', callback_data: 'admin_subgram' }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in admin SubGram stats:', error);
+        await bot.editMessageText('❌ Ошибка загрузки статистики SubGram.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_subgram' }]] }
+        });
+    }
+}
+
+// SubGram API logs
+async function handleAdminSubGramLogs(chatId, messageId) {
+    try {
+        const logs = await db.getSubGramAPIRequestHistory(null, 15);
+
+        let message = `📋 **SubGram API Логи**\n\n`;
+
+        if (logs.length === 0) {
+            message += '📝 Пока нет запросов к SubGram API.';
+        } else {
+            message += `📊 Показаны последние ${logs.length} запросов:\n\n`;
+
+            for (let index = 0; index < logs.length; index++) {
+                const log = logs[index];
+                const date = new Date(log.created_at).toLocaleString('ru-RU');
+                const user = log.first_name || `ID:${log.user_id}`;
+                const status = log.success ? '✅' : '❌';
+                const apiStatus = log.api_status ? ` (${log.api_status})` : '';
+
+                message += `${index + 1}. ${status} ${date}\n   👤 ${user} | ${log.request_type}${apiStatus}\n`;
+
+                if (log.error_message) {
+                    message += `   ❌ ${log.error_message.substring(0, 50)}...\n`;
+                }
+
+                message += '\n';
+
+                // Limit message length
+                if (message.length > 3500) {
+                    message += `... и еще ${logs.length - index - 1} записей`;
+                    break;
+                }
+            }
+        }
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🔄 Обновить', callback_data: 'admin_subgram_logs' },
+                        { text: '📊 Статистика', callback_data: 'admin_subgram_stats' }
+                    ],
+                    [
+                        { text: '🔙 SubGram управление', callback_data: 'admin_subgram' }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in admin SubGram logs:', error);
+        await bot.editMessageText('❌ Ошибка загрузки логов SubGram.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_subgram' }]] }
+        });
+    }
+}
 
 // Start the bot
 startBot();

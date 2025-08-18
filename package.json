@@ -14,7 +14,9 @@
     "diagnose-userbot": "node diagnose-userbot.js",
     "fix-userbot": "python3 fix-userbot-auth.py",
     "test-stars": "python3 test-stars-sending.py",
-    "check-agent": "node check-agent-status.js"
+    "check-agent": "node check-agent-status.js",
+    "test-subgram": "node test-subgram.js",
+    "test-referrals": "node test-referral-system.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",
