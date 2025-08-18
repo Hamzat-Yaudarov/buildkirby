@@ -1944,10 +1944,12 @@ async function getSubGramUserSession(userId) {
             const session = result.rows[0];
             // Parse JSON data
             if (session.session_data) {
-                session.session_data = JSON.parse(session.session_data);
+                session.session_data = typeof session.session_data === 'string' ?
+                    JSON.parse(session.session_data) : session.session_data;
             }
             if (session.channels_data) {
-                session.channels_data = JSON.parse(session.channels_data);
+                session.channels_data = typeof session.channels_data === 'string' ?
+                    JSON.parse(session.channels_data) : session.channels_data;
             }
             return session;
         }

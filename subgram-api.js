@@ -20,7 +20,7 @@ class SubGramAPI {
      * @param {Object} params - Параметры запроса
      * @param {string} params.userId - ID пользователя
      * @param {string} params.chatId - ID чата
-     * @param {string} params.gender - Пол пользователя (male/female, опционально)
+     * @param {string} params.gender - Пол пользователя (male/female, оп��ионально)
      * @param {string} params.firstName - Имя пользователя
      * @param {string} params.languageCode - Код языка пользователя
      * @param {boolean} params.premium - Премиум статус пользователя
@@ -88,9 +88,23 @@ class SubGramAPI {
 
         } catch (error) {
             console.error('[SUBGRAM] API request failed:', error.message);
-            
+
             if (error.response) {
                 console.error('[SUBGRAM] Response error:', error.response.status, error.response.data);
+
+                // Check if this is a valid SubGram API response with HTTP 400 but valid data
+                if (error.response.data &&
+                    error.response.data.status &&
+                    error.response.data.code !== undefined &&
+                    error.response.data.message) {
+
+                    console.log('[SUBGRAM] Treating HTTP 400 as valid SubGram API response');
+                    return {
+                        success: true,
+                        data: error.response.data
+                    };
+                }
+
                 return {
                     success: false,
                     error: `API Error: ${error.response.status}`,
@@ -132,7 +146,8 @@ class SubGramAPI {
                 needsSubscription: status === 'warning',
                 needsGender: status === 'gender',
                 allSubscribed: status === 'ok' && code === 200,
-                canProceed: status === 'ok',
+                canProceed: status === 'ok' && code === 200, // Only proceed if fully OK
+                isModeration: status === 'ok' && code === 400, // Bot under moderation
                 channels: [],
                 totalLinks: links.length
             };
@@ -201,7 +216,7 @@ class SubGramAPI {
 
     /**
      * Форматирование сообщения с каналами для пользователя
-     * @param {Object} processedData - Обработанные данные от processAPIResponse
+     * @param {Object} processedData - Обр��ботанные данные от processAPIResponse
      * @returns {Object} Сообщение и кнопки для Telegram
      */
     formatChannelsMessage(processedData) {
@@ -219,9 +234,18 @@ class SubGramAPI {
                 };
             }
 
+            if (processedData.isModeration) {
+                return {
+                    message: `⏳ **SubGram: Бот на модерации**\n\n${processedData.message}\n\n🔄 Спонсорские каналы пока недоступны, но скоро появятся!\n\n💡 Пока можете пользоваться ботом как обычно.`,
+                    buttons: [
+                        [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
+                    ]
+                };
+            }
+
             if (processedData.allSubscribed) {
                 return {
-                    message: `✅ **Отлично!**\n\nВы подписаны на все спонсорские каналы!\n\n🎉 Можете продолжать пользоваться ботом.`,
+                    message: `✅ **Отлично!**\n\nВы подписаны на все спонсорские каналы!\n\n🎉 Можете продолжать ��ользоваться ботом.`,
                     buttons: [
                         [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
                     ]
@@ -230,7 +254,7 @@ class SubGramAPI {
 
             if (!processedData.needsSubscription) {
                 return {
-                    message: `ℹ️ **Информация от SubGram**\n\n${processedData.message}\n\n🎯 Вы можете продолжать использование бота.`,
+                    message: `ℹ️ **Информация о�� SubGram**\n\n${processedData.message}\n\n🎯 Вы можете продолжать использование бота.`,
                     buttons: [
                         [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
                     ]
@@ -239,7 +263,7 @@ class SubGramAPI {
 
             // Основной случай - нужно подписаться на каналы
             let message = `🔔 **Спонсорские каналы от SubGram**\n\n`;
-            message += `📋 Для продолжения работы необходимо подписаться на спонсорские каналы:\n\n`;
+            message += `📋 Для продолжения работы необходимо подписаться на спонсорск��е каналы:\n\n`;
 
             const buttons = [];
             
@@ -247,7 +271,7 @@ class SubGramAPI {
             processedData.channelsToSubscribe.forEach((channel, index) => {
                 message += `${index + 1}. ${channel.name}\n`;
                 
-                // Создаем кнопку для подписки
+                // Созд��ем кнопку для подписки
                 buttons.push([{
                     text: `📺 ${channel.name}`,
                     url: channel.link
