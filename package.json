@@ -21,7 +21,8 @@
     "monitor-referrals": "node monitor-referrals.js",
     "railway-check": "node railway-diagnostic.js",
     "reset-notifications": "node reset-subscription-notifications.js",
-    "test-subscription-fix": "node test-subscription-logic-fix.js"
+    "test-subscription-fix": "node test-subscription-logic-fix.js",
+    "fix-encoding": "node fix-encoding.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral"],
   "author": "",
