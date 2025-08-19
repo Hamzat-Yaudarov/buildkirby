@@ -7,7 +7,7 @@ const db = require('./database');
 const { subgramAPI } = require('./subgram-api');
 
 /**
- * Получить все каналы для проверки (обязательные + SubGram)
+ * Получ��ть все каналы для проверки (обязательные + SubGram)
  * @param {number} userId - ID пользователя
  * @returns {Object} Объект с каналами для проверки
  */
@@ -36,80 +36,109 @@ async function getAllChannelsToCheck(userId) {
 
         // 2. Пытаемся получить каналы от SubGram
         try {
-            // Сначала проверяем, есть ли сохраненные каналы
-            const savedSubgramChannels = await db.getSubGramChannels(userId);
-            
-            if (savedSubgramChannels && savedSubgramChannels.length > 0) {
-                console.log(`[UNIFIED] Found ${savedSubgramChannels.length} saved SubGram channels`);
-                
-                result.subgramChannels = savedSubgramChannels.map(ch => ({
-                    id: ch.channel_link,
-                    name: ch.channel_name || 'Спонсорский канал',
-                    type: 'subgram',
-                    source: 'saved',
-                    link: ch.channel_link
-                }));
-                
-                result.hasSubgramChannels = true;
+            // Проверяем настройки SubGram - возможно он отключен
+            const subgramSettings = await db.getSubGramSettings();
+            if (!subgramSettings || !subgramSettings.enabled) {
+                console.log('[UNIFIED] SubGram disabled in settings, skipping');
+                result.hasSubgramChannels = false;
             } else {
-                // Если нет сохраненных каналов, запрашиваем у SubGram
-                console.log('[UNIFIED] No saved SubGram channels, requesting from API...');
-                
-                const subgramResponse = await subgramAPI.requestSponsors({
-                    userId: userId.toString(),
-                    chatId: userId.toString(),
-                    maxOP: 3,
-                    action: 'subscribe',
-                    excludeChannelIds: [],
-                    withToken: true
-                });
+                // Сначала проверяем, есть ли сохраненные каналы (не старше 1 часа)
+                const savedSubgramChannels = await db.executeQuery(`
+                    SELECT * FROM subgram_channels
+                    WHERE user_id = $1
+                    AND created_at > NOW() - INTERVAL '1 hour'
+                    ORDER BY created_at DESC
+                `, [userId]);
 
-                if (subgramResponse.success && subgramResponse.data) {
-                    const processedData = subgramAPI.processAPIResponse(subgramResponse.data);
-                    
-                    if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
-                        console.log(`[UNIFIED] Got ${processedData.channelsToSubscribe.length} fresh SubGram channels`);
-                        
-                        result.subgramChannels = processedData.channelsToSubscribe.map(ch => ({
-                            id: ch.link,
-                            name: ch.name || 'Спонсорский канал',
-                            type: 'subgram',
-                            source: 'api',
-                            link: ch.link
-                        }));
-                        
-                        result.hasSubgramChannels = true;
-                        
-                        // Сохраняем каналы в БД для следующих проверок
-                        await db.saveSubGramChannels(userId, processedData.channelsToSubscribe);
-                    }
-                    
-                    // Логируем запрос
-                    await db.logSubGramAPIRequest(
-                        userId,
-                        'unified_check',
-                        { action: 'subscribe', unified: true },
-                        subgramResponse.data,
-                        true
-                    );
+                if (savedSubgramChannels.rows && savedSubgramChannels.rows.length > 0) {
+                    console.log(`[UNIFIED] Found ${savedSubgramChannels.rows.length} recent saved SubGram channels`);
+
+                    // Убираем дубликаты по ссылке
+                    const uniqueChannels = new Map();
+                    savedSubgramChannels.rows.forEach(ch => {
+                        if (!uniqueChannels.has(ch.channel_link)) {
+                            uniqueChannels.set(ch.channel_link, ch);
+                        }
+                    });
+
+                    result.subgramChannels = Array.from(uniqueChannels.values()).map(ch => ({
+                        id: ch.channel_link,
+                        name: ch.channel_name || 'Спонсорски�� канал',
+                        type: 'subgram',
+                        source: 'saved',
+                        link: ch.channel_link
+                    }));
+
+                    result.hasSubgramChannels = result.subgramChannels.length > 0;
                 } else {
-                    console.log('[UNIFIED] Failed to get SubGram channels or no channels available');
-                    
-                    // Логируем неудачу
-                    await db.logSubGramAPIRequest(
-                        userId,
-                        'unified_check',
-                        { action: 'subscribe', unified: true },
-                        subgramResponse.data || {},
-                        false,
-                        subgramResponse.error || 'No channels available'
-                    );
+                    // Если нет свежих сохраненных каналов, запрашиваем у SubGram
+                    console.log('[UNIFIED] No recent saved SubGram channels, requesting from API...');
+
+                    const subgramResponse = await subgramAPI.requestSponsors({
+                        userId: userId.toString(),
+                        chatId: userId.toString(),
+                        maxOP: subgramSettings.max_sponsors || 3,
+                        action: subgramSettings.default_action || 'subscribe',
+                        excludeChannelIds: [],
+                        withToken: true
+                    });
+
+                    if (subgramResponse.success && subgramResponse.data) {
+                        const processedData = subgramAPI.processAPIResponse(subgramResponse.data);
+
+                        if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
+                            console.log(`[UNIFIED] Got ${processedData.channelsToSubscribe.length} fresh SubGram channels`);
+
+                            // Убираем дубликаты по ссылке
+                            const uniqueChannels = new Map();
+                            processedData.channelsToSubscribe.forEach(ch => {
+                                if (!uniqueChannels.has(ch.link)) {
+                                    uniqueChannels.set(ch.link, ch);
+                                }
+                            });
+
+                            result.subgramChannels = Array.from(uniqueChannels.values()).map(ch => ({
+                                id: ch.link,
+                                name: ch.name || 'Спонсорский канал',
+                                type: 'subgram',
+                                source: 'api',
+                                link: ch.link
+                            }));
+
+                            result.hasSubgramChannels = true;
+
+                            // Очищаем старые каналы и сохраняем новые
+                            await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+                            await db.saveSubGramChannels(userId, Array.from(uniqueChannels.values()));
+                        }
+
+                        // Логируем запрос
+                        await db.logSubGramAPIRequest(
+                            userId,
+                            'unified_check',
+                            { action: 'subscribe', unified: true },
+                            subgramResponse.data,
+                            true
+                        );
+                    } else {
+                        console.log('[UNIFIED] Failed to get SubGram channels or no channels available');
+
+                        // Логируем неудачу
+                        await db.logSubGramAPIRequest(
+                            userId,
+                            'unified_check',
+                            { action: 'subscribe', unified: true },
+                            subgramResponse.data || {},
+                            false,
+                            subgramResponse.error || 'No channels available'
+                        );
+                    }
                 }
             }
         } catch (subgramError) {
             console.error('[UNIFIED] Error getting SubGram channels:', subgramError);
             
-            // Логируем ошибку, но не блокируем работу с обязательными каналами
+            // Логируем ошибку, но не блокируем работу с обязательными ка��алами
             await db.logSubGramAPIRequest(
                 userId,
                 'unified_check',
@@ -249,7 +278,7 @@ async function checkUnifiedSubscriptions(bot, userId, recordStats = false) {
                 result.subgramChannels.push(channelInfo);
             }
             
-            // Отмечаем если есть ошибки проверки
+            // Отмеч��ем если есть ошибки проверки
             if (!channelInfo.canCheck) {
                 result.hasErrors = true;
             }
