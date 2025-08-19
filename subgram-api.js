@@ -1,6 +1,6 @@
 /**
  * SubGram API Integration Module
- * Модуль для интеграции с сервисом SubGram для автоматического получения спонсорских каналов
+ * Модуль для интеграции с сервисом SubGram для автоматического получения спон��орских каналов
  */
 
 const axios = require('axios');
@@ -17,16 +17,15 @@ class SubGramAPI {
 
     /**
      * Запрос к SubGram API для получения спонсорских каналов
+     * ВАЖНО: Этот бот работает С ТОКЕНОМ, поэтому дополнительные поля не требуются
      * @param {Object} params - Параметры запроса
      * @param {string} params.userId - ID пользователя
      * @param {string} params.chatId - ID чата
      * @param {string} params.gender - Пол пользователя (male/female, опционально)
-     * @param {string} params.firstName - Имя пользователя
-     * @param {string} params.languageCode - Код языка пользователя
-     * @param {boolean} params.premium - Премиум статус пользователя
      * @param {number} params.maxOP - Максимальное количество спонсоров (1-10)
      * @param {string} params.action - Тип действия ('subscribe' или 'newtask')
      * @param {Array} params.excludeChannelIds - Массив ID каналов для исключения
+     * @param {boolean} params.withToken - Если true, не отправляет дополнительные по��я (по умолчанию true)
      * @returns {Object} Ответ от SubGram API
      */
     async requestSponsors(params) {
@@ -35,12 +34,13 @@ class SubGramAPI {
                 userId,
                 chatId,
                 gender = null,
-                firstName,
-                languageCode,
-                premium,
+                firstName = null,
+                languageCode = null,
+                premium = null,
                 maxOP = 3,
                 action = 'subscribe',
-                excludeChannelIds = []
+                excludeChannelIds = [],
+                withToken = true // По умолчанию работаем с токеном
             } = params;
 
             // Подготовка данных для запроса
@@ -52,23 +52,28 @@ class SubGramAPI {
                 exclude_channel_ids: excludeChannelIds
             };
 
-            // Добавляем обязательные поля если токен не был предоставлен в SubGram
-            if (firstName) requestData.first_name = firstName;
-            if (languageCode) requestData.language_code = languageCode;
-            if (premium !== undefined) requestData.Premium = premium;
-            
+            // Если бот НЕ добавлен с токеном, добавляем обязательные поля
+            // Поскольку наш бот ДОЛЖЕН быть добавлен с токеном, эти поля не нужны
+            if (!withToken) {
+                if (firstName) requestData.first_name = firstName;
+                if (languageCode) requestData.language_code = languageCode;
+                if (premium !== undefined) requestData.Premium = premium;
+            }
+
             // Добавляем пол только если он известен и валиден
             if (gender && (gender === 'male' || gender === 'female')) {
                 requestData.Gender = gender;
             }
 
-            console.log('[SUBGRAM] Making API request:', {
+            console.log('[SUBGRAM] Making API request (WITH TOKEN):', {
                 url: this.apiUrl,
                 userId,
                 chatId,
                 maxOP,
                 action,
-                excludeCount: excludeChannelIds.length
+                excludeCount: excludeChannelIds.length,
+                withToken: withToken,
+                requestFields: Object.keys(requestData)
             });
 
             const response = await axios.post(this.apiUrl, requestData, {
@@ -148,7 +153,7 @@ class SubGramAPI {
                     needsSubscription: sponsor.status === 'unsubscribed' || sponsor.status === 'notgetted'
                 }));
             } else if (links && links.length > 0) {
-                // Если только ссылки без дополнительной информации
+                // Если только ссылки без до��олнительной информации
                 result.channels = links.map((link, index) => ({
                     link: link,
                     name: `Спонсорский канал ${index + 1}`,

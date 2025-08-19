@@ -38,12 +38,10 @@ async function testSubGramIntegration() {
         const testRequest = {
             userId: testUserId.toString(),
             chatId: testUserId.toString(),
-            firstName: 'Тестовый пользователь',
-            languageCode: 'ru',
-            premium: false,
             maxOP: 3,
             action: 'subscribe',
-            excludeChannelIds: []
+            excludeChannelIds: [],
+            withToken: true // Тестируем с токеном
         };
 
         console.log('📤 Отправляю тестовый запрос к SubGram API...');
