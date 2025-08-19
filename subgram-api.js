@@ -4,15 +4,12 @@
  */
 
 const axios = require('axios');
-
-// SubGram API Configuration
-const SUBGRAM_API_URL = 'https://api.subgram.ru/request-op/';
-const SUBGRAM_API_KEY = '5d4c6c5283559a05a9558b677669871d6ab58e00e71587546b25b4940ea6029d';
+const { SUBGRAM_CONFIG } = require('./config');
 
 class SubGramAPI {
     constructor() {
-        this.apiKey = SUBGRAM_API_KEY;
-        this.apiUrl = SUBGRAM_API_URL;
+        this.apiKey = SUBGRAM_CONFIG.API_KEY;
+        this.apiUrl = SUBGRAM_CONFIG.API_URL;
     }
 
     /**
@@ -200,6 +197,35 @@ class SubGramAPI {
     }
 
     /**
+     * Проверка подписки по конкретной ссылке (для action: 'newtask')
+     * @param {Object} params - Параметры проверки
+     * @param {string} params.userId - ID пользователя
+     * @param {string} params.chatId - ID чата
+     * @param {string} params.link - Ссылка для проверки
+     * @returns {Object} Результат проверки конкретной подписки
+     */
+    async checkSubscriptionByLink(params) {
+        try {
+            console.log('[SUBGRAM] Checking subscription by link:', params.link);
+
+            // Для проверки по ссылке используем action: 'newtask'
+            const checkParams = {
+                ...params,
+                action: 'newtask',
+                excludeChannelIds: [] // Не исключаем каналы при проверке
+            };
+
+            return await this.requestSponsors(checkParams);
+        } catch (error) {
+            console.error('[SUBGRAM] Error checking subscription by link:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
      * Форматирование сообщения с каналами для пользователя
      * @param {Object} processedData - Обработанные данные от processAPIResponse
      * @returns {Object} Сообщение и кнопки для Telegram
@@ -242,11 +268,11 @@ class SubGramAPI {
             message += `📋 Для продолжения работы необходимо подписаться на спонсорские каналы:\n\n`;
 
             const buttons = [];
-            
+
             // Добавляем кнопки для каждого канала
             processedData.channelsToSubscribe.forEach((channel, index) => {
                 message += `${index + 1}. ${channel.name}\n`;
-                
+
                 // Создаем кнопку для подписки
                 buttons.push([{
                     text: `📺 ${channel.name}`,
@@ -254,10 +280,10 @@ class SubGramAPI {
                 }]);
             });
 
-            message += `\n💡 После подписки на все каналы нажмите кнопку проверки`;
+            message += `\n💡 После подписки на все ка��алы нажмите кнопку проверки`;
 
-            // Добавляем кнопки управления
-            buttons.push([{ text: '✅ Проверить подписки', callback_data: 'subgram_check' }]);
+            // Добавляем кнопки управления согласно документации
+            buttons.push([{ text: '✅ Проверить подписки', callback_data: 'subgram-op' }]);
             buttons.push([{ text: '🏠 В главное меню', callback_data: 'main_menu' }]);
 
             return { message, buttons };
