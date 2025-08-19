@@ -1,15 +1,19 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
-const { DATABASE_CONFIG, SUBGRAM_CONFIG } = require('./config');
+
+// Database connection configuration
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_s6iWtmzZU8XA@ep-dawn-waterfall-a23jn5vi-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
 
 // Create connection pool for better performance
 const pool = new Pool({
-    connectionString: DATABASE_CONFIG.DATABASE_URL,
+    connectionString: DATABASE_URL,
     ssl: {
         rejectUnauthorized: false
     },
-    ...DATABASE_CONFIG.POOL_CONFIG
+    max: 20, // Maximum number of connections
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
 });
 
 // Initialize database schema
@@ -2077,11 +2081,11 @@ async function initializeSubGramSettings() {
                 INSERT INTO subgram_settings (api_key, api_url, enabled, max_sponsors, default_action)
                 VALUES ($1, $2, $3, $4, $5)
             `, [
-                SUBGRAM_CONFIG.API_KEY,
-                SUBGRAM_CONFIG.API_URL,
+                '5d4c6c5283559a05a9558b677669871d6ab58e00e71587546b25b4940ea6029d',
+                'https://api.subgram.ru/request-op/',
                 true,
-                SUBGRAM_CONFIG.DEFAULT_MAX_SPONSORS,
-                SUBGRAM_CONFIG.DEFAULT_ACTION
+                3,
+                'subscribe'
             ]);
             console.log('✅ SubGram settings initialized');
         }
