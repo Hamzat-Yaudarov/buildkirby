@@ -25,8 +25,8 @@ console.log('[MAIN] SubGram API imported');
 const { checkUnifiedSubscriptions } = require('./unified-subscription-check');
 console.log('[MAIN] unified subscription check imported');
 
-const subscriptionFlowFixed = require('./subscription-flow-fixed');
-console.log('[MAIN] fixed subscription flow manager imported');
+const subscriptionFlow = require('./subscription-flow-manager');
+console.log('[MAIN] subscription flow manager imported');
 
 // User states for multi-step interactions
 const userStates = new Map();
@@ -408,7 +408,7 @@ async function getEnhancedSubscriptionMessage(userId, showOnlyUnsubscribed = fal
         // Handle case when no channels need subscription
         if (channelCount === 0) {
             if (subscriptionStatus.channels.length === 0) {
-                message = '✅ На данный момент нет обязательных канало�� для подписки!\n\nВы можете продолжать использование бота.';
+                message = '✅ На данный момент нет обязательных каналов для подписки!\n\nВы можете продолжать использование бота.';
             } else {
                 message = '✅ Вы подписаны на все необходимые каналы!\n\nМожете продолжать использование бота.';
             }
@@ -569,7 +569,7 @@ function getAdminMenuKeyboard() {
                 ],
                 [
                     { text: '🎁 Управление промокодами', callback_data: 'admin_promocodes' },
-                    { text: '📢 Рассылка сообщений', callback_data: 'admin_broadcast' }
+                    { text: '📢 Рассылка с��общений', callback_data: 'admin_broadcast' }
                 ],
                 [
                     { text: '🏆 Недельные награды', callback_data: 'admin_weekly_rewards' },
@@ -681,15 +681,15 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             return;
         }
 
-        // ИСПРАВЛЕННАЯ ПОЭТАПНАЯ СИСТЕМА ПОДПИСОК
+        // НОВАЯ ПОЭТАПНАЯ СИСТЕМА ПОДПИСОК
         console.log(`[SUBSCRIPTION] Checking subscription stage for user ${userId}`);
-        const stageInfo = await subscriptionFlowFixed.getUserStage(bot, userId);
+        const stageInfo = await subscriptionFlow.updateSubscriptionStage(bot, userId);
 
-        // Если не все подписки завершены - показываем текущий этап
+        // Если есть каналы для подписки - показываем их поэтапно
         if (!stageInfo.allCompleted) {
-            console.log(`[SUBSCRIPTION] User ${userId} at stage: ${stageInfo.stage}, showing ${stageInfo.channels?.length || 0} channels`);
+            console.log(`[SUBSCRIPTION] User ${userId} at stage: ${stageInfo.stage}, showing ${stageInfo.channelsToShow?.length || 0} channels`);
 
-            const stageMessage = subscriptionFlowFixed.formatStageMessage(stageInfo);
+            const stageMessage = subscriptionFlow.formatStageMessage(stageInfo);
 
             await bot.sendMessage(chatId, stageMessage.message, {
                 parse_mode: 'Markdown',
@@ -745,7 +745,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                             parse_mode: 'Markdown',
                             reply_markup: {
                                 inline_keyboard: [
-                                    [{ text: '👥 Пригласить еще', callback_data: 'invite' }],
+                                    [{ text: '👥 Пригласить ещ��', callback_data: 'invite' }],
                                     [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
                                 ]
                             }
@@ -851,7 +851,7 @@ bot.onText(/\/test_version/, async (msg) => {
 
 📅 Версия: ОБНОВЛЕННА�� v5.0 - С КНОПКАМИ И УЛУЧШЕНИЯМИ!
 🕒 Врем��: ${new Date().toLocaleString('ru-RU')}
-���� В��ш ID: ${userId}
+👤 В��ш ID: ${userId}
 🔧 Admin ID: ${isAdmin(userId) ? 'ВЫ АДМИН' : 'НЕ АДМИН'}
 
 ✅ Если вы видите это сообщение - раб��тает НОВАЯ версия!
@@ -915,7 +915,7 @@ bot.onText(/\/test_withdrawal/, async (msg) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '�� У вас нет прав доступа.');
+        bot.sendMessage(chatId, '❌ У вас нет прав доступа.');
         return;
     }
 
@@ -943,7 +943,7 @@ ${user.username ? `📱 **Username:** @${user.username}` : ''}
 📦 **Тип:** Звёзды
 💎 **Баланс:** ${user.balance} ⭐
 
-⚠️ **ЭТО ТЕСТ** - реальная заявка не создана!`;
+⚠️ **ЭТО ТЕСТ** - реальная з��явка не создана!`;
 
         const adminKeyboard = {
             reply_markup: {
@@ -1135,7 +1135,7 @@ bot.onText(/\/verify_channel/, async (msg) => {
 
         if (botMember.status === 'administrator' && botMember.can_post_messages) {
             resultMessage += `\n✅ **ВСЁ НАСТРОЕНО ПРАВИЛЬНО!**\n`;
-            resultMessage += `🎯 ��от может отправлять сообщения �� канал.\n`;
+            resultMessage += `🎯 Бот может отправлять сообщения �� канал.\n`;
         } else if (botMember.status === 'member') {
             resultMessage += `\n⚠️ **ПРОБЛЕМА:** Бот добавлен как о��ычный участник!\n`;
             resultMessage += `🔧 **РЕШЕНИЕ:** Сделайте бота администратором канала с правами на отправку со��бщений.\n`;
@@ -1310,7 +1310,7 @@ bot.onText(/\/test_subscription_logic/, async (msg) => {
 }
 
 📝 **Новая логика:**
-• Пр�� первом /start - отправляется сообщение о подписках
+• При первом /start - отправляется сообщение о подписках
 • При повторном /start - только краткое напоминание
 • ��ри успешной проверке - статус сбрасывается
 • При добавлении каналов - статус сбрасывае��ся дл�� всех`;
@@ -1431,7 +1431,7 @@ bot.onText(/\/add_test_channel/, async (msg) => {
 
 📋 **��анал:** @kirbyvivodstars
 📝 **Название:** Kirby Вывод Stars
-✅ **Статус:** Активен
+✅ **Стат��с:** Активен
 
 Теперь проверьте командой: \`/test_unified_subs\``,
             { parse_mode: 'Markdown' });
@@ -1494,7 +1494,7 @@ ${subscriptionResult.channels.map((ch, i) => {
 🎯 **Статус системы:**
 ${subscriptionResult.channels.length > 0 ?
     '✅ Объединённая система работает!' :
-    '⚠️ Каналы не найдены - проверьте ��астройки'}
+    '⚠️ Каналы не на��дены - проверьте ��астройки'}
 
 ${subscriptionResult.subgramChannels?.length > 0 ?
     '🎉 SubGram интеграция активна!' :
@@ -1502,7 +1502,7 @@ ${subscriptionResult.subgramChannels?.length > 0 ?
 
         await bot.sendMessage(chatId, resultMessage, { parse_mode: 'Markdown' });
 
-        // Показать пр��мер сообщения для пользователя
+        // Показать пример сообщения для пользователя
         try {
             const subMessage = await getEnhancedSubscriptionMessage(testUserId, false);
 
@@ -1628,7 +1628,7 @@ bot.onText(/\/reset_captcha (\d+)/, async (msg, match) => {
 
         const message = sessionCleared
             ? `✅ Капча сброшена для пользователя ${targetUserId}. А��тивная сессия очищена.`
-            : `✅ К��пча сброшена для пользователя ${targetUserId}. Активной сессии не было.`;
+            : `✅ Капча сброшена для пользователя ${targetUserId}. Активной сессии не было.`;
 
         bot.sendMessage(chatId, message);
     } catch (error) {
@@ -1964,7 +1964,7 @@ bot.onText(/\/create_task (.+)/, async (msg, match) => {
     try {
         const params = match[1].split('|');
         if (params.length < 3) {
-            bot.sendMessage(chatId, '❌ Нев��рный формат!\n\nИсп��льзуйте:\n`/create_task канал|название|награда|��имит`\n\nГде лимит - максимальное количество ��ыполнений (необязательно).\n\nПри��ера:\n• `/create_task @channel|Мой канал|1.5`\n `/create_task @channel|Мой ��анал|1.5|100`', { parse_mode: 'Markdown' });
+            bot.sendMessage(chatId, '❌ Нев��рный формат!\n\nИсп��льзуйте:\n`/create_task канал|название|награда|��имит`\n\nГде лимит - максимальное количество ��ыполнений (необязательно).\n\nПримера:\n• `/create_task @channel|Мой канал|1.5`\n `/create_task @channel|Мой ��анал|1.5|100`', { parse_mode: 'Markdown' });
             return;
         }
 
@@ -2025,7 +2025,7 @@ bot.onText(/\/delete_task (\d+)/, async (msg, match) => {
 
     } catch (error) {
         console.error('Error deleting task:', error);
-        bot.sendMessage(chatId, `❌ Ошибк�� удаления задания: ${error.message}`);
+        bot.sendMessage(chatId, `❌ Ошибка удаления задания: ${error.message}`);
     }
 });
 
@@ -2052,11 +2052,11 @@ bot.onText(/\/add_channel (.+)/, async (msg, match) => {
         // Reset notification status for all users since new channel was added
         const resetCount = await db.resetAllSubscriptionNotifications();
 
-        bot.sendMessage(chatId, `✅ Канал добавлен!\n📺 ${channelName} (${channelId})\n🔄 Сброшен статус уведомлений для ${resetCount} польз��вателей.`);
+        bot.sendMessage(chatId, `✅ Канал добавлен!\n📺 ${channelName} (${channelId})\n🔄 Сброшен ��татус уведомлений для ${resetCount} польз��вателей.`);
 
     } catch (error) {
         console.error('Error adding channel:', error);
-        bot.sendMessage(chatId, '❌ Ошибка доба��ления канала.');
+        bot.sendMessage(chatId, '❌ Ошибка добавления канала.');
     }
 });
 
@@ -2116,7 +2116,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
         if (params.length < 5) {
             bot.sendMessage(chatId, `❌ Неверный формат!
 
-Используйте:
+Исполь��уйте:
 \`/create_referral_lottery название|время_час��в|мин_рефералов|цена_билета|место1:приз1|мессо2:приз2|...\`
 
 Пример:
@@ -2144,7 +2144,7 @@ bot.onText(/\/create_referral_lottery (.+)/, async (msg, match) => {
         }
 
         if (prizes.length === 0) {
-            bot.sendMessage(chatId, '❌ Необходимо указать ��отя бы один приз!');
+            bot.sendMessage(chatId, '❌ Необ��одимо указать ��отя бы один приз!');
             return;
         }
 
@@ -2588,7 +2588,7 @@ bot.onText(/\/subscription_stats/, async (msg) => {
         const uniqueUsersCount = await db.getUniqueSubscriptionUsersCount();
 
         if (stats.length === 0) {
-            bot.sendMessage(chatId, `📈 **Статистика подписок**\n\n❌ Нет д��нных о подписках.\n\nДобавьте обязательные каналы и дож��итесь первы�� ��роверок подписок.`, { parse_mode: 'Markdown' });
+            bot.sendMessage(chatId, `📈 **Статистика подписок**\n\n❌ Нет д��нных о подписках.\n\nДобавьте обязательные каналы и дож��итесь первых ��роверок подписок.`, { parse_mode: 'Markdown' });
             return;
         }
 
@@ -2606,7 +2606,7 @@ bot.onText(/\/subscription_stats/, async (msg) => {
 
             message += `${activeStatus} **${channelName}**\n`;
             message += `   📊 Уникальных проверок: **${stat.successful_checks}**\n`;
-            message += `   📅 Добавлен: ${addedDate}\n`;
+            message += `   ���� Добавлен: ${addedDate}\n`;
             message += `   ⏰ Последняя пров��рка: ${lastCheck}\n\n`;
 
             totalChecks += parseInt(stat.successful_checks);
@@ -2769,13 +2769,13 @@ bot.on('callback_query', async (callbackQuery) => {
         ];
 
         if (!allowedWithoutSubscription.includes(data) && !data.startsWith('admin_') && !isAdmin(userId)) {
-            const canAccess = await subscriptionFlowFixed.canUserUseBot(bot, userId);
+            const canAccess = await subscriptionFlow.canUserAccessBot(userId);
 
             if (!canAccess) {
                 console.log(`[FLOW] User ${userId} blocked from accessing ${data} - not all subscriptions completed`);
 
-                const stageInfo = await subscriptionFlowFixed.getUserStage(bot, userId);
-                const stageMessage = subscriptionFlowFixed.formatStageMessage(stageInfo);
+                const stageInfo = await subscriptionFlow.getCurrentSubscriptionStage(userId);
+                const stageMessage = subscriptionFlow.formatStageMessage(stageInfo);
 
                 await bot.editMessageText('🔒 **Доступ заблокирован**\n\nДля использования бота необходимо подписаться на ВСЕ каналы.\n\n' + stageMessage.message, {
                     chat_id: chatId,
@@ -3109,7 +3109,7 @@ bot.on('callback_query', async (callbackQuery) => {
                                 parse_mode: 'Markdown',
                                 reply_markup: {
                                     inline_keyboard: [
-                                        [{ text: '🏆 Управлен��е наградами', callback_data: 'admin_weekly_rewards' }],
+                                        [{ text: '🏆 Управление наградами', callback_data: 'admin_weekly_rewards' }],
                                         [{ text: '🏠 Админ панель', callback_data: 'admin_menu' }]
                                     ]
                                 }
@@ -3369,18 +3369,19 @@ bot.on('callback_query', async (callbackQuery) => {
                 }
                 break;
 
-            // SubGram handlers
+            // SubGram handlers (DEPRECATED - используем новую поэтапную систему)
             case 'check_subscriptions_enhanced':
-                await handleEnhancedSubscriptionCheck(chatId, msg.message_id, userId);
+                // Перенаправляем на новую поэтапную систему
+                await handleStageBasedSubscriptionCheck(chatId, msg.message_id, userId);
                 break;
 
-            // Обработчики исправленной поэтапной системы подписок
+            // Новые обработчики поэтапной системы подписок
             case 'check_sponsors':
-                await handleSponsorCheckFixed(chatId, msg.message_id, userId);
+                await handleSponsorCheck(chatId, msg.message_id, userId);
                 break;
 
             case 'check_required':
-                await handleRequiredCheckFixed(chatId, msg.message_id, userId);
+                await handleRequiredCheck(chatId, msg.message_id, userId);
                 break;
             case 'subgram_check':
                 await handleSubGramCheck(chatId, msg.message_id, userId);
@@ -3537,7 +3538,7 @@ async function handleProfile(chatId, messageId, user) {
  **Информация о пользователе:**
 • Имя: **${user.first_name}**
 • ID: \`${user.id}\`
-• Дата регистр��ции: **${registrationDate}**
+• Дата регистрации: **${registrationDate}**
 
 💰 **Финансовая статис��ика:**
 • Текущий баланс: **${user.balance} ⭐**
@@ -3587,7 +3588,7 @@ async function handleInvite(chatId, messageId, user) {
 🎯 **Как это работ��ет:**
 1. Поделитесь ссылкой с друзьями
 2. Друг регистрируется по ссылке
-3. Друг подписы��ается на все обязательные каналы
+3. Друг подпи��ы��ается на все обязательные каналы
 4. В�� получаете 3 ⭐ на баланс!
 
 ⚠️ **Важно:** Реферал засчиты��ается только после подписки на все каналы!`;
@@ -3763,7 +3764,7 @@ async function handleWithdraw(chatId, messageId, user) {
 **Ваш баланс:** ${user.balance} ⭐
 
 ${user.referrals_count < 5 ? 
-    '❌ **Для вывода средств требуются минимум 5 рефералов**' : 
+    '�� **Для вывода средств требуются минимум 5 рефералов**' : 
     '✅ **Вы можете выводить средства**'
 }
 
@@ -4002,7 +4003,7 @@ async function handleTasks(chatId, messageId, user) {
 1. Нажмите "Подписаться" для перехода к каналу
 2. Подпишитесь на канал
 3. Вер��итесь и нажмите "проверить"
-4. Полу��ите награду!`;
+4. Получите награду!`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -4111,7 +4112,7 @@ async function handleTaskCheck(chatId, messageId, userId, taskId) {
                     }
                 } catch (taskError) {
                     if (taskError.message === 'Task completion limit reached') {
-                        await bot.editMessageText(' **Лимит выполнений достигнут!**\n\nЭто задание больше недоступно для выполнения.', {
+                        await bot.editMessageText(' **Лимит ��ыполнений достигнут!**\n\nЭто задание больше недоступно для выполнения.', {
                             chat_id: chatId,
                             message_id: messageId,
                             parse_mode: 'Markdown',
@@ -4180,7 +4181,7 @@ async function handleTaskSkip(chatId, messageId, userId) {
 📖 **Инструкция:**
 1. Нажмите "Подписаться" для перехода к каналу
 2. Подпишитесь на к��на��
-3. Верните��ь и нажмите "Провер��ть"
+3. Вернитесь и нажмите "Провер��ть"
 4. получите награду!`;
 
         await bot.editMessageText(message, {
@@ -4212,7 +4213,7 @@ async function handleInstruction(chatId, messageId) {
 5 **Лотерея** - участвуйте в розыгрышах
 
 💰 **Вывод средс��в:**
-• Мин��мум 5 ре��ералов для вывода
+• Мин��мум 5 рефералов для вывода
 • Доступны суммы: 15, 25, 50, 100 ⭐
 • Telegram Premium на 3 месяца за 1300 ⭐
 
@@ -4332,7 +4333,7 @@ async function handleRatingsWeekPoints(chatId, messageId) {
         if (users.length === 0) {
             message += 'Пока нет активных пользователей за эту неделю.';
         } else {
-            message += '🏆 **Топ-10 по очкам за неделю:**\n\n';
+            message += '🏆 **Топ-10 по о��кам за неделю:**\n\n';
 
             users.forEach((user, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
@@ -4357,7 +4358,7 @@ async function handleRatingsWeekPoints(chatId, messageId) {
         });
     } catch (error) {
         console.error('Error in ratings week points:', error);
-        await bot.editMessageText('❌ ошибка загрузки рейтинга по очкам.', {
+        await bot.editMessageText('❌ ошибка загрузки рейтинга по о��кам.', {
             chat_id: chatId,
             message_id: messageId,
             ...getBackToMainKeyboard()
@@ -4374,7 +4375,7 @@ async function handleCases(chatId, messageId, user) {
     if (!hasEnoughReferrals) {
         const message = `🎁 **Кейсы**
 
-❌ **Для открытия кейса нужно привести 3+ ре��ералов в день**
+❌ **Для открытия кейса нужно привести 3+ рефералов в день**
 
 **Ваши рефералы сегодня:** ${user.referrals_today}/3
 
@@ -4664,7 +4665,7 @@ async function handlePromocodeInput(chatId, messageId, userId) {
     // Set temp action for user
     await db.updateUserField(userId, 'temp_action', 'awaiting_promocode');
     
-    await bot.editMessageText('🎁 Введи��е промокод:', {
+    await bot.editMessageText('🎁 Введ����е промокод:', {
         chat_id: chatId,
         message_id: messageId,
         ...getBackToMainKeyboard()
@@ -4706,7 +4707,7 @@ async function handleWithdrawalApproval(chatId, messageId, callbackData) {
         }
 
         if (!approvedWithdrawalId) {
-            await bot.editMessageText('❌ Заявка на в��вод не найдена или уже обработана.', {
+            await bot.editMessageText('❌ Заявка на вывод не найдена или уже обработана.', {
                 chat_id: chatId,
                 message_id: messageId
             });
@@ -4771,7 +4772,7 @@ async function handleWithdrawalRejection(chatId, messageId, callbackData, adminI
         // Get user info
         const user = await db.getUser(targetUserId);
         if (!user) {
-            await bot.editMessageText('❌ Пользователь не найде��.', {
+            await bot.editMessageText('❌ Пользователь не найден.', {
                 chat_id: chatId,
                 message_id: messageId
             });
@@ -5158,7 +5159,7 @@ async function handleAdminWithdrawalRejectAll(chatId, messageId) {
 
 ❗ Вы действительно хотите отклонить ВСЕ ожидающие заявк�� на вывод?
 
-💰 Звёзды будут возвращены пользователям
+💰 Звёзды будут возвращены ��ользователям
 📩 ��сем будет отправлено уведомление
 
 ✍️ Укажите причину отклон��ния:`;
@@ -5221,7 +5222,7 @@ async function handleAdminWithdrawalList(chatId, messageId) {
         });
 
         if (pendingWithdrawals.length > 10) {
-            message += `\n... и ещё ${pendingWithdrawals.length - 10} заяво��`;
+            message += `\n... и ещё ${pendingWithdrawals.length - 10} заявок`;
         }
 
         await bot.editMessageText(message, {
@@ -5316,7 +5317,7 @@ async function handleAdminWithdrawalStats(chatId, messageId) {
 async function executeRejectAllWithdrawals(chatId, messageId, adminId, reason) {
     try {
         // Show processing message
-        await bot.editMessageText('⏳ **Обработка массового о��клонения...**\n\nПожалуйста, подождите...', {
+        await bot.editMessageText('⏳ **Обработка массового о��клонения...**\n\nПожал��йста, подождите...', {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown'
@@ -5569,7 +5570,7 @@ bot.onText(/\/tracking_stats (.+)/, async (msg, match) => {
 
         const createdDate = new Date(link.created_at).toLocaleDateString('ru-RU');
 
-        const message = `📊 **Статист��ка трекинговой ссылки**\n\n📝 **Назван��е:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n��� **Создана:** ${createdDate}\n\n��� **Статистика:**\n👥 В��его переходо��: **${stats.total_clicks || 0}**\n ���никальных по��ь��ователей: **${stats.unique_users || 0}**\n⏰ З�� по��ледние 24 ч��са: **${recentStats.recent_clicks || 0}**\n\n🔗 **Сс��лка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
+        const message = `📊 **Статист��ка трекинговой ссылки**\n\n📝 **Название:** ${link.name}\n🆔 **ID:** \`${trackingId}\`\n��� **Создана:** ${createdDate}\n\n��� **Статистика:**\n👥 В��его переходо��: **${stats.total_clicks || 0}**\n ���никальных по��ь��ователей: **${stats.unique_users || 0}**\n⏰ З�� по��ледние 24 ч��са: **${recentStats.recent_clicks || 0}**\n\n🔗 **Сс��лка:** \`https://t.me/YOUR_BOT?start=${trackingId}\``;
 
         bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
@@ -5652,7 +5653,7 @@ bot.onText(/\/delete_lottery (\d+)/, async (msg, match) => {
         const result = await db.executeQuery('DELETE FROM lotteries WHERE id = $1', [lotteryId]);
 
         if (result.rowCount > 0) {
-            bot.sendMessage(chatId, `✅ Л����ерея с ID ${lotteryId} у��алена!`);
+            bot.sendMessage(chatId, `✅ Л����ер��я с ID ${lotteryId} у��алена!`);
         } else {
             bot.sendMessage(chatId, `❌ Лотер��я с ID ${lotteryId} не най��ена.`);
         }
@@ -5907,7 +5908,7 @@ cron.schedule('0 20 * * 0', async () => {
         const rewards = [100, 75, 50, 25, 15]; // Stars for positions 1-5
         const positions = ['����', '🥈', '🥉', '4��⃣', '5️⃣'];
 
-        let rewardMessage = '���� **Еженедельные награды!**\n\n📅 **Топ-5 пользователей по рефер��лам за неделю:**\n\n';
+        let rewardMessage = '🏆 **Еженедельные награды!**\n\n📅 **Топ-5 пользователей по рефер��лам за неделю:**\n\n';
 
         for (let i = 0; i < result.rows.length; i++) {
             const user = result.rows[i];
@@ -5960,7 +5961,7 @@ async function handleAdminWeeklyRewards(chatId, messageId) {
 
         const message = `🏆 **Управле��ие недельным�� награда���и**
 
-������ **Теку��ее состо��ние:**
+������ **Теку��ее состояние:**
 🔄 Автоматические награды: ${status}
 ⏰ Время запуска: Воскресенье 20:00 МСК
 📅 Посл��дний ручной зап�����ск: ${lastManual}
@@ -6084,7 +6085,7 @@ bot.onText(/\/weekly_rewards_disable/, async (msg) => {
         bot.sendMessage(chatId, '❌ Автоматические недельные н��грады отключены!');
     } catch (error) {
         console.error('Error disabling weekly rewards:', error);
-        bot.sendMessage(chatId, '���� Ошибка ��тключения наград.');
+        bot.sendMessage(chatId, '���� Ошибка ����ключения наград.');
     }
 });
 
@@ -6151,7 +6152,7 @@ bot.onText(/\/process_old_withdrawals/, async (msg) => {
     const userId = msg.from.id;
 
     if (!isAdmin(userId)) {
-        bot.sendMessage(chatId, '❌ У вас нет пр����в доступа.');
+        bot.sendMessage(chatId, '❌ У вас нет пр��в доступа.');
         return;
     }
 
@@ -6213,7 +6214,7 @@ bot.onText(/\/process_old_withdrawals/, async (msg) => {
         }
 
         message += `\n📊 **Итого:**\n`;
-        message += `✅ Обработано а���томатически: ${processedCount}\n`;
+        message += `✅ Обработано а��томатически: ${processedCount}\n`;
         message += `🔶 Т��ебуют р��чной о��работки: ${skippedCount}\n`;
         message += `\n�� Крупные сумм������ и Premium подпис��и обрабаты��айте вручную через кнопки в уведомлен��ях.`;
 
@@ -6273,7 +6274,7 @@ bot.onText(/\/agent_limits(?:\s+(\d+)\s+(\d+)\s+(\d+))?/, async (msg, match) => 
         }
 
         if (hourLimit < 5 || hourLimit > 10000) {
-            bot.sendMessage(chatId, '❌ Часовой лимит должен быть от 5 до 100 зв��зд.');
+            bot.sendMessage(chatId, '❌ Часовой лимит должен быть от 5 до 100 звёзд.');
             return;
         }
 
@@ -6339,7 +6340,7 @@ ${dayLimit > 25 ? '🔓 **Тест-режим отключён**' : '🔒 **Те
 • Следите за логами агента: \`/agent_logs\`
 • При ошибках FloodWait снизьте лимиты
 
-🔄 **Перезапустите агент** для пр��ме��ения изменений:
+🔄 **Перезапустите агент** д��я пр��ме��ения изменений:
 \`/admin\` → \`🎆 Stars Agent\` или \`⏹️ Остановить\` → \`▶️ Запустить\``;
 
             bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
@@ -6410,7 +6411,7 @@ async function handleSubscriptionStats(chatId, messageId) {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: '👥 Уникальные пользователи', callback_data: 'admin_unique_users' }],
+                    [{ text: '👥 Уни��альные пользователи', callback_data: 'admin_unique_users' }],
                     [{ text: '🔄 Обнови���ь', callback_data: 'admin_subscription_stats' }],
                     [{ text: '📋 История прове��ок', callback_data: 'admin_subscription_history' }],
                     [{ text: '📺 Управление каналами', callback_data: 'admin_channels' }],
@@ -6439,7 +6440,7 @@ async function handleUniqueUsers(chatId, messageId) {
         const uniqueUsers = await db.getLatestUniqueSubscriptionUsers(15);
         const totalCount = await db.getUniqueSubscriptionUsersCount();
 
-        let message = `👥 **Пос��едние у��икальные поль��ователи** (${totalCount} всего)\n\n`;
+        let message = `👥 **Пос��едние у��икальные ��оль��ователи** (${totalCount} всего)\n\n`;
 
         if (uniqueUsers.length === 0) {
             message += '���� Нет д����нных о пользователях.';
@@ -6458,7 +6459,7 @@ async function handleUniqueUsers(chatId, messageId) {
             }
         }
 
-        message += `💡 **Пояснение:**\nКаждый пользователь учитывается в стати����тике только один раз - при первой успешной проверке подпис��и. Повторные проверки этого же поль���ователя не увелич��в��ют счётчик.`;
+        message += `💡 **Пояснение:**\nКаждый пользователь учитывается в стати����тике только один раз - при первой успешной проверке подпис��и. Повторные проверки этого же поль���ователя не увелич����в��ют счётчик.`;
 
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -6931,19 +6932,19 @@ async function handleSubGramGender(chatId, messageId, userId, gender) {
 // ==================== Новые обработчики поэтапной системы ====================
 
 /**
- * ИСПРАВЛЕННЫЙ обработчик проверки спонсорских каналов
+ * Обработчик проверки спонсорских каналов
  */
-async function handleSponsorCheckFixed(chatId, messageId, userId) {
+async function handleSponsorCheck(chatId, messageId, userId) {
     try {
-        console.log(`[FIXED_FLOW] Checking sponsor subscriptions for user ${userId}`);
+        console.log(`[FLOW] Checking sponsor subscriptions for user ${userId}`);
 
-        const stageInfo = await subscriptionFlowFixed.getUserStage(bot, userId);
+        const stageInfo = await subscriptionFlow.updateSubscriptionStage(bot, userId);
 
-        if (stageInfo.stage === subscriptionFlowFixed.STAGES.SPONSORS) {
+        if (stageInfo.stage === subscriptionFlow.SUBSCRIPTION_STAGES.SPONSORS && !stageInfo.allCompleted) {
             // Пользователь все еще на этапе спонсоров
-            console.log(`[FIXED_FLOW] User ${userId} still needs sponsor subscriptions`);
+            console.log(`[FLOW] User ${userId} still needs sponsor subscriptions`);
 
-            const stageMessage = subscriptionFlowFixed.formatStageMessage(stageInfo);
+            const stageMessage = subscriptionFlow.formatStageMessage(stageInfo);
 
             await bot.editMessageText('❌ **Требуется подписка**\n\nВы еще не подписались на все спонсорские каналы.\n\n' + stageMessage.message, {
                 chat_id: chatId,
@@ -6952,11 +6953,11 @@ async function handleSponsorCheckFixed(chatId, messageId, userId) {
                 reply_markup: { inline_keyboard: stageMessage.buttons }
             });
 
-        } else if (stageInfo.stage === subscriptionFlowFixed.STAGES.REQUIRED) {
+        } else if (stageInfo.stage === subscriptionFlow.SUBSCRIPTION_STAGES.REQUIRED) {
             // Спонсоры выполнены, переходим к обязательным
-            console.log(`[FIXED_FLOW] User ${userId} completed sponsors, moving to required channels`);
+            console.log(`[FLOW] User ${userId} completed sponsors, moving to required channels`);
 
-            const stageMessage = subscriptionFlowFixed.formatStageMessage(stageInfo);
+            const stageMessage = subscriptionFlow.formatStageMessage(stageInfo);
 
             await bot.editMessageText('✅ **Спонсорские каналы выполнены!**\n\nТеперь подпишитесь на обязательные каналы:\n\n' + stageMessage.message, {
                 chat_id: chatId,
@@ -6967,7 +6968,7 @@ async function handleSponsorCheckFixed(chatId, messageId, userId) {
 
         } else if (stageInfo.allCompleted) {
             // Все подписки выполнены
-            console.log(`[FIXED_FLOW] User ${userId} completed all subscriptions`);
+            console.log(`[FLOW] User ${userId} completed all subscriptions`);
 
             await db.updateUserField(userId, 'is_subscribed', true);
 
@@ -6993,7 +6994,7 @@ async function handleSponsorCheckFixed(chatId, messageId, userId) {
         }
 
     } catch (error) {
-        console.error('[FIXED_FLOW] Error in sponsor check:', error);
+        console.error('[FLOW] Error in sponsor check:', error);
         await bot.editMessageText('❌ Ошибка проверки подписок. Попробуйте позже.', {
             chat_id: chatId,
             message_id: messageId,
@@ -7008,19 +7009,19 @@ async function handleSponsorCheckFixed(chatId, messageId, userId) {
 }
 
 /**
- * ИСПРАВЛЕННЫЙ обработчик проверки обязательных каналов
+ * Обработчик проверки обязательных каналов
  */
-async function handleRequiredCheckFixed(chatId, messageId, userId) {
+async function handleRequiredCheck(chatId, messageId, userId) {
     try {
-        console.log(`[FIXED_FLOW] Checking required subscriptions for user ${userId}`);
+        console.log(`[FLOW] Checking required subscriptions for user ${userId}`);
 
-        const stageInfo = await subscriptionFlowFixed.getUserStage(bot, userId);
+        const stageInfo = await subscriptionFlow.updateSubscriptionStage(bot, userId);
 
-        if (stageInfo.stage === subscriptionFlowFixed.STAGES.REQUIRED) {
+        if (stageInfo.stage === subscriptionFlow.SUBSCRIPTION_STAGES.REQUIRED && !stageInfo.allCompleted) {
             // Пользователь все еще на этапе обязательных каналов
-            console.log(`[FIXED_FLOW] User ${userId} still needs required subscriptions`);
+            console.log(`[FLOW] User ${userId} still needs required subscriptions`);
 
-            const stageMessage = subscriptionFlowFixed.formatStageMessage(stageInfo);
+            const stageMessage = subscriptionFlow.formatStageMessage(stageInfo);
 
             await bot.editMessageText('❌ **Требуется подписка**\n\nВы еще не подписались на все обязательные каналы.\n\n' + stageMessage.message, {
                 chat_id: chatId,
@@ -7031,7 +7032,7 @@ async function handleRequiredCheckFixed(chatId, messageId, userId) {
 
         } else if (stageInfo.allCompleted) {
             // Все подписки выполнены
-            console.log(`[FIXED_FLOW] User ${userId} completed all subscriptions`);
+            console.log(`[FLOW] User ${userId} completed all subscriptions`);
 
             await db.updateUserField(userId, 'is_subscribed', true);
 
@@ -7046,7 +7047,7 @@ async function handleRequiredCheckFixed(chatId, messageId, userId) {
             await processUserReferrals(userId);
 
             // Показываем главное меню
-            const welcomeMessage = '🎉 **Поздравляем!**\n\nВы подписались на все необходимые каналы!\n\n💰 Теперь вы можете пользоваться всеми функциями бота.\n\nВ��берите действие из меню ниже:';
+            const welcomeMessage = '🎉 **Поздравляем!**\n\nВы подписались на все необходимые каналы!\n\n💰 Теперь вы можете пользоваться всеми функциями бота.\n\nВыберите действие из меню ниже:';
 
             await bot.editMessageText(welcomeMessage, {
                 chat_id: chatId,
@@ -7055,10 +7056,10 @@ async function handleRequiredCheckFixed(chatId, messageId, userId) {
                 ...getMainMenuKeyboard()
             });
         } else {
-            // Возвращаемся к предыдущему этапу
-            console.log(`[FIXED_FLOW] User ${userId} redirected to stage ${stageInfo.stage}`);
+            // Неожиданный этап - возвращаемся к спонсорам
+            console.log(`[FLOW] User ${userId} on unexpected stage ${stageInfo.stage}, redirecting to sponsors`);
 
-            const stageMessage = subscriptionFlowFixed.formatStageMessage(stageInfo);
+            const stageMessage = subscriptionFlow.formatStageMessage(stageInfo);
 
             await bot.editMessageText('🔄 **Проверка подписок**\n\n' + stageMessage.message, {
                 chat_id: chatId,
@@ -7069,13 +7070,72 @@ async function handleRequiredCheckFixed(chatId, messageId, userId) {
         }
 
     } catch (error) {
-        console.error('[FIXED_FLOW] Error in required check:', error);
+        console.error('[FLOW] Error in required check:', error);
         await bot.editMessageText('❌ Ошибка проверки подписок. Попробуйте позже.', {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: {
                 inline_keyboard: [
                     [{ text: '🔄 Попробовать снова', callback_data: 'check_required' }],
+                    [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+                ]
+            }
+        });
+    }
+}
+
+/**
+ * Новый обработчик поэтапной проверки подписок
+ * Определяет текущий этап и перенаправляет на соответствующий обработчик
+ */
+async function handleStageBasedSubscriptionCheck(chatId, messageId, userId) {
+    try {
+        console.log(`[FLOW] Stage-based subscription check for user ${userId}`);
+
+        const stageInfo = await subscriptionFlow.updateSubscriptionStage(bot, userId);
+
+        switch (stageInfo.stage) {
+            case subscriptionFlow.SUBSCRIPTION_STAGES.SPONSORS:
+                await handleSponsorCheck(chatId, messageId, userId);
+                break;
+
+            case subscriptionFlow.SUBSCRIPTION_STAGES.REQUIRED:
+                await handleRequiredCheck(chatId, messageId, userId);
+                break;
+
+            case subscriptionFlow.SUBSCRIPTION_STAGES.COMPLETED:
+                // Все подписки завершены
+                await bot.editMessageText('🎉 **Поздравляем!**\n\nВы подписались на все необходимые каналы!\n\n💰 Теперь вы можете пользоваться всеми функциями бота.', {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown',
+                    ...getMainMenuKeyboard()
+                });
+
+                await db.updateUserField(userId, 'is_subscribed', true);
+                await processUserReferrals(userId);
+                break;
+
+            default:
+                // Неизвестный этап - показываем текущее состояние
+                const stageMessage = subscriptionFlow.formatStageMessage(stageInfo);
+                await bot.editMessageText(stageMessage.message, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: stageMessage.buttons }
+                });
+                break;
+        }
+
+    } catch (error) {
+        console.error('[FLOW] Error in stage-based subscription check:', error);
+        await bot.editMessageText('❌ Ошибка проверки подписок. Попробуйте позже.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 Попробовать снова', callback_data: 'check_subscriptions_enhanced' }],
                     [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
                 ]
             }
@@ -7256,7 +7316,7 @@ async function handleAdminSubGramStats(chatId, messageId) {
         let message = `📊 **SubGram Ст��тистика**\n\n📈 **Общая статистика (��оследние ${totalRequests} за��рос��в):**\n• Всего за��росов: ${totalRequests}\n��� Успеш����ых: ${successfulRequests}\n• ��шибок: ${errorRequests}\n• Уникальных пол��зова��елей: ${uniqueUsers}\n`;
 
         if (Object.keys(statusCounts).length > 0) {
-            message += '\n🎯 **Ста��усы ответов API:**\n';
+            message += '\n🎯 **Ст����усы ответов API:**\n';
             for (const [status, count] of Object.entries(statusCounts)) {
                 const emoji = status === 'ok' ? '✅' : status === 'warning' ? '⚠��' : status === 'gender' ? '👤' : '❓';
                 message += `• ${emoji} ${status}: ${count}\n`;
@@ -7441,7 +7501,7 @@ async function handleAdminSubGramTest(chatId, messageId) {
         await bot.editMessageText('❌ Ошибка выполнения теста SubGram API.', {
             chat_id: chatId,
             message_id: messageId,
-            reply_markup: { inline_keyboard: [[{ text: '�� Назад', callback_data: 'admin_subgram' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '��� Назад', callback_data: 'admin_subgram' }]] }
         });
     }
 }
@@ -7503,7 +7563,7 @@ async function handleAdminSubGramFullTest(chatId, messageId) {
             message += `📡 Статус: ${apiResponse.data?.status || 'неизвестно'}\n`;
 
             if (apiResponse.data?.links?.length > 0) {
-                message += `📺 Каналов ��олуче��о: ${apiResponse.data.links.length}\n`;
+                message += `📺 Каналов ��о��уче��о: ${apiResponse.data.links.length}\n`;
             }
         } else {
             message += `❌ API не работает\n`;
@@ -7538,7 +7598,7 @@ async function handleAdminSubGramFullTest(chatId, messageId) {
 
     } catch (error) {
         console.error('Error in SubGram full test:', error);
-        await bot.editMessageText('❌ Ошибка выполнения полног�� теста.', {
+        await bot.editMessageText('❌ Ошибка выполнения полного теста.', {
             chat_id: chatId,
             message_id: messageId,
             reply_markup: { inline_keyboard: [[{ text: '🔙 Назад', callback_data: 'admin_subgram' }]] }
