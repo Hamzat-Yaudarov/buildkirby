@@ -219,7 +219,7 @@ async function checkSponsorSubscriptions(userId, channels) {
 }
 
 /**
- * Проверить подписки на обязательные каналы
+ * Пр��верить подписки на обязательные каналы
  * @param {number} userId - ID пользователя
  * @param {Array} channels - Список каналов для проверки
  * @returns {Object} Статус по��писок
@@ -328,7 +328,7 @@ function formatStageMessage(stageInfo) {
         return {
             message: '🔄 **Проблема с каналами**\n\nОшибка получения каналов для подписки. Попробуйте еще раз.',
             buttons: [
-                [{ text: '🔄 Обновить', callback_data: 'check_subscriptions' }]
+                [{ text: '🔄 Обновить', callback_data: 'check_sponsors' }]
             ]
         };
     }
@@ -401,7 +401,7 @@ async function canUserAccessBot(userId) {
  * Обновить этап подписки после проверки
  * @param {Object} bot - Экземпляр Telegram бота
  * @param {number} userId - ID пользователя
- * @returns {Object} Обновленная информация об этапе
+ * @returns {Object} Обновлен��ая информация об этапе
  */
 async function updateSubscriptionStage(bot, userId) {
     try {
@@ -429,7 +429,7 @@ async function updateSubscriptionStage(bot, userId) {
         stageInfo.sponsorStatus = sponsorStatus;
         stageInfo.requiredStatus = requiredStatus;
 
-        // 5. Определяем этап по ПРИОРИТЕТУ: Спонсоры -> Обязательные -> Завершено
+        // 5. Определ��ем этап по ПРИОРИТЕТУ: Спонсоры -> Обязательные -> Завершено
         if (!sponsorStatus.allSubscribed && stageInfo.sponsorChannels.length > 0) {
             // ЭТАП 1: Нужны спонсорские каналы
             stageInfo.stage = SUBSCRIPTION_STAGES.SPONSORS;
