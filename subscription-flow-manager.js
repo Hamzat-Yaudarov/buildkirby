@@ -1,20 +1,38 @@
 /**
  * Менеджер поэтапных подписок
  * Обеспечивает правильный flow: Спонсоры → Обязательные каналы → Главное меню
- * Блокирует функции до полной подписки на ВСЕ каналы
+ * Блок��рует функции до полной подписки на ВСЕ каналы
  */
 
 const db = require('./database');
 const { subgramAPI } = require('./subgram-api');
 
 /**
- * Этапы подписки
+ * Этап�� подписки
  */
 const SUBSCRIPTION_STAGES = {
     SPONSORS: 'sponsors',      // Спонсорские каналы от SubGram
     REQUIRED: 'required',      // Обязательные каналы
     COMPLETED: 'completed'     // Все подписки выполнены
 };
+
+/**
+ * Пересчитать статус подписок на основе проверенных каналов
+ * @param {Array} channels - Массив каналов с обновленными статусами
+ * @returns {Object} Статус подписок
+ */
+function recalculateSubscriptionStatus(channels) {
+    if (channels.length === 0) {
+        return { allSubscribed: true, subscribedCount: 0, totalCount: 0 };
+    }
+
+    const subscribedCount = channels.filter(ch => ch.subscribed).length;
+    return {
+        allSubscribed: subscribedCount === channels.length,
+        subscribedCount: subscribedCount,
+        totalCount: channels.length
+    };
+}
 
 /**
  * Определить текущий этап подписки для пользователя
@@ -31,16 +49,16 @@ async function getCurrentSubscriptionStage(userId) {
         // 2. Получаем обязательные каналы
         const requiredChannels = await getRequiredChannels();
 
-        // 3. Пока не можем проверить подписки без бота, считаем неподписанными
+        // 3. Изначально считаем что пользователь НЕ подписан (проверим с ботом позже)
         const sponsorStatus = {
-            allSubscribed: sponsorChannels.length === 0,
+            allSubscribed: false, // Всегда false до проверки с ботом
             subscribedCount: 0,
             totalCount: sponsorChannels.length
         };
 
         // 4. Аналогично для обязательных каналов
         const requiredStatus = {
-            allSubscribed: requiredChannels.length === 0,
+            allSubscribed: false, // Всегда false до проверки с ботом
             subscribedCount: 0,
             totalCount: requiredChannels.length
         };
@@ -55,23 +73,26 @@ async function getCurrentSubscriptionStage(userId) {
             nextAction: 'subscribe_sponsors'
         };
 
-        // Определяем текущий этап
-        if (!sponsorStatus.allSubscribed && sponsorChannels.length > 0) {
-            // Этап 1: Нужно подписаться на спонсоров
+        // Определяем текущий этап - строго последовательно
+        if (sponsorChannels.length > 0 && !sponsorStatus.allSubscribed) {
+            // Этап 1: Есть спонсоры и не все подписаны - показываем ТОЛЬКО спонсоров
             result.stage = SUBSCRIPTION_STAGES.SPONSORS;
             result.nextAction = 'subscribe_sponsors';
-            result.channelsToShow = sponsorChannels.filter(ch => !ch.subscribed);
-        } else if (!requiredStatus.allSubscribed && requiredChannels.length > 0) {
-            // Этап 2: Спонсоры выполнены, нужны обязательные
+            result.channelsToShow = sponsorChannels; // Показываем все спонсорские каналы
+            console.log(`[FLOW] Stage: SPONSORS - showing ${sponsorChannels.length} sponsor channels`);
+        } else if (requiredChannels.length > 0 && !requiredStatus.allSubscribed) {
+            // Этап 2: Спонсоры выполнены (или нет), но есть обязательные - показываем ТОЛЬКО обязательные
             result.stage = SUBSCRIPTION_STAGES.REQUIRED;
             result.nextAction = 'subscribe_required';
-            result.channelsToShow = requiredChannels.filter(ch => !ch.subscribed);
+            result.channelsToShow = requiredChannels; // Показываем все обязательные каналы
+            console.log(`[FLOW] Stage: REQUIRED - showing ${requiredChannels.length} required channels`);
         } else {
-            // Этап 3: Все подписки выполнены
+            // Этап 3: Все подписки выполнены или нет каналов вообще
             result.stage = SUBSCRIPTION_STAGES.COMPLETED;
             result.nextAction = 'show_main_menu';
             result.allCompleted = true;
             result.channelsToShow = [];
+            console.log(`[FLOW] Stage: COMPLETED - all subscriptions done`);
         }
 
         console.log(`[FLOW] User ${userId} stage: ${result.stage}, channels to show: ${result.channelsToShow.length}`);
@@ -114,7 +135,7 @@ async function getSponsorChannels(userId) {
         if (savedChannels.rows && savedChannels.rows.length > 0) {
             console.log(`[FLOW] Found ${savedChannels.rows.length} saved sponsor channels`);
             
-            // Убираем дубликаты по ссылке
+            // Убираем дубликаты по ссы��ке
             const uniqueChannels = new Map();
             savedChannels.rows.forEach(ch => {
                 if (!uniqueChannels.has(ch.channel_link)) {
@@ -182,7 +203,7 @@ async function getSponsorChannels(userId) {
 }
 
 /**
- * Получить обязательные каналы
+ * Получить обязательные ��аналы
  * @returns {Array} Список обязательных каналов
  */
 async function getRequiredChannels() {
@@ -220,7 +241,7 @@ async function checkSponsorSubscriptions(userId, channels) {
     let subscribedCount = 0;
     for (const channel of channels) {
         try {
-            // Извлекаем username из ссылки
+            // Из��лекаем username из ссылки
             let channelToCheck = channel.id;
             if (channel.id.includes('t.me/')) {
                 const match = channel.id.match(/t\.me\/([^\/\?]+)/);
@@ -284,7 +305,7 @@ async function checkRequiredSubscriptions(userId, channels) {
  * Проверить подписки с помощью бота
  * @param {Object} bot - Экземпляр Telegram бота
  * @param {number} userId - ID пользователя
- * @param {Array} channels - Список каналов
+ * @param {Array} channels - Список канал��в
  */
 async function checkChannelSubscriptionsWithBot(bot, userId, channels) {
     for (const channel of channels) {
@@ -303,7 +324,8 @@ async function checkChannelSubscriptionsWithBot(bot, userId, channels) {
             
         } catch (error) {
             console.log(`[FLOW] Cannot check channel ${channel.id}: ${error.message}`);
-            channel.subscribed = true; // В случае ошибки считаем подписанным
+            // В случае ошибки проверки НЕ меняем статус - ост��вляем как есть
+            // channel.subscribed останется false (по умолчанию)
         }
     }
 }
@@ -318,7 +340,7 @@ function formatStageMessage(stageInfo) {
 
     if (allCompleted) {
         return {
-            message: '✅ **Отлично!**\n\nВ�� подписаны на все необходимые каналы!\n\n🎉 Можете пользоваться ботом.',
+            message: '✅ **Отлично!**\n\nВ�� подписаны на в��е необходимые каналы!\n\n🎉 Можете пользоваться ботом.',
             buttons: [
                 [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
             ]
@@ -367,7 +389,7 @@ function formatStageMessage(stageInfo) {
 
 /**
  * Проверить, может ли пользователь использовать функции бота
- * @param {number} userId - ID пользователя
+ * @param {number} userId - ID польз��вателя
  * @returns {boolean} Может ли пользователь использовать бот
  */
 async function canUserAccessBot(userId) {
@@ -388,19 +410,54 @@ async function canUserAccessBot(userId) {
  */
 async function updateSubscriptionStage(bot, userId) {
     try {
-        const stageInfo = await getCurrentSubscriptionStage(userId);
-        
-        // Проверяем подписки с помощью бота
-        if (stageInfo.sponsorChannels.length > 0) {
+        // Получаем текущий этап без проверки подписок
+        let stageInfo = await getCurrentSubscriptionStage(userId);
+
+        console.log(`[FLOW] Initial stage for user ${userId}: ${stageInfo.stage}`);
+
+        // Проверяем подписки ТОЛЬКО для текущего этапа
+        if (stageInfo.stage === SUBSCRIPTION_STAGES.SPONSORS && stageInfo.sponsorChannels.length > 0) {
+            console.log(`[FLOW] Checking sponsor subscriptions for user ${userId}`);
             await checkChannelSubscriptionsWithBot(bot, userId, stageInfo.sponsorChannels);
-        }
-        
-        if (stageInfo.requiredChannels.length > 0) {
+
+            // Обновляем статус спонсоров
+            const subscribedSponsors = stageInfo.sponsorChannels.filter(ch => ch.subscribed).length;
+            const allSponsorsSubscribed = subscribedSponsors === stageInfo.sponsorChannels.length;
+
+            if (allSponsorsSubscribed) {
+                console.log(`[FLOW] User ${userId} completed all sponsor subscriptions`);
+                stageInfo.sponsorStatus.allSubscribed = true;
+                stageInfo.sponsorStatus.subscribedCount = subscribedSponsors;
+            }
+
+        } else if (stageInfo.stage === SUBSCRIPTION_STAGES.REQUIRED && stageInfo.requiredChannels.length > 0) {
+            console.log(`[FLOW] Checking required subscriptions for user ${userId}`);
             await checkChannelSubscriptionsWithBot(bot, userId, stageInfo.requiredChannels);
+
+            // Обновляем статус обязательных
+            const subscribedRequired = stageInfo.requiredChannels.filter(ch => ch.subscribed).length;
+            const allRequiredSubscribed = subscribedRequired === stageInfo.requiredChannels.length;
+
+            if (allRequiredSubscribed) {
+                console.log(`[FLOW] User ${userId} completed all required subscriptions`);
+                stageInfo.requiredStatus.allSubscribed = true;
+                stageInfo.requiredStatus.subscribedCount = subscribedRequired;
+            }
         }
 
-        // Пересчитываем этап после проверки
-        return await getCurrentSubscriptionStage(userId);
+        // Пересчитываем этап после проверки подписок
+        const updatedStageInfo = await getCurrentSubscriptionStage(userId);
+
+        // Обновляем статусы подписок в новом результате
+        if (stageInfo.sponsorStatus.allSubscribed) {
+            updatedStageInfo.sponsorStatus.allSubscribed = true;
+        }
+        if (stageInfo.requiredStatus.allSubscribed) {
+            updatedStageInfo.requiredStatus.allSubscribed = true;
+        }
+
+        console.log(`[FLOW] Final stage for user ${userId}: ${updatedStageInfo.stage}`);
+        return updatedStageInfo;
 
     } catch (error) {
         console.error('[FLOW] Error updating subscription stage:', error);
