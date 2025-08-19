@@ -1,6 +1,6 @@
 /**
  * Менеджер поэтапных подписок
- * Обеспечивает правильный flow: Спонсоры → Обязательные каналы → Главное меню
+ * Обеспечивает правильный flow: Спонс��ры → Обязательные каналы → Главное меню
  * Блокирует функции до полной подписки на ВСЕ каналы
  */
 
@@ -17,72 +17,42 @@ const SUBSCRIPTION_STAGES = {
 };
 
 /**
- * Определить текущий этап подписки для пользователя
+ * Получить каналы для проверки (без определения этапа)
  * @param {number} userId - ID пользователя
- * @returns {Object} Информация о текущем этапе
+ * @returns {Object} Объект с каналами
  */
 async function getCurrentSubscriptionStage(userId) {
     try {
-        console.log(`[FLOW] Checking subscription stage for user ${userId}`);
+        console.log(`[FLOW] Getting channels for user ${userId}`);
 
         // 1. Получаем спонсорские каналы от SubGram
         const sponsorChannels = await getSponsorChannels(userId);
-        
+
         // 2. Получаем обязательные каналы
         const requiredChannels = await getRequiredChannels();
 
-        // 3. Пока не можем проверить подписки без бота, считаем неподписанными
-        const sponsorStatus = {
-            allSubscribed: sponsorChannels.length === 0,
-            subscribedCount: 0,
-            totalCount: sponsorChannels.length
-        };
+        console.log(`[FLOW] Found ${sponsorChannels.length} sponsor channels, ${requiredChannels.length} required channels`);
 
-        // 4. Аналогично для обязательных каналов
-        const requiredStatus = {
-            allSubscribed: requiredChannels.length === 0,
-            subscribedCount: 0,
-            totalCount: requiredChannels.length
-        };
-
-        const result = {
-            stage: SUBSCRIPTION_STAGES.SPONSORS,
+        return {
             sponsorChannels: sponsorChannels,
             requiredChannels: requiredChannels,
-            sponsorStatus: sponsorStatus,
-            requiredStatus: requiredStatus,
+            // Эти поля будут заполнены в updateSubscriptionStage
+            stage: null,
+            sponsorStatus: null,
+            requiredStatus: null,
             allCompleted: false,
-            nextAction: 'subscribe_sponsors'
+            nextAction: null,
+            channelsToShow: []
         };
 
-        // Определяем текущий этап
-        if (!sponsorStatus.allSubscribed && sponsorChannels.length > 0) {
-            // Этап 1: Нужно подписаться на спонсоров
-            result.stage = SUBSCRIPTION_STAGES.SPONSORS;
-            result.nextAction = 'subscribe_sponsors';
-            result.channelsToShow = sponsorChannels.filter(ch => !ch.subscribed);
-        } else if (!requiredStatus.allSubscribed && requiredChannels.length > 0) {
-            // Этап 2: Спонсоры выполнены, нужны обязательные
-            result.stage = SUBSCRIPTION_STAGES.REQUIRED;
-            result.nextAction = 'subscribe_required';
-            result.channelsToShow = requiredChannels.filter(ch => !ch.subscribed);
-        } else {
-            // Этап 3: Все подписки выполнены
-            result.stage = SUBSCRIPTION_STAGES.COMPLETED;
-            result.nextAction = 'show_main_menu';
-            result.allCompleted = true;
-            result.channelsToShow = [];
-        }
-
-        console.log(`[FLOW] User ${userId} stage: ${result.stage}, channels to show: ${result.channelsToShow.length}`);
-        return result;
-
     } catch (error) {
-        console.error('[FLOW] Error determining subscription stage:', error);
+        console.error('[FLOW] Error getting channels:', error);
         return {
-            stage: SUBSCRIPTION_STAGES.COMPLETED,
-            nextAction: 'show_main_menu',
-            allCompleted: true,
+            sponsorChannels: [],
+            requiredChannels: [],
+            stage: SUBSCRIPTION_STAGES.SPONSORS,
+            nextAction: 'subscribe_sponsors',
+            allCompleted: false,
             channelsToShow: [],
             error: error.message
         };
@@ -126,7 +96,7 @@ async function getSponsorChannels(userId) {
                 id: ch.channel_link,
                 name: ch.channel_name || 'Спонсорский канал',
                 link: ch.channel_link,
-                type: 'sponsor',
+                type: 'subgram', // Правильный тип для SubGram каналов
                 subscribed: false // Будет проверено отдельно
             }));
         }
@@ -160,7 +130,7 @@ async function getSponsorChannels(userId) {
                     id: ch.link,
                     name: ch.name || 'Спонсорский канал',
                     link: ch.link,
-                    type: 'sponsor',
+                    type: 'subgram', // Правильный тип для SubGram каналов
                     subscribed: false
                 }));
 
@@ -182,7 +152,7 @@ async function getSponsorChannels(userId) {
 }
 
 /**
- * Получить обязательные каналы
+ * Получить обязательны�� каналы
  * @returns {Array} Список обязательных каналов
  */
 async function getRequiredChannels() {
@@ -252,7 +222,7 @@ async function checkSponsorSubscriptions(userId, channels) {
  * Проверить подписки на обязательные каналы
  * @param {number} userId - ID пользователя
  * @param {Array} channels - Список каналов для проверки
- * @returns {Object} Статус подписок
+ * @returns {Object} Статус по��писок
  */
 async function checkRequiredSubscriptions(userId, channels) {
     if (channels.length === 0) {
@@ -291,11 +261,19 @@ async function checkChannelSubscriptionsWithBot(bot, userId, channels) {
         try {
             let channelToCheck = channel.id;
             
-            if (channel.type === 'sponsor' && channel.id.includes('t.me/')) {
+            // Правильная обработка ссылок SubGram (тип subgram или sponsor)
+            if ((channel.type === 'sponsor' || channel.type === 'subgram') && channel.id.includes('t.me/')) {
                 const match = channel.id.match(/t\.me\/([^\/\?]+)/);
                 if (match) {
                     channelToCheck = '@' + match[1];
                 }
+            }
+            // Обработка приватных ссылок (+код)
+            else if (channel.id.includes('t.me/+')) {
+                // Приватные ссылки нельзя проверить через getChatMember
+                console.log(`[FLOW] Cannot check private link ${channel.id} - marking as subscribed`);
+                channel.subscribed = true;
+                return;
             }
 
             const member = await bot.getChatMember(channelToCheck, userId);
@@ -303,7 +281,13 @@ async function checkChannelSubscriptionsWithBot(bot, userId, channels) {
             
         } catch (error) {
             console.log(`[FLOW] Cannot check channel ${channel.id}: ${error.message}`);
-            channel.subscribed = true; // В случае ошибки считаем подписанным
+            // Для спонсорских каналов при ошибке считаем подписанным
+            // Для обязательных - неподписанным
+            if (channel.type === 'sponsor' || channel.type === 'subgram') {
+                channel.subscribed = true; // Ошибка проверки = подписан
+            } else {
+                channel.subscribed = false; // Обязательные каналы строже
+            }
         }
     }
 }
@@ -335,6 +319,19 @@ function calculateSubscriptionStatus(channels) {
  */
 function formatStageMessage(stageInfo) {
     const { stage, channelsToShow, allCompleted } = stageInfo;
+
+    console.log(`[FLOW] Formatting stage message: stage=${stage}, channelsToShow=${channelsToShow?.length || 0}, allCompleted=${allCompleted}`);
+
+    // Проверяем что есть каналы для показа
+    if (!allCompleted && (!channelsToShow || channelsToShow.length === 0)) {
+        console.log(`[FLOW] WARNING: No channels to show for stage ${stage}`);
+        return {
+            message: '🔄 **Проблема с каналами**\n\nОшибка получения каналов для подписки. Попробуйте еще раз.',
+            buttons: [
+                [{ text: '🔄 Обновить', callback_data: 'check_subscriptions' }]
+            ]
+        };
+    }
 
     if (allCompleted) {
         return {
@@ -458,13 +455,16 @@ async function updateSubscriptionStage(bot, userId) {
 
     } catch (error) {
         console.error('[FLOW] Error updating subscription stage:', error);
+        // При ошибке НЕ считаем что все подписки выполнены!
         return {
-            stage: SUBSCRIPTION_STAGES.COMPLETED,
-            nextAction: 'show_main_menu',
-            allCompleted: true,
+            stage: SUBSCRIPTION_STAGES.SPONSORS,
+            nextAction: 'subscribe_sponsors',
+            allCompleted: false, // ← ВАЖНО: false при ошибке!
             channelsToShow: [],
             sponsorChannels: [],
             requiredChannels: [],
+            sponsorStatus: { allSubscribed: false, subscribedCount: 0, totalCount: 0 },
+            requiredStatus: { allSubscribed: false, subscribedCount: 0, totalCount: 0 },
             error: error.message
         };
     }
