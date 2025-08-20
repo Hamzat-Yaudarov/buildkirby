@@ -1,42 +1,30 @@
 /**
- * Объединённая система проверки подписок
- * Проверяет И обязательные каналы И спонсорские каналы от SubGram
+ * Упрощенная система проверки подписок
+ * Проверяет ТОЛЬКО спонсорские каналы от SubGram
+ * УДАЛЕНА логика обязательных каналов
  */
 
 const db = require('./database');
 const { subgramAPI } = require('./subgram-api');
 
 /**
- * Получ��ть все каналы для проверки (обязательные + SubGram)
+ * Получить все каналы для проверки (ТОЛЬКО SubGram)
  * @param {number} userId - ID пользователя
- * @returns {Object} Объект с каналами для проверки
+ * @returns {Object} Каналы от SubGram
  */
-async function getAllChannelsToCheck(userId) {
+async function getAllChannelsForUser(userId) {
     const result = {
-        requiredChannels: [],
         subgramChannels: [],
         allChannels: [],
         hasSubgramChannels: false
     };
 
     try {
-        // 1. Получаем обязательные каналы из БД
-        const requiredChannelsData = await db.executeQuery(
-            'SELECT channel_id, channel_name FROM required_channels WHERE is_active = TRUE'
-        );
+        console.log(`[UNIFIED] Getting SubGram channels for user ${userId}`);
 
-        result.requiredChannels = requiredChannelsData.rows.map(ch => ({
-            id: ch.channel_id,
-            name: ch.channel_name || ch.channel_id,
-            type: 'required',
-            source: 'database'
-        }));
-
-        console.log(`[UNIFIED] Found ${result.requiredChannels.length} required channels`);
-
-        // 2. Пытаемся получить каналы от SubGram
+        // Пытаемся получить каналы от SubGram
         try {
-            // Проверяем настройки SubGram - возможно он отключен
+            // Проверяем настройки SubGram - возможно он ��тключен
             const subgramSettings = await db.getSubGramSettings();
             if (!subgramSettings || !subgramSettings.enabled) {
                 console.log('[UNIFIED] SubGram disabled in settings, skipping');
@@ -53,7 +41,7 @@ async function getAllChannelsToCheck(userId) {
                 if (savedSubgramChannels.rows && savedSubgramChannels.rows.length > 0) {
                     console.log(`[UNIFIED] Found ${savedSubgramChannels.rows.length} recent saved SubGram channels`);
 
-                    // Убираем дубликаты по ссылке
+                    // Убираем дубликаты
                     const uniqueChannels = new Map();
                     savedSubgramChannels.rows.forEach(ch => {
                         if (!uniqueChannels.has(ch.channel_link)) {
@@ -63,7 +51,7 @@ async function getAllChannelsToCheck(userId) {
 
                     result.subgramChannels = Array.from(uniqueChannels.values()).map(ch => ({
                         id: ch.channel_link,
-                        name: ch.channel_name || 'Спонсорски�� канал',
+                        name: ch.channel_name || 'Спонсорский канал',
                         type: 'subgram',
                         source: 'saved',
                         link: ch.channel_link
@@ -89,7 +77,7 @@ async function getAllChannelsToCheck(userId) {
                         if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
                             console.log(`[UNIFIED] Got ${processedData.channelsToSubscribe.length} fresh SubGram channels`);
 
-                            // Убираем дубликаты по ссылке
+                            // Убираем дубликаты
                             const uniqueChannels = new Map();
                             processedData.channelsToSubscribe.forEach(ch => {
                                 if (!uniqueChannels.has(ch.link)) {
@@ -126,7 +114,7 @@ async function getAllChannelsToCheck(userId) {
                         // Логируем неудачу
                         await db.logSubGramAPIRequest(
                             userId,
-                            'unified_check',
+                            'unified_check_failed',
                             { action: 'subscribe', unified: true },
                             subgramResponse.data || {},
                             false,
@@ -138,10 +126,10 @@ async function getAllChannelsToCheck(userId) {
         } catch (subgramError) {
             console.error('[UNIFIED] Error getting SubGram channels:', subgramError);
             
-            // Логируем ошибку, но не блокируем работу с обязательными ка��алами
+            // Логируем ошибку
             await db.logSubGramAPIRequest(
                 userId,
-                'unified_check',
+                'unified_check_error',
                 { action: 'subscribe', unified: true },
                 {},
                 false,
@@ -149,17 +137,16 @@ async function getAllChannelsToCheck(userId) {
             );
         }
 
-        // 3. Объединяем все каналы
-        result.allChannels = [...result.requiredChannels, ...result.subgramChannels];
+        // Формируем общий список (теперь только SubGram)
+        result.allChannels = [...result.subgramChannels];
         
-        console.log(`[UNIFIED] Total channels to check: ${result.allChannels.length} (${result.requiredChannels.length} required + ${result.subgramChannels.length} subgram)`);
+        console.log(`[UNIFIED] Total channels to check: ${result.allChannels.length} (all SubGram)`);
         
         return result;
 
     } catch (error) {
-        console.error('[UNIFIED] Error getting channels to check:', error);
+        console.error('[UNIFIED] Error getting channels for user:', error);
         return {
-            requiredChannels: [],
             subgramChannels: [],
             allChannels: [],
             hasSubgramChannels: false,
@@ -169,24 +156,13 @@ async function getAllChannelsToCheck(userId) {
 }
 
 /**
- * Проверить подписку пользователя на конкретный канал
+ * Проверить подписку на один канал
  * @param {Object} bot - Экземпляр Telegram бота
  * @param {number} userId - ID пользователя
  * @param {Object} channel - Информация о канале
  * @returns {Object} Результат проверки
  */
-async function checkChannelSubscription(bot, userId, channel) {
-    const channelInfo = {
-        id: channel.id,
-        name: channel.name,
-        type: channel.type,
-        source: channel.source,
-        subscribed: false,
-        canCheck: true,
-        error: null,
-        link: channel.link || channel.id
-    };
-
+async function checkSingleChannelSubscription(bot, userId, channel) {
     try {
         // Извлекаем username канала из ссылки для SubGram каналов
         let channelToCheck = channel.id;
@@ -199,123 +175,107 @@ async function checkChannelSubscription(bot, userId, channel) {
             }
         }
 
-        console.log(`[UNIFIED] Checking subscription for ${channelToCheck} (${channel.type})`);
-        
+        // Проверяем подписку
         const member = await bot.getChatMember(channelToCheck, userId);
-        channelInfo.subscribed = !(member.status === 'left' || member.status === 'kicked');
-        
-        console.log(`[UNIFIED] User ${userId} subscription to ${channelToCheck}: ${channelInfo.subscribed}`);
-        
-    } catch (error) {
-        console.log(`[UNIFIED] Cannot check subscription for ${channel.id}: ${error.message}`);
-        channelInfo.canCheck = false;
-        channelInfo.error = error.message;
-        
-        // Для каналов которые не можем проверить - считаем их подписанными
-        // чтобы не блокировать пользователей из-за технических проблем
-        channelInfo.subscribed = true;
-    }
+        const isSubscribed = !(member.status === 'left' || member.status === 'kicked');
 
-    return channelInfo;
+        return {
+            subscribed: isSubscribed,
+            canCheck: true,
+            status: member.status
+        };
+
+    } catch (error) {
+        console.log(`[UNIFIED] Cannot check channel ${channel.id}: ${error.message}`);
+        
+        // Для SubGram каналов при ошибке считаем подписанным
+        return {
+            subscribed: true,
+            canCheck: false,
+            error: error.message
+        };
+    }
 }
 
 /**
- * Проверить подписки на все каналы (обязательные + SubGram)
- * @param {Object} bot - Экземпляр Telegram бот��
+ * Проверить подписки на все каналы (ТОЛЬКО SubGram)
+ * @param {Object} bot - Экземпляр Telegram бота
  * @param {number} userId - ID пользователя
  * @param {boolean} recordStats - Записывать статистику
- * @returns {Object} Подробный результат проверки
+ * @returns {Object} Результат проверки
  */
 async function checkUnifiedSubscriptions(bot, userId, recordStats = false) {
-    console.log(`[UNIFIED] Starting unified subscription check for user ${userId}`);
-    
     try {
-        // Получаем все каналы для проверки
-        const channelsData = await getAllChannelsToCheck(userId);
-        
+        console.log(`[UNIFIED] Starting subscription check for user ${userId}`);
+
+        // 1. Получаем каналы
+        const channelsData = await getAllChannelsForUser(userId);
+
         if (channelsData.error) {
-            console.error('[UNIFIED] Error getting channels:', channelsData.error);
-            return { 
-                allSubscribed: false, 
-                channels: [], 
+            return {
+                allSubscribed: false,
+                channels: [],
                 hasErrors: true,
                 subgramChannels: [],
-                requiredChannels: [],
                 error: channelsData.error
             };
         }
 
         if (channelsData.allChannels.length === 0) {
-            console.log('[UNIFIED] No channels to check');
-            return { 
-                allSubscribed: true, 
-                channels: [], 
+            console.log(`[UNIFIED] No channels found for user ${userId} - allowing access`);
+            return {
+                allSubscribed: true,
+                channels: [],
                 hasErrors: false,
-                subgramChannels: [],
-                requiredChannels: []
+                subgramChannels: []
             };
         }
 
+        // 2. Создаем результат
         const result = {
             allSubscribed: true,
             channels: [],
             hasErrors: false,
             subgramChannels: [],
-            requiredChannels: [],
             hasSubgramChannels: channelsData.hasSubgramChannels
         };
 
-        // Проверяем подписки на все каналы
+        // 3. Проверяем подписки на все каналы
         for (const channel of channelsData.allChannels) {
-            const channelInfo = await checkChannelSubscription(bot, userId, channel);
-            
-            result.channels.push(channelInfo);
-            
-            // Разделяем каналы по типам для удобства
-            if (channel.type === 'required') {
-                result.requiredChannels.push(channelInfo);
-            } else if (channel.type === 'subgram') {
-                result.subgramChannels.push(channelInfo);
-            }
-            
-            // Отмеч��ем если есть ошибки проверки
-            if (!channelInfo.canCheck) {
-                result.hasErrors = true;
-            }
-            
-            // Блокируем только если пользователь точно не подписан на проверяемый канал
-            if (!channelInfo.subscribed && channelInfo.canCheck) {
+            const subscriptionCheck = await checkSingleChannelSubscription(bot, userId, channel);
+
+            const channelInfo = {
+                id: channel.id,
+                name: channel.name,
+                type: channel.type,
+                subscribed: subscriptionCheck.subscribed,
+                canCheck: subscriptionCheck.canCheck,
+                link: channel.link || channel.id
+            };
+
+            if (!subscriptionCheck.subscribed) {
                 result.allSubscribed = false;
             }
+
+            if (!subscriptionCheck.canCheck) {
+                result.hasErrors = true;
+            }
+
+            result.channels.push(channelInfo);
+            result.subgramChannels.push(channelInfo);
         }
 
-        // Записываем статистику
+        console.log(`[UNIFIED] Check completed: ${result.channels.length} channels, allSubscribed: ${result.allSubscribed}`);
+
+        // 4. Записываем статистику если требуется
         if (recordStats) {
             try {
-                await db.recordSubscriptionCheck(userId, result.allSubscribed || result.hasErrors);
-            } catch (statError) {
-                console.error('[UNIFIED] Error recording subscription check:', statError);
+                await db.recordSubscriptionCheck(userId, result.allSubscribed);
+            } catch (statsError) {
+                console.error('[UNIFIED] Error recording subscription stats:', statsError);
             }
         }
 
-        // Обновляем статус подписки пользователя
-        if (!result.allSubscribed && !result.hasErrors) {
-            try {
-                const user = await db.getUser(userId);
-                if (user && user.subscription_notified && user.is_subscribed) {
-                    const unsubscribedChannels = result.channels.filter(ch => !ch.subscribed && ch.canCheck);
-                    if (unsubscribedChannels.length > 0) {
-                        await db.resetSubscriptionNotified(userId);
-                        await db.updateUserField(userId, 'is_subscribed', false);
-                        console.log(`[UNIFIED] Reset subscription status for user ${userId} due to unsubscription from ${unsubscribedChannels.length} channels`);
-                    }
-                }
-            } catch (error) {
-                console.error('[UNIFIED] Error updating subscription status:', error);
-            }
-        }
-
-        console.log(`[UNIFIED] Check completed: allSubscribed=${result.allSubscribed}, channels=${result.channels.length}, errors=${result.hasErrors}`);
         return result;
 
     } catch (error) {
@@ -325,23 +285,21 @@ async function checkUnifiedSubscriptions(bot, userId, recordStats = false) {
             try {
                 await db.recordSubscriptionCheck(userId, false);
             } catch (statError) {
-                console.error('[UNIFIED] Error recording failed subscription check:', statError);
+                console.error('Error recording failed subscription check:', statError);
             }
         }
-        
-        return { 
-            allSubscribed: false, 
-            channels: [], 
+
+        return {
+            allSubscribed: false,
+            channels: [],
             hasErrors: true,
-            subgramChannels: [],
-            requiredChannels: [],
-            error: error.message
+            subgramChannels: []
         };
     }
 }
 
 module.exports = {
-    getAllChannelsToCheck,
-    checkChannelSubscription,
+    getAllChannelsForUser,
+    checkSingleChannelSubscription,
     checkUnifiedSubscriptions
 };
