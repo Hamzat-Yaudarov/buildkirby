@@ -1,5 +1,5 @@
 /**
- * Менеджер поэтапных подписок
+ * Менеджер поэ��апных подписок
  * Обеспечивает правильный flow: Спонс��ры → Обязательные каналы → Главное меню
  * Блокирует функции до полной подписки на ВСЕ каналы
  */
@@ -60,91 +60,36 @@ async function getCurrentSubscriptionStage(userId) {
 }
 
 /**
- * Получить спонсорские каналы от SubGram
+ * Получить спонсорские каналы от SubGram с улучшенной fallback логикой
  * @param {number} userId - ID пользователя
  * @returns {Array} Список спонсорских каналов
  */
 async function getSponsorChannels(userId) {
     try {
-        // Проверяем настройки SubGram
-        const subgramSettings = await db.getSubGramSettings();
-        if (!subgramSettings || !subgramSettings.enabled) {
-            console.log(`[FLOW] SubGram disabled (settings: ${JSON.stringify(subgramSettings)}), no sponsor channels`);
+        // Используем новую fallback систему
+        const { getSponsorsWithFallback } = require('./subgram-fallback-handler');
+        const sponsorResult = await getSponsorsWithFallback(userId);
+
+        console.log(`[FLOW] Sponsor fallback result: success=${sponsorResult.success}, channels=${sponsorResult.channels.length}, source=${sponsorResult.source}, shouldSkip=${sponsorResult.shouldSkipSponsors}`);
+
+        if (sponsorResult.shouldSkipSponsors) {
+            console.log(`[FLOW] Skipping sponsors: ${sponsorResult.source}`);
             return [];
         }
 
-        // Проверяем сохраненные каналы (не старше 1 часа)
-        const savedChannels = await db.executeQuery(`
-            SELECT * FROM subgram_channels
-            WHERE user_id = $1
-            AND created_at > NOW() - INTERVAL '1 hour'
-            ORDER BY created_at DESC
-        `, [userId]);
+        if (sponsorResult.success && sponsorResult.channels.length > 0) {
+            console.log(`[FLOW] Got ${sponsorResult.channels.length} sponsor channels from ${sponsorResult.source}`);
 
-        if (savedChannels.rows && savedChannels.rows.length > 0) {
-            console.log(`[FLOW] Found ${savedChannels.rows.length} saved sponsor channels`);
-            
-            // Убираем дубликаты по ссылке
-            const uniqueChannels = new Map();
-            savedChannels.rows.forEach(ch => {
-                if (!uniqueChannels.has(ch.channel_link)) {
-                    uniqueChannels.set(ch.channel_link, ch);
-                }
-            });
-
-            return Array.from(uniqueChannels.values()).map(ch => ({
-                id: ch.channel_link,
-                name: ch.channel_name || 'Спонсорский канал',
-                link: ch.channel_link,
-                type: 'subgram', // Правильный тип для SubGram каналов
-                subscribed: false // Будет п��оверено отдельно
+            return sponsorResult.channels.map(ch => ({
+                id: ch.link,
+                name: ch.name || 'Спонсорский канал',
+                link: ch.link,
+                type: 'subgram',
+                subscribed: false
             }));
         }
 
-        // Запрашиваем ��овые каналы у SubGram
-        console.log('[FLOW] Requesting fresh sponsor channels from SubGram...');
-        const subgramResponse = await subgramAPI.requestSponsors({
-            userId: userId.toString(),
-            chatId: userId.toString(),
-            maxOP: subgramSettings.max_sponsors || 3,
-            action: subgramSettings.default_action || 'subscribe',
-            excludeChannelIds: [],
-            withToken: true
-        });
-
-        if (subgramResponse.success && subgramResponse.data) {
-            const processedData = subgramAPI.processAPIResponse(subgramResponse.data);
-
-            if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
-                console.log(`[FLOW] Got ${processedData.channelsToSubscribe.length} fresh sponsor channels`);
-
-                // Убираем дубликаты
-                const uniqueChannels = new Map();
-                processedData.channelsToSubscribe.forEach(ch => {
-                    if (!uniqueChannels.has(ch.link)) {
-                        uniqueChannels.set(ch.link, ch);
-                    }
-                });
-
-                const channels = Array.from(uniqueChannels.values()).map(ch => ({
-                    id: ch.link,
-                    name: ch.name || 'Спонсорский канал',
-                    link: ch.link,
-                    type: 'subgram', // Правильный тип для SubGram каналов
-                    subscribed: false
-                }));
-
-                // Сохраняе�� новые каналы
-                // Сохраняем новые каналы в БД
-                console.log(`[FLOW] Saving ${uniqueChannels.size} unique SubGram channels to database`);
-                await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
-                await db.saveSubGramChannels(userId, Array.from(uniqueChannels.values()));
-
-                return channels;
-            }
-        }
-
-        console.log('[FLOW] No sponsor channels available');
+        console.log('[FLOW] Sponsor channels unavailable');
         return [];
 
     } catch (error) {
@@ -346,7 +291,7 @@ function formatStageMessage(stageInfo) {
     if (!allCompleted && (!channelsToShow || channelsToShow.length === 0)) {
         console.log(`[FLOW] WARNING: No channels to show for stage ${stage}`);
         return {
-            message: '🔄 **Проблема с каналами**\n\nОшибка ��олучения каналов для подписк��. Попроб��йте еще раз.',
+            message: '🔄 **Пр��блема с каналами**\n\nОшибка ��олучения каналов для подписк��. Попроб��йте еще раз.',
             buttons: [
                 [{ text: '🔄 Обновить', callback_data: 'check_sponsors' }]
             ]
@@ -473,7 +418,7 @@ async function updateSubscriptionStage(bot, userId) {
             console.log(`[FLOW] Stage decision: COMPLETED - hasNoChannels: ${hasNoChannels}, sponsors subscribed: ${sponsorStatus.allSubscribed}, required subscribed: ${requiredStatus.allSubscribed}`);
 
             if (hasNoChannels) {
-                // Если нет каналов вообще - это ошибка конфигурации
+                // Если нет каналов вообще - это ошибка ��онфигурации
                 console.log(`[FLOW] ERROR: No channels configured for user ${userId}`);
                 stageInfo.stage = SUBSCRIPTION_STAGES.SPONSORS; // Возвращаем в начало
                 stageInfo.nextAction = 'subscribe_sponsors';
