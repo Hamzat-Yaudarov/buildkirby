@@ -101,7 +101,7 @@ async function getSponsorChannels(userId) {
             }));
         }
 
-        // Запрашиваем новые каналы у SubGram
+        // Запрашиваем ��овые каналы у SubGram
         console.log('[FLOW] Requesting fresh sponsor channels from SubGram...');
         const subgramResponse = await subgramAPI.requestSponsors({
             userId: userId.toString(),
@@ -407,9 +407,12 @@ function formatStageMessage(stageInfo) {
  * @param {number} userId - ID пользователя
  * @returns {boolean} Может ли пол��зователь использовать бот
  */
-async function canUserAccessBot(userId) {
+async function canUserAccessBot(bot, userId) {
     try {
-        const stageInfo = await getCurrentSubscriptionStage(userId);
+        console.log(`[FLOW] Checking bot access for user ${userId}`);
+        // Используем ту же логику что и updateSubscriptionStage для консистентности
+        const stageInfo = await updateSubscriptionStage(bot, userId);
+        console.log(`[FLOW] Bot access check result: allCompleted=${stageInfo.allCompleted}, stage=${stageInfo.stage}`);
         return stageInfo.allCompleted;
     } catch (error) {
         console.error('[FLOW] Error checking bot access:', error);
@@ -439,7 +442,7 @@ async function updateSubscriptionStage(bot, userId) {
             await checkChannelSubscriptionsWithBot(bot, userId, stageInfo.requiredChannels);
         }
 
-        // 3. Пересчитываем статусы ПОСЛЕ реальной провер��и
+        // 3. ��ересчитываем статусы ПОСЛЕ реальной провер��и
         const sponsorStatus = calculateSubscriptionStatus(stageInfo.sponsorChannels);
         const requiredStatus = calculateSubscriptionStatus(stageInfo.requiredChannels);
 
