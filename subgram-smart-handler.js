@@ -71,23 +71,22 @@ async function getSubGramState(userId) {
         }
 
         const processedData = subgramAPI.processAPIResponse(apiResponse.data);
-        console.log(`[SMART-SUBGRAM] API response: status=${processedData.status}, channels=${processedData.channels.length}, toSubscribe=${processedData.channelsToSubscribe?.length || 0}`);
+        console.log(`[SMART-SUBGRAM] API response: status=${processedData.status}, code=${processedData.code}, channels=${processedData.channels.length}, toSubscribe=${processedData.channelsToSubscribe?.length || 0}`);
+        console.log(`[SMART-SUBGRAM] Processed data:`, JSON.stringify({
+            status: processedData.status,
+            code: processedData.code,
+            needsSubscription: processedData.needsSubscription,
+            allSubscribed: processedData.allSubscribed,
+            channelsCount: processedData.channels.length,
+            toSubscribeCount: processedData.channelsToSubscribe?.length || 0
+        }, null, 2));
 
         // 4. Определяем состояние на основе ответа
-        if (processedData.status === 'ok' && processedData.code === 200) {
-            // Пользователь подписан на все каналы ИЛИ каналов нет
-            console.log('[SMART-SUBGRAM] Status OK - user is subscribed or no channels available');
-            return {
-                state: SUBGRAM_STATES.ALL_SUBSCRIBED,
-                shouldBlock: false,
-                channels: [],
-                message: 'Подписан на все спонсорские каналы'
-            };
-        }
 
-        if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
+        // УЛУЧШЕННАЯ ЛОГИКА: проверяем needsSubscription вместо status
+        if (processedData.needsSubscription && (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0)) {
             // Есть каналы для подписки - БЛОКИРУЕМ доступ
-            console.log(`[SMART-SUBGRAM] Found ${processedData.channelsToSubscribe.length} channels requiring subscription`);
+            console.log(`[SMART-SUBGRAM] Found ${processedData.channelsToSubscribe.length} channels requiring subscription (needsSubscription: true)`);
 
             // Сохраняем каналы в БД
             await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
@@ -98,6 +97,37 @@ async function getSubGramState(userId) {
                 shouldBlock: true, // БЛОКИРУЕМ - есть каналы для подписки
                 channels: processedData.channelsToSubscribe,
                 message: 'Необходимо подписаться на спонсорские каналы'
+            };
+        }
+
+        // Если есть каналы, но статус неизвестен - проверяем по статусу
+        if (processedData.channels && processedData.channels.length > 0) {
+            const unsubscribedChannels = processedData.channels.filter(ch => ch.needsSubscription);
+
+            if (unsubscribedChannels.length > 0) {
+                console.log(`[SMART-SUBGRAM] Found ${unsubscribedChannels.length} unsubscribed channels`);
+
+                // Сохраняем каналы в БД
+                await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+                await db.saveSubGramChannels(userId, unsubscribedChannels);
+
+                return {
+                    state: SUBGRAM_STATES.HAS_CHANNELS,
+                    shouldBlock: true, // БЛОКИРУЕМ - есть каналы для подписки
+                    channels: unsubscribedChannels,
+                    message: 'Необходимо подписаться на спонсорские каналы'
+                };
+            }
+        }
+
+        if (processedData.status === 'ok' && processedData.code === 200) {
+            // Пользователь подписан на все каналы ИЛИ каналов нет
+            console.log('[SMART-SUBGRAM] Status OK - user is subscribed or no channels available');
+            return {
+                state: SUBGRAM_STATES.ALL_SUBSCRIBED,
+                shouldBlock: false,
+                channels: [],
+                message: 'Подписан на все спонсорские каналы'
             };
         }
 
@@ -176,7 +206,7 @@ async function getSubscriptionMessage(userId) {
         // Если есть каналы для подписки - формируем сообщение
         const channels = accessCheck.channels;
         
-        let message = '🎯 **Спонсорские каналы**\n\n';
+        let message = '🎯 **Спонсорские кана��ы**\n\n';
         message += 'Для продолжения работы подпишитесь на спонсорские каналы:\n\n';
 
         let buttons = [];
@@ -238,7 +268,7 @@ async function checkUserSubscriptions(bot, userId) {
             };
         }
 
-        // Проверяем подписки на сохраненные каналы
+        // Проверяем подписки на сохраненные к��налы
         let allSubscribed = true;
         const checkedChannels = [];
 
