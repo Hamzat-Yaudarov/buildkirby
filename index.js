@@ -2787,9 +2787,9 @@ async function sendPaymentNotification(withdrawalId, user, amount, type) {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: '📺 Основной канал', url: 'https://t.me/kirbyvivodstars' },
-                        { text: '💬 Наш чат', url: 'https://t.me/kirbychat_stars' },
-                        { text: '����� Бо��', url: 'https://t.me/kirby_stars_bot' }
+                        { text: '📺 Основной канал', url: 'https://t.me/kirbystarschanel' },
+                        { text: '💬 Наш чат', url: 'https://t.me/kirbistarschat' },
+                        { text: '🤖 Наш бот', url: 'https://t.me/kirbystarsfarmbot' }
                     ]
                 ]
             }
