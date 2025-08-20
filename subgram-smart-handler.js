@@ -116,7 +116,7 @@ async function getSubGramState(userId) {
 
         // 4. Определяем состояние на основе ответа
 
-        // ИСПРАВЛЕННАЯ ЛОГИКА: блокируем только если needsSubscription=true И есть реальные каналы
+        // ИСПРАВЛЕННАЯ ЛОГИКА: блокируем только если реально есть каналы для подписки
         if (processedData.needsSubscription) {
             console.log(`[SMART-SUBGRAM] needsSubscription=true - checking for actual channels`);
             console.log(`[SMART-SUBGRAM] Channels available: ${processedData.channels.length}, toSubscribe: ${processedData.channelsToSubscribe?.length || 0}`);
@@ -126,6 +126,7 @@ async function getSubGramState(userId) {
                 await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
                 await db.saveSubGramChannels(userId, processedData.channelsToSubscribe);
 
+                console.log(`[SMART-SUBGRAM] BLOCKING - found ${processedData.channelsToSubscribe.length} channels requiring subscription`);
                 return {
                     state: SUBGRAM_STATES.HAS_CHANNELS,
                     shouldBlock: true, // БЛОКИРУЕМ - есть каналы для подписки
@@ -133,14 +134,42 @@ async function getSubGramState(userId) {
                     message: 'Необходимо подписаться на спонсорские каналы'
                 };
             } else {
-                // ИСПРАВЛЕНИЕ: Если каналов нет, но needsSubscription=true - НЕ блокируем!
-                console.log(`[SMART-SUBGRAM] No channels returned despite needsSubscription=true - ALLOWING ACCESS (no actual channels to show)`);
-                return {
-                    state: SUBGRAM_STATES.NO_CHANNELS,
-                    shouldBlock: false, // НЕ БЛОКИРУЕМ - нет каналов для показа
-                    channels: [],
-                    message: 'SubGram требует подписку, но каналы недоступны - доступ разрешен'
-                };
+                // ИСПРАВЛЕНИЕ: Если needsSubscription=true но каналов нет - проверяем сохранённые каналы
+                console.log(`[SMART-SUBGRAM] needsSubscription=true but no channels in API response - checking saved channels`);
+
+                // Проверяем есть ли сохранённые каналы для этого пользователя
+                const savedChannels = await db.executeQuery(`
+                    SELECT * FROM subgram_channels
+                    WHERE user_id = $1
+                    AND created_at > NOW() - INTERVAL '1 hour'
+                    ORDER BY created_at DESC
+                `, [userId]);
+
+                if (savedChannels.rows && savedChannels.rows.length > 0) {
+                    console.log(`[SMART-SUBGRAM] Found ${savedChannels.rows.length} saved channels - BLOCKING ACCESS`);
+
+                    const savedChannelsFormatted = savedChannels.rows.map(ch => ({
+                        link: ch.channel_link,
+                        name: ch.channel_name || 'Спонсорский канал',
+                        needsSubscription: true
+                    }));
+
+                    return {
+                        state: SUBGRAM_STATES.HAS_CHANNELS,
+                        shouldBlock: true, // БЛОКИРУЕМ - есть сохранённые каналы
+                        channels: savedChannelsFormatted,
+                        message: 'Необходимо подписаться на спонсорские каналы'
+                    };
+                } else {
+                    // Нет ни новых, ни сохранённых каналов - НЕ блокируем
+                    console.log(`[SMART-SUBGRAM] needsSubscription=true but no channels found anywhere - NOT BLOCKING`);
+                    return {
+                        state: SUBGRAM_STATES.NO_CHANNELS,
+                        shouldBlock: false, // НЕ БЛОКИРУЕМ - нет каналов для показа
+                        channels: [],
+                        message: 'SubGram не предоставил каналы для подписки'
+                    };
+                }
             }
         }
 
@@ -284,7 +313,7 @@ async function getSubscriptionMessage(userId) {
 }
 
 /**
- * Проверить подписки пол��зовател�� на спонсорские каналы
+ * Проверить подписки пользовател�� на спонсорские каналы
  * @param {Object} bot - Экземпляр Telegram бота
  * @param {number} userId - ID пользователя
  * @returns {Object} Результат проверки
@@ -293,7 +322,7 @@ async function checkUserSubscriptions(bot, userId) {
     try {
         console.log(`[SMART-SUBGRAM] Checking subscriptions for user ${userId}`);
 
-        // Получаем сохраненные каналы для проверки
+        // По��учаем сохраненные каналы для проверки
         const savedChannels = await db.executeQuery(`
             SELECT * FROM subgram_channels
             WHERE user_id = $1
@@ -336,11 +365,9 @@ async function checkUserSubscriptions(bot, userId) {
 
             } catch (error) {
                 console.log(`[SMART-SUBGRAM] Cannot check channel ${channelData.channel_link}: ${error.message}`);
-                // ИСПРАВЛЕНИЕ: При ошибке проверки НЕ считаем автоматически подписанным
-                // Вместо этого помечаем как "не удалось проверить" и блокируем доступ для безопасности
-                isSubscribed = false; // Консервативный подход - требуем ручной проверки
+                // При ошибке проверки считаем подписанным (менее строгий подход)
+                isSubscribed = true;
                 canCheck = false;
-                console.log(`[SMART-SUBGRAM] Channel ${channelData.channel_link} marked as unsubscribed due to check error - conservative approach`);
             }
 
             if (!isSubscribed) {

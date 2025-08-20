@@ -53,7 +53,7 @@ class SubGramAPI {
             };
 
             // Если бот НЕ добавлен с токеном, добавляем обязательные поля
-            // Поскольку наш бот ДОЛЖЕН быть добавлен с токеном, эти поля не нужны
+            // Поскольку наш бот ДОЛЖЕН быть добавлен с токеном, эти п��ля не нужны
             if (!withToken) {
                 if (firstName) requestData.first_name = firstName;
                 if (languageCode) requestData.language_code = languageCode;
@@ -164,16 +164,18 @@ class SubGramAPI {
 
             // Обработка каналов из additional.sponsors если доступно
             if (additional.sponsors && Array.isArray(additional.sponsors)) {
-                result.channels = additional.sponsors.map(sponsor => ({
+                console.log(`[SUBGRAM] Processing ${additional.sponsors.length} sponsors from additional.sponsors`);
+                result.channels = additional.sponsors.map((sponsor, index) => ({
                     link: sponsor.link,
-                    name: sponsor.resource_name || 'Канал спонсора',
+                    name: sponsor.resource_name || `Спонсорский канал ${index + 1}`,
                     logo: sponsor.resource_logo || null,
                     status: sponsor.status, // subscribed, unsubscribed, notgetted
                     type: sponsor.type, // channel, bot, resource
                     needsSubscription: sponsor.status === 'unsubscribed' || sponsor.status === 'notgetted'
                 }));
             } else if (links && links.length > 0) {
-                // Если только ссылки без до��олнительной информации
+                // Если только ссылки без дополнительной информации
+                console.log(`[SUBGRAM] Processing ${links.length} sponsors from links array`);
                 result.channels = links.map((link, index) => ({
                     link: link,
                     name: `Спонсорский канал ${index + 1}`,
@@ -182,17 +184,37 @@ class SubGramAPI {
                     type: 'channel',
                     needsSubscription: true
                 }));
+            } else {
+                // Дополнительная проверка - возможно каналы в других полях
+                console.log('[SUBGRAM] No channels in additional.sponsors or links, checking alternative fields...');
+
+                // Проверяем linkedCount - если он > 0, значит каналы есть но структура другая
+                if (apiResponse.linkedCount && apiResponse.linkedCount > 0) {
+                    console.log(`[SUBGRAM] linkedCount=${apiResponse.linkedCount} but no channels found - possible API structure change`);
+                }
+
+                // Логируем полную структуру для отладки
+                console.log('[SUBGRAM] Full API response structure:', JSON.stringify(apiResponse, null, 2));
             }
 
             // Фильтруем только каналы, которые требуют подписки
-            result.channelsToSubscribe = result.channels.filter(channel => 
+            result.channelsToSubscribe = result.channels.filter(channel =>
                 channel.needsSubscription
             );
+
+            // ИСПРАВЛЕНИЕ: needsSubscription должно быть true только если есть реальные каналы для подписки
+            // Если статус 'warning' но каналов нет - это может быть ошибка API или временная проблема
+            if (result.needsSubscription && result.channelsToSubscribe.length === 0) {
+                console.log('[SUBGRAM] WARNING: status=warning but no channels requiring subscription found');
+                console.log('[SUBGRAM] Changing needsSubscription to false (no actual channels to subscribe to)');
+                result.needsSubscription = false;
+            }
 
             console.log('[SUBGRAM] Processed channels:', {
                 total: result.channels.length,
                 needSubscription: result.channelsToSubscribe.length,
-                status: result.status
+                status: result.status,
+                finalNeedsSubscription: result.needsSubscription
             });
 
             return result;
@@ -227,7 +249,7 @@ class SubGramAPI {
     /**
      * Форматирование сообщения с каналами для пользователя
      * @param {Object} processedData - Обработанные данные от processAPIResponse
-     * @returns {Object} Сообщение и кнопки для Telegram
+     * @returns {Object} Сообще��ие и кнопки для Telegram
      */
     formatChannelsMessage(processedData) {
         try {
