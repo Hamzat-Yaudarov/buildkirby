@@ -7,7 +7,7 @@ const db = require('./database');
 const { subgramAPI } = require('./subgram-api');
 
 /**
- * Проверить доступность SubGram и получить каналы с fallback логикой
+ * Проверить доступност�� SubGram и получить каналы с fallback логикой
  * @param {number} userId - ID пользователя
  * @param {Object} options - Опции запроса
  * @returns {Object} Результат с каналами или fallback
@@ -90,8 +90,17 @@ async function getSponsorsWithFallback(userId, options = {}) {
 
         if (apiResponse.success && apiResponse.data) {
             const processedData = subgramAPI.processAPIResponse(apiResponse.data);
-            
+
             console.log(`[FALLBACK] API response: status=${processedData.status}, channels=${processedData.channels.length}, needSubscription=${processedData.needsSubscription}`);
+
+            // Проверяем специальные случаи "нет рекламодателей"
+            if (processedData.status === 'ok' && processedData.channels.length === 0) {
+                console.log('[FALLBACK] No sponsors available from SubGram (empty response)');
+                result.shouldSkipSponsors = true;
+                result.fallbackUsed = true;
+                result.source = 'no_sponsors_available';
+                return result;
+            }
 
             if (processedData.allSubscribed && processedData.channels.length === 0) {
                 // API говорит что все подписаны, но каналов нет = нет доступных спонсоров
@@ -315,24 +324,27 @@ async function getSponsorStatusMessage() {
 
         // Статистика запросов за 24 часа
         const requestStats = await db.executeQuery(`
-            SELECT 
+            SELECT
                 COUNT(*) as total_requests,
                 COUNT(CASE WHEN success = true THEN 1 END) as successful_requests,
                 COUNT(CASE WHEN success = false THEN 1 END) as failed_requests,
+                COUNT(CASE WHEN api_status = 'ok' AND response_data::text LIKE '%подходящих рекламодателей%' THEN 1 END) as no_advertisers_responses,
                 COUNT(DISTINCT user_id) as unique_users
-            FROM subgram_api_requests 
+            FROM subgram_api_requests
             WHERE created_at > NOW() - INTERVAL '24 hours'
         `);
 
         if (requestStats.rows.length > 0) {
             const stats = requestStats.rows[0];
-            const errorRate = stats.total_requests > 0 ? 
-                (stats.failed_requests / stats.total_requests * 100).toFixed(1) : 0;
+            const realErrors = stats.failed_requests - (stats.no_advertisers_responses || 0);
+            const errorRate = stats.total_requests > 0 ?
+                (realErrors / stats.total_requests * 100).toFixed(1) : 0;
 
             message += `📈 **Статистика (24ч):**\n`;
             message += `• Всего запросов: ${stats.total_requests}\n`;
             message += `• Успешных: ${stats.successful_requests}\n`;
-            message += `• Ошибок: ${stats.failed_requests} (${errorRate}%)\n`;
+            message += `• Реальных ошибок: ${realErrors} (${errorRate}%)\n`;
+            message += `• "Нет рекламодателей": ${stats.no_advertisers_responses || 0}\n`;
             message += `• Уникальных пользователей: ${stats.unique_users}\n\n`;
 
             if (errorRate > 50) {
@@ -341,6 +353,10 @@ async function getSponsorStatusMessage() {
                 message += '⚠️ **ВНИМАНИЕ:** Умеренный процент ошибок\n';
             } else if (stats.total_requests > 0) {
                 message += '✅ **НОРМА:** Приемлемый процент ошибок\n';
+            }
+
+            if ((stats.no_advertisers_responses || 0) > stats.total_requests * 0.5) {
+                message += '📭 **ИНФОРМАЦИЯ:** В основном "нет подходящих рекламодателей" - это нормально\n';
             }
         }
 

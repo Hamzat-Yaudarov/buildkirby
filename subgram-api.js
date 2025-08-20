@@ -1,6 +1,6 @@
 /**
  * SubGram API Integration Module
- * Модуль для интеграции с сервисом SubGram для автоматического получения спон��орских каналов
+ * Модуль для интеграции с сервисом SubGram для автомати��еского получения спон��орских каналов
  */
 
 const axios = require('axios');
@@ -25,7 +25,7 @@ class SubGramAPI {
      * @param {number} params.maxOP - Максимальное количество спонсоров (1-10)
      * @param {string} params.action - Тип действия ('subscribe' или 'newtask')
      * @param {Array} params.excludeChannelIds - Массив ID каналов для исключения
-     * @param {boolean} params.withToken - Если true, не отправляет дополнительные по��я (по умолчанию true)
+     * @param {boolean} params.withToken - Если true, не отпр��вляет дополнительные по��я (по умолчанию true)
      * @returns {Object} Ответ от SubGram API
      */
     async requestSponsors(params) {
@@ -93,9 +93,29 @@ class SubGramAPI {
 
         } catch (error) {
             console.error('[SUBGRAM] API request failed:', error.message);
-            
+
             if (error.response) {
                 console.error('[SUBGRAM] Response error:', error.response.status, error.response.data);
+
+                // Специальная обработка 404 - это нормальный ответ "нет подходящих рекламодателей"
+                if (error.response.status === 404 && error.response.data) {
+                    const data = error.response.data;
+                    if (data.status === 'ok' && data.message && data.message.includes('подходящих рекламодателей')) {
+                        console.log('[SUBGRAM] 404 is normal - no suitable advertisers available');
+                        return {
+                            success: true, // Это успешный ответ!
+                            data: {
+                                status: 'ok',
+                                code: 200, // Меняем код на 200 для корректной обработки
+                                message: data.message,
+                                links: [],
+                                linkedCount: 0,
+                                totalfixedlink: data.totalfixedlink || 0
+                            }
+                        };
+                    }
+                }
+
                 return {
                     success: false,
                     error: `API Error: ${error.response.status}`,
