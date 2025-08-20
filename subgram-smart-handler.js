@@ -10,7 +10,7 @@ const { subgramAPI } = require('./subgram-api');
  * Состояния SubGram для пользователя
  */
 const SUBGRAM_STATES = {
-    NO_CHANNELS: 'no_channels',           // SubGram не вернул каналы (норма)
+    NO_CHANNELS: 'no_channels',           // SubGram не вернул кана��ы (норма)
     HAS_CHANNELS: 'has_channels',         // Есть каналы для подписки
     ALL_SUBSCRIBED: 'all_subscribed',     // Подписан на все каналы
     API_ERROR: 'api_error',               // Ошибка API
@@ -38,9 +38,9 @@ async function getSubGramState(userId) {
             };
         }
 
-        // 2. Делаем запрос к SubGram API
+        // 2. Делаем запрос к SubGram API (с retry логикой)
         console.log(`[SMART-SUBGRAM] Making SubGram API request for user ${userId}`);
-        const apiResponse = await subgramAPI.requestSponsors({
+        let apiResponse = await subgramAPI.requestSponsors({
             userId: userId.toString(),
             chatId: userId.toString(),
             maxOP: settings.max_sponsors || 3,
@@ -48,6 +48,38 @@ async function getSubGramState(userId) {
             excludeChannelIds: [],
             withToken: true
         });
+
+        // RETRY логика: если API успешен, но каналов нет и needsSubscription=true - пробуем еще раз
+        if (apiResponse.success && apiResponse.data) {
+            const initialProcessed = subgramAPI.processAPIResponse(apiResponse.data);
+            if (initialProcessed.needsSubscription && (!initialProcessed.channelsToSubscribe || initialProcessed.channelsToSubscribe.length === 0)) {
+                console.log(`[SMART-SUBGRAM] First request: needsSubscription=true but no channels, trying retry after 2 seconds...`);
+
+                // Ждем 2 секунды и пробуем еще раз
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                const retryResponse = await subgramAPI.requestSponsors({
+                    userId: userId.toString(),
+                    chatId: userId.toString(),
+                    maxOP: settings.max_sponsors || 3,
+                    action: settings.default_action || 'subscribe',
+                    excludeChannelIds: [],
+                    withToken: true
+                });
+
+                if (retryResponse.success && retryResponse.data) {
+                    const retryProcessed = subgramAPI.processAPIResponse(retryResponse.data);
+                    if (retryProcessed.channelsToSubscribe && retryProcessed.channelsToSubscribe.length > 0) {
+                        console.log(`[SMART-SUBGRAM] Retry successful - got ${retryProcessed.channelsToSubscribe.length} channels`);
+                        apiResponse = retryResponse; // Используем результат retry
+                    } else {
+                        console.log(`[SMART-SUBGRAM] Retry also returned no channels - using original response`);
+                    }
+                } else {
+                    console.log(`[SMART-SUBGRAM] Retry failed - using original response`);
+                }
+            }
+        }
 
         // Логируем запрос
         await db.logSubGramAPIRequest(
@@ -84,21 +116,32 @@ async function getSubGramState(userId) {
 
         // 4. Определяем состояние на основе ответа
 
-        // УЛУЧШЕННАЯ ЛОГИКА: проверяем needsSubscription вместо status
-        if (processedData.needsSubscription && (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0)) {
-            // Есть каналы для подписки - БЛОКИРУЕМ доступ
-            console.log(`[SMART-SUBGRAM] Found ${processedData.channelsToSubscribe.length} channels requiring subscription (needsSubscription: true)`);
+        // ИСПРАВЛЕННАЯ ЛОГИКА: блокируем только если needsSubscription=true И есть реальные каналы
+        if (processedData.needsSubscription) {
+            console.log(`[SMART-SUBGRAM] needsSubscription=true - checking for actual channels`);
+            console.log(`[SMART-SUBGRAM] Channels available: ${processedData.channels.length}, toSubscribe: ${processedData.channelsToSubscribe?.length || 0}`);
 
-            // Сохра��яем каналы в БД
-            await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
-            await db.saveSubGramChannels(userId, processedData.channelsToSubscribe);
+            // Если есть каналы для подписки - сохраняем их и блокируем
+            if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
+                await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+                await db.saveSubGramChannels(userId, processedData.channelsToSubscribe);
 
-            return {
-                state: SUBGRAM_STATES.HAS_CHANNELS,
-                shouldBlock: true, // БЛОКИРУЕМ - есть каналы для подписки
-                channels: processedData.channelsToSubscribe,
-                message: 'Необходимо подписаться на спонсорские каналы'
-            };
+                return {
+                    state: SUBGRAM_STATES.HAS_CHANNELS,
+                    shouldBlock: true, // БЛОКИРУЕМ - есть каналы для подписки
+                    channels: processedData.channelsToSubscribe,
+                    message: 'Необходимо подписаться на спонсорские каналы'
+                };
+            } else {
+                // ИСПРАВЛЕНИЕ: Если каналов нет, но needsSubscription=true - НЕ блокируем!
+                console.log(`[SMART-SUBGRAM] No channels returned despite needsSubscription=true - ALLOWING ACCESS (no actual channels to show)`);
+                return {
+                    state: SUBGRAM_STATES.NO_CHANNELS,
+                    shouldBlock: false, // НЕ БЛОКИРУЕМ - нет каналов для показа
+                    channels: [],
+                    message: 'SubGram требует подписку, но каналы недоступны - доступ разрешен'
+                };
+            }
         }
 
         // Если есть каналы, но статус неизвестен - проверяем по статусу
@@ -132,13 +175,13 @@ async function getSubGramState(userId) {
             };
         }
 
-        // 5. Нет каналов - это нормально, НЕ блокируем
-        console.log('[SMART-SUBGRAM] No channels available for this user - this is normal (SubGram shows different channels to different users)');
+        // 5. Fallback - это должно выполняться только если needsSubscription=false
+        console.log('[SMART-SUBGRAM] Fallback: No channels and no subscription required - allowing access');
         return {
             state: SUBGRAM_STATES.NO_CHANNELS,
-            shouldBlock: false, // Н�� блокируем - просто нет спонсоров
+            shouldBlock: false, // НЕ блокируем - действительно нет требований
             channels: [],
-            message: 'Спонсорские к��налы недоступны для вас - доступ разрешен'
+            message: 'Спонсорские каналы недоступны для вас - доступ разрешен'
         };
 
     } catch (error) {
@@ -241,7 +284,7 @@ async function getSubscriptionMessage(userId) {
 }
 
 /**
- * Проверить подписки пользовател�� на спонсорские каналы
+ * Проверить подписки пол��зовател�� на спонсорские каналы
  * @param {Object} bot - Экземпляр Telegram бота
  * @param {number} userId - ID пользователя
  * @returns {Object} Результат проверки
@@ -293,9 +336,11 @@ async function checkUserSubscriptions(bot, userId) {
 
             } catch (error) {
                 console.log(`[SMART-SUBGRAM] Cannot check channel ${channelData.channel_link}: ${error.message}`);
-                // При ошибке проверки считаем подписанным
-                isSubscribed = true;
+                // ИСПРАВЛЕНИЕ: При ошибке проверки НЕ считаем автоматически подписанным
+                // Вместо этого помечаем как "не удалось проверить" и блокируем доступ для безопасности
+                isSubscribed = false; // Консервативный подход - требуем ручной проверки
                 canCheck = false;
+                console.log(`[SMART-SUBGRAM] Channel ${channelData.channel_link} marked as unsubscribed due to check error - conservative approach`);
             }
 
             if (!isSubscribed) {
@@ -411,6 +456,85 @@ async function getSubGramStats() {
     }
 }
 
+/**
+ * Диагностическая функция для быстрой проверки состояния пользователя
+ * @param {number} userId - ID пользователя
+ * @returns {Object} Детальная информация о состоянии
+ */
+async function getDiagnosticInfo(userId) {
+    try {
+        console.log(`[SMART-SUBGRAM] Getting diagnostic info for user ${userId}`);
+
+        // Проверяем настройки SubGram
+        const settings = await db.getSubGramSettings();
+
+        // Получаем сохраненные каналы
+        const savedChannels = await db.executeQuery(`
+            SELECT * FROM subgram_channels
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 10
+        `, [userId]);
+
+        // Получаем последние API запросы
+        const recentRequests = await db.executeQuery(`
+            SELECT * FROM subgram_api_requests
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 5
+        `, [userId]);
+
+        // Получаем текущее состояние
+        const currentState = await getSubGramState(userId);
+        const accessCheck = await shouldBlockBotAccess(userId);
+
+        return {
+            userId: userId,
+            timestamp: new Date().toISOString(),
+            settings: {
+                enabled: settings?.enabled || false,
+                maxSponsors: settings?.max_sponsors || 0,
+                hasApiKey: !!settings?.api_key
+            },
+            savedChannels: {
+                count: savedChannels.rows.length,
+                channels: savedChannels.rows.map(ch => ({
+                    link: ch.channel_link,
+                    name: ch.channel_name,
+                    created: ch.created_at
+                }))
+            },
+            recentRequests: {
+                count: recentRequests.rows.length,
+                requests: recentRequests.rows.map(req => ({
+                    type: req.request_type,
+                    success: req.success,
+                    error: req.error_message,
+                    created: req.created_at
+                }))
+            },
+            currentState: {
+                state: currentState.state,
+                shouldBlock: currentState.shouldBlock,
+                channelsCount: currentState.channels.length,
+                message: currentState.message
+            },
+            accessDecision: {
+                shouldBlock: accessCheck.shouldBlock,
+                reason: accessCheck.reason
+            }
+        };
+
+    } catch (error) {
+        console.error('[SMART-SUBGRAM] Error getting diagnostic info:', error);
+        return {
+            userId: userId,
+            error: error.message,
+            timestamp: new Date().toISOString()
+        };
+    }
+}
+
 module.exports = {
     SUBGRAM_STATES,
     getSubGramState,
@@ -418,5 +542,6 @@ module.exports = {
     getSubscriptionMessage,
     checkUserSubscriptions,
     forceRefreshSubGramState,
-    getSubGramStats
+    getSubGramStats,
+    getDiagnosticInfo
 };
