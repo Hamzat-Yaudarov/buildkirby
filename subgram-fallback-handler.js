@@ -7,7 +7,7 @@ const db = require('./database');
 const { subgramAPI } = require('./subgram-api');
 
 /**
- * Проверить доступност�� SubGram и получить каналы с fallback логикой
+ * Проверить доступность SubGram и получить каналы с fallback логикой
  * @param {number} userId - ID пользователя
  * @param {Object} options - Опции запроса
  * @returns {Object} Результат с каналами или fallback
@@ -33,17 +33,84 @@ async function getSponsorsWithFallback(userId, options = {}) {
             return result;
         }
 
-        // 2. Проверяем есть ли сохраненные каналы (не старше 2 часов)
+        // 2. Сначала делаем свежий запрос к API - если вернется 0 каналов, очищаем старые
+        console.log('[FALLBACK] Making fresh API request to check current status...');
+
+        const apiParams = {
+            userId: userId.toString(),
+            chatId: userId.toString(),
+            maxOP: settings.max_sponsors || 3,
+            action: settings.default_action || 'subscribe',
+            excludeChannelIds: [],
+            withToken: true,
+            ...options
+        };
+
+        const apiResponse = await subgramAPI.requestSponsors(apiParams);
+
+        // Логируем запрос
+        await db.logSubGramAPIRequest(
+            userId,
+            'fallback_fresh_check',
+            apiParams,
+            apiResponse.data || {},
+            apiResponse.success,
+            apiResponse.error
+        );
+
+        // Если API успешно ответил но каналов нет - очищаем старые каналы
+        if (apiResponse.success && apiResponse.data) {
+            const processedData = subgramAPI.processAPIResponse(apiResponse.data);
+
+            console.log(`[FALLBACK] Fresh API response: status=${processedData.status}, channels=${processedData.channels.length}`);
+
+            if (processedData.status === 'ok' && processedData.channels.length === 0) {
+                console.log('[FALLBACK] API confirms no channels available - clearing old saved channels');
+
+                // Очищаем старые каналы для этого пользователя
+                await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+
+                result.shouldSkipSponsors = true;
+                result.fallbackUsed = true;
+                result.source = 'api_no_channels_cleared_cache';
+                return result;
+            }
+
+            if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
+                console.log(`[FALLBACK] Got ${processedData.channelsToSubscribe.length} fresh channels from API`);
+
+                // Убираем дубликаты
+                const uniqueChannels = new Map();
+                processedData.channelsToSubscribe.forEach(ch => {
+                    if (!uniqueChannels.has(ch.link)) {
+                        uniqueChannels.set(ch.link, ch);
+                    }
+                });
+
+                result.success = true;
+                result.channels = Array.from(uniqueChannels.values());
+                result.source = 'api_fresh';
+
+                // Сохраняем в БД новые каналы
+                await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+                await db.saveSubGramChannels(userId, result.channels);
+
+                return result;
+            }
+        }
+
+        // 3. Если API недоступен, проверяем есть ли сохраненные каналы (не старше 1 часа)
+        console.log('[FALLBACK] API unavailable, checking for recent saved channels...');
         const savedChannels = await db.executeQuery(`
             SELECT * FROM subgram_channels
             WHERE user_id = $1
-            AND created_at > NOW() - INTERVAL '2 hours'
+            AND created_at > NOW() - INTERVAL '1 hour'
             ORDER BY created_at DESC
         `, [userId]);
 
         if (savedChannels.rows && savedChannels.rows.length > 0) {
-            console.log(`[FALLBACK] Using ${savedChannels.rows.length} saved channels`);
-            
+            console.log(`[FALLBACK] Using ${savedChannels.rows.length} recent saved channels (API unavailable)`);
+
             // Убираем дубликаты
             const uniqueChannels = new Map();
             savedChannels.rows.forEach(ch => {
@@ -59,141 +126,15 @@ async function getSponsorsWithFallback(userId, options = {}) {
                 type: 'subgram',
                 needsSubscription: true
             }));
-            result.source = 'saved';
+            result.source = 'saved_api_unavailable';
             return result;
         }
 
-        // 3. Попытка получить новые каналы от API
-        console.log('[FALLBACK] No saved channels, requesting from SubGram API...');
-        
-        const apiParams = {
-            userId: userId.toString(),
-            chatId: userId.toString(),
-            maxOP: settings.max_sponsors || 3,
-            action: settings.default_action || 'subscribe',
-            excludeChannelIds: [],
-            withToken: true,
-            ...options
-        };
-
-        const apiResponse = await subgramAPI.requestSponsors(apiParams);
-        
-        // Логируем запрос
-        await db.logSubGramAPIRequest(
-            userId,
-            'fallback_request',
-            apiParams,
-            apiResponse.data || {},
-            apiResponse.success,
-            apiResponse.error
-        );
-
-        if (apiResponse.success && apiResponse.data) {
-            const processedData = subgramAPI.processAPIResponse(apiResponse.data);
-
-            console.log(`[FALLBACK] API response: status=${processedData.status}, channels=${processedData.channels.length}, needSubscription=${processedData.needsSubscription}`);
-
-            // Проверяем специальные случаи "нет рекламодателей"
-            if (processedData.status === 'ok' && processedData.channels.length === 0) {
-                console.log('[FALLBACK] No sponsors available from SubGram (empty response)');
-                result.shouldSkipSponsors = true;
-                result.fallbackUsed = true;
-                result.source = 'no_sponsors_available';
-                return result;
-            }
-
-            if (processedData.allSubscribed && processedData.channels.length === 0) {
-                // API говорит что все подписаны, но каналов нет = нет доступных спонсоров
-                console.log('[FALLBACK] No sponsors available from SubGram');
-                result.shouldSkipSponsors = true;
-                result.fallbackUsed = true;
-                result.source = 'no_sponsors_available';
-                return result;
-            }
-
-            if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
-                console.log(`[FALLBACK] Got ${processedData.channelsToSubscribe.length} channels from API`);
-                
-                // Убираем дубликаты
-                const uniqueChannels = new Map();
-                processedData.channelsToSubscribe.forEach(ch => {
-                    if (!uniqueChannels.has(ch.link)) {
-                        uniqueChannels.set(ch.link, ch);
-                    }
-                });
-
-                result.success = true;
-                result.channels = Array.from(uniqueChannels.values());
-                result.source = 'api';
-
-                // Сохраняем в БД
-                await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
-                await db.saveSubGramChannels(userId, result.channels);
-                
-                return result;
-            }
-
-            // API вернул ответ, но без каналов для подписки
-            if (processedData.status === 'ok' || processedData.allSubscribed) {
-                console.log('[FALLBACK] API says all subscribed or no channels needed');
-                result.shouldSkipSponsors = true;
-                result.fallbackUsed = true;
-                result.source = 'api_no_channels';
-                return result;
-            }
-
-            // Нужен пол или другие данные
-            if (processedData.needsGender) {
-                console.log('[FALLBACK] API requires gender, using fallback');
-                result.error = 'gender_required';
-                result.fallbackUsed = true;
-                result.source = 'gender_required';
-                return result;
-            }
-        }
-
-        // 4. API запрос не удался - используем fallback
-        console.log('[FALLBACK] API request failed, using fallback logic');
-        result.error = apiResponse.error || 'api_failed';
-        result.fallbackUsed = true;
-        result.source = 'api_failed';
-
-        // Проверяем есть ли старые сохраненные каналы (до 24 часов)
-        const oldChannels = await db.executeQuery(`
-            SELECT * FROM subgram_channels
-            WHERE user_id = $1
-            AND created_at > NOW() - INTERVAL '24 hours'
-            ORDER BY created_at DESC
-            LIMIT 5
-        `, [userId]);
-
-        if (oldChannels.rows && oldChannels.rows.length > 0) {
-            console.log(`[FALLBACK] Using ${oldChannels.rows.length} old channels as fallback`);
-            
-            const uniqueChannels = new Map();
-            oldChannels.rows.forEach(ch => {
-                if (!uniqueChannels.has(ch.channel_link)) {
-                    uniqueChannels.set(ch.channel_link, ch);
-                }
-            });
-
-            result.success = true;
-            result.channels = Array.from(uniqueChannels.values()).map(ch => ({
-                link: ch.channel_link,
-                name: ch.channel_name || 'Спонсорский канал',
-                type: 'subgram',
-                needsSubscription: true
-            }));
-            result.source = 'old_saved';
-            return result;
-        }
-
-        // 5. Полный fallback - временно пропускаем спонсоров
-        console.log('[FALLBACK] No channels available, skipping sponsors temporarily');
+        // 4. Полный fallback - пропуска��м спонсоров
+        console.log('[FALLBACK] No channels available, skipping sponsors');
         result.shouldSkipSponsors = true;
         result.fallbackUsed = true;
         result.source = 'full_fallback';
-        
         return result;
 
     } catch (error) {
@@ -229,7 +170,7 @@ async function getSponsorsWithFallback(userId, options = {}) {
  */
 async function shouldShowSponsors(userId) {
     try {
-        // Проверяем настройки
+        // Проверяем нас��ройки
         const settings = await db.getSubGramSettings();
         if (!settings || !settings.enabled) {
             return {
@@ -304,7 +245,7 @@ async function shouldShowSponsors(userId) {
 
 /**
  * Получить сообщение о проблемах с спонсорами для админа
- * @returns {string} Сообщение о состоянии спонсорской системы
+ * @returns {string} Сообщение о состояни�� спонсорской системы
  */
 async function getSponsorStatusMessage() {
     try {
