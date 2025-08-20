@@ -1,6 +1,6 @@
 /**
  * Умная система обработки SubGram каналов
- * Решает проблему блокировки бота когда нет спонсорских каналов
+ * Решает проблему блокировки бота ��огда нет спонсорских каналов
  */
 
 const db = require('./database');
@@ -39,6 +39,7 @@ async function getSubGramState(userId) {
         }
 
         // 2. Делаем запрос к SubGram API
+        console.log(`[SMART-SUBGRAM] Making SubGram API request for user ${userId}`);
         const apiResponse = await subgramAPI.requestSponsors({
             userId: userId.toString(),
             chatId: userId.toString(),
@@ -88,7 +89,7 @@ async function getSubGramState(userId) {
             // Есть каналы для подписки - БЛОКИРУЕМ доступ
             console.log(`[SMART-SUBGRAM] Found ${processedData.channelsToSubscribe.length} channels requiring subscription (needsSubscription: true)`);
 
-            // Сохраняем каналы в БД
+            // Сохра��яем каналы в БД
             await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
             await db.saveSubGramChannels(userId, processedData.channelsToSubscribe);
 
@@ -132,12 +133,12 @@ async function getSubGramState(userId) {
         }
 
         // 5. Нет каналов - это нормально, НЕ блокируем
-        console.log('[SMART-SUBGRAM] No channels available - this is normal');
+        console.log('[SMART-SUBGRAM] No channels available for this user - this is normal (SubGram shows different channels to different users)');
         return {
             state: SUBGRAM_STATES.NO_CHANNELS,
             shouldBlock: false, // Н�� блокируем - просто нет спонсоров
             channels: [],
-            message: 'Спонсорские каналы недоступны - доступ разрешен'
+            message: 'Спонсорские к��налы недоступны для вас - доступ разрешен'
         };
 
     } catch (error) {
@@ -206,7 +207,7 @@ async function getSubscriptionMessage(userId) {
         // Если есть каналы для подписки - формируем сообщение
         const channels = accessCheck.channels;
         
-        let message = '🎯 **Спонсорские кана��ы**\n\n';
+        let message = '🎯 **Спонсорские каналы**\n\n';
         message += 'Для продолжения работы подпишитесь на спонсорские каналы:\n\n';
 
         let buttons = [];
@@ -258,9 +259,10 @@ async function checkUserSubscriptions(bot, userId) {
         `, [userId]);
 
         if (!savedChannels.rows || savedChannels.rows.length === 0) {
-            console.log('[SMART-SUBGRAM] No saved channels to check - refreshing state');
-            // Обновляем состояние
+            console.log('[SMART-SUBGRAM] No saved channels to check - refreshing state from SubGram API');
+            // Обновляем состояние из API
             const newState = await getSubGramState(userId);
+            console.log(`[SMART-SUBGRAM] Refreshed state: shouldBlock=${newState.shouldBlock}, channels=${newState.channels.length}`);
             return {
                 allSubscribed: !newState.shouldBlock,
                 channels: newState.channels,
@@ -268,7 +270,7 @@ async function checkUserSubscriptions(bot, userId) {
             };
         }
 
-        // Проверяем подписки на сохраненные к��налы
+        // Проверяем подписки на сохраненные каналы
         let allSubscribed = true;
         const checkedChannels = [];
 
@@ -310,6 +312,16 @@ async function checkUserSubscriptions(bot, userId) {
 
         console.log(`[SMART-SUBGRAM] Subscription check result: ${checkedChannels.length} channels, allSubscribed: ${allSubscribed}`);
 
+        // ИСПРАВЛЕНИЕ: Если все подписки выполнены, принудительно обновляем состояние
+        if (allSubscribed && checkedChannels.length > 0) {
+            console.log(`[SMART-SUBGRAM] All subscriptions completed - force refreshing state to clear channels`);
+            try {
+                await forceRefreshSubGramState(userId);
+            } catch (refreshError) {
+                console.error(`[SMART-SUBGRAM] Error force refreshing after subscription completion:`, refreshError);
+            }
+        }
+
         return {
             allSubscribed: allSubscribed,
             channels: checkedChannels,
@@ -321,6 +333,38 @@ async function checkUserSubscriptions(bot, userId) {
         return {
             allSubscribed: true, // При ошибке разрешаем доступ
             channels: [],
+            error: error.message
+        };
+    }
+}
+
+/**
+ * Принудительно обновить состояние SubGram для пользователя
+ * Очищает сохраненные каналы и делает новый запрос к API
+ * @param {number} userId - ID пользователя
+ * @returns {Object} Новое состояние
+ */
+async function forceRefreshSubGramState(userId) {
+    try {
+        console.log(`[SMART-SUBGRAM] Force refreshing SubGram state for user ${userId}`);
+
+        // Очищаем старые каналы
+        await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+        console.log(`[SMART-SUBGRAM] Cleared old channels for user ${userId}`);
+
+        // Получаем новое состояние (это сделает новый API запрос)
+        const newState = await getSubGramState(userId);
+        console.log(`[SMART-SUBGRAM] New state: ${newState.state}, shouldBlock: ${newState.shouldBlock}, channels: ${newState.channels.length}`);
+
+        return newState;
+
+    } catch (error) {
+        console.error(`[SMART-SUBGRAM] Error force refreshing state for user ${userId}:`, error);
+        return {
+            state: SUBGRAM_STATES.API_ERROR,
+            shouldBlock: false,
+            channels: [],
+            message: 'Ош��бка обновления состояния - доступ разрешен',
             error: error.message
         };
     }
@@ -373,5 +417,6 @@ module.exports = {
     shouldBlockBotAccess,
     getSubscriptionMessage,
     checkUserSubscriptions,
+    forceRefreshSubGramState,
     getSubGramStats
 };
