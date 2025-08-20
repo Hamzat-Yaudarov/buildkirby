@@ -64,17 +64,21 @@ async function getSponsorsWithFallback(userId, options = {}) {
 
             console.log(`[FALLBACK] Fresh API response: status=${processedData.status}, channels=${processedData.channels.length}, channelsToSubscribe=${processedData.channelsToSubscribe?.length || 0}`);
 
-            // Очищаем кэш если API вернул 0 каналов (любой статус - ok, warning, etc.)
+            // ИСПРАВЛЕНО: Не очищаем каналы сразу, а проверяем статус
             if (processedData.channels.length === 0 && (!processedData.channelsToSubscribe || processedData.channelsToSubscribe.length === 0)) {
-                console.log('[FALLBACK] API confirms no channels available - clearing old saved channels');
+                console.log('[FALLBACK] API returned no channels');
 
-                // Очищаем старые каналы для этого пользователя
-                await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
+                // Проверяем причину: если это "ok" статус, значит пользователь уже подписан
+                if (processedData.status === 'ok') {
+                    console.log('[FALLBACK] User already subscribed to all channels - allowing access');
+                    result.shouldSkipSponsors = true;
+                    result.fallbackUsed = false;
+                    result.source = 'api_all_subscribed';
+                    return result;
+                }
 
-                result.shouldSkipSponsors = true;
-                result.fallbackUsed = true;
-                result.source = 'api_no_channels_cleared_cache';
-                return result;
+                // Если статус "warning" но каналов нет - проблема с SubGram
+                console.log('[FALLBACK] No channels but status is not OK - may be SubGram issue, checking saved channels...');
             }
 
             if (processedData.channelsToSubscribe && processedData.channelsToSubscribe.length > 0) {
@@ -294,7 +298,7 @@ async function getSponsorStatusMessage() {
             } else if (errorRate > 20) {
                 message += '⚠️ **ВНИМАНИЕ:** Умеренный процент ошибок\n';
             } else if (stats.total_requests > 0) {
-                message += '✅ **НОРМА:** Приемлемый процент ошибок\n';
+                message += '✅ **НОРМА:** Приемл��мый процент ошибок\n';
             }
 
             if ((stats.no_advertisers_responses || 0) > stats.total_requests * 0.5) {
