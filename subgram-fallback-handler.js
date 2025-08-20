@@ -7,7 +7,7 @@ const db = require('./database');
 const { subgramAPI } = require('./subgram-api');
 
 /**
- * Проверить доступность SubGram и получить каналы с fallback логикой
+ * Проверит�� доступность SubGram и получить каналы с fallback логикой
  * @param {number} userId - ID пользователя
  * @param {Object} options - Опции запроса
  * @returns {Object} Результат с каналами или fallback
@@ -62,9 +62,10 @@ async function getSponsorsWithFallback(userId, options = {}) {
         if (apiResponse.success && apiResponse.data) {
             const processedData = subgramAPI.processAPIResponse(apiResponse.data);
 
-            console.log(`[FALLBACK] Fresh API response: status=${processedData.status}, channels=${processedData.channels.length}`);
+            console.log(`[FALLBACK] Fresh API response: status=${processedData.status}, channels=${processedData.channels.length}, channelsToSubscribe=${processedData.channelsToSubscribe?.length || 0}`);
 
-            if (processedData.status === 'ok' && processedData.channels.length === 0) {
+            // Очищаем кэш если API вернул 0 каналов (любой статус - ok, warning, etc.)
+            if (processedData.channels.length === 0 && (!processedData.channelsToSubscribe || processedData.channelsToSubscribe.length === 0)) {
                 console.log('[FALLBACK] API confirms no channels available - clearing old saved channels');
 
                 // Очищаем старые каналы для этого пользователя
