@@ -6,7 +6,7 @@
 const axios = require('axios');
 
 // SubGram API Configuration
-const SUBGRAM_API_URL = 'https://api.subgram.ru/request-op/';
+const SUBGRAM_API_URL = 'https://api.subgram.ru/request-op';
 const SUBGRAM_API_KEY = '5d4c6c5283559a05a9558b677669871d6ab58e00e71587546b25b4940ea6029d';
 
 class SubGramAPI {
