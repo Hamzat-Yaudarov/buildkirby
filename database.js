@@ -2192,6 +2192,9 @@ async function deleteSubGramUserSession(userId) {
 
 // Save SubGram channels for user
 async function saveSubGramChannels(userId, channels) {
+    console.log(`[DB] Saving ${channels.length} SubGram channels for user ${userId}`);
+    console.log(`[DB] Channels data:`, JSON.stringify(channels, null, 2));
+
     try {
         await executeQuery('BEGIN');
 
@@ -2216,10 +2219,12 @@ async function saveSubGramChannels(userId, channels) {
         }
 
         await executeQuery('COMMIT');
+        console.log(`[DB] Successfully saved ${channels.length} SubGram channels for user ${userId}`);
         return true;
     } catch (error) {
         await executeQuery('ROLLBACK');
-        console.error('Error saving SubGram channels:', error);
+        console.error(`[DB] Error saving SubGram channels for user ${userId}:`, error);
+        console.error(`[DB] Failed channels data:`, JSON.stringify(channels, null, 2));
         throw error;
     }
 }

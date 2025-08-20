@@ -97,7 +97,7 @@ async function getSponsorChannels(userId) {
                 name: ch.channel_name || 'Спонсорский канал',
                 link: ch.channel_link,
                 type: 'subgram', // Правильный тип для SubGram каналов
-                subscribed: false // Будет проверено отдельно
+                subscribed: false // Будет п��оверено отдельно
             }));
         }
 
@@ -135,6 +135,8 @@ async function getSponsorChannels(userId) {
                 }));
 
                 // Сохраняе�� новые каналы
+                // Сохраняем новые каналы в БД
+                console.log(`[FLOW] Saving ${uniqueChannels.size} unique SubGram channels to database`);
                 await db.executeQuery('DELETE FROM subgram_channels WHERE user_id = $1', [userId]);
                 await db.saveSubGramChannels(userId, Array.from(uniqueChannels.values()));
 
@@ -194,7 +196,7 @@ async function getRequiredChannels() {
  * Проверить подписки на спонсорские каналы
  * @param {number} userId - ID пользователя
  * @param {Array} channels - Список каналов для проверки
- * @returns {Object} Статус подписок
+ * @returns {Object} С���атус подписок
  */
 async function checkSponsorSubscriptions(userId, channels) {
     if (channels.length === 0) {
@@ -274,7 +276,9 @@ async function checkChannelSubscriptionsWithBot(bot, userId, channels) {
     for (const channel of channels) {
         try {
             let channelToCheck = channel.id;
-            
+
+            console.log(`[FLOW] Checking subscription for channel: ${channel.id} (type: ${channel.type})`);
+
             // Правильная обработка ссылок SubGram (тип subgram или sponsor)
             if ((channel.type === 'sponsor' || channel.type === 'subgram') && channel.id.includes('t.me/')) {
                 const match = channel.id.match(/t\.me\/([^\/\?]+)/);
@@ -290,8 +294,10 @@ async function checkChannelSubscriptionsWithBot(bot, userId, channels) {
                 return;
             }
 
+            console.log(`[FLOW] Checking membership: user ${userId} in channel ${channelToCheck}`);
             const member = await bot.getChatMember(channelToCheck, userId);
             channel.subscribed = !(member.status === 'left' || member.status === 'kicked');
+            console.log(`[FLOW] Membership result: ${member.status} -> subscribed: ${channel.subscribed}`);
             
         } catch (error) {
             console.log(`[FLOW] Cannot check channel ${channel.id}: ${error.message}`);
@@ -327,7 +333,7 @@ function calculateSubscriptionStatus(channels) {
 }
 
 /**
- * Сформировать сообщение для текущего этапа подписки
+ * Сформир��вать сообщение для текущего этапа подписки
  * @param {Object} stageInfo - Информация об этапе
  * @returns {Object} Сообщение и кнопки
  */
@@ -340,7 +346,7 @@ function formatStageMessage(stageInfo) {
     if (!allCompleted && (!channelsToShow || channelsToShow.length === 0)) {
         console.log(`[FLOW] WARNING: No channels to show for stage ${stage}`);
         return {
-            message: '🔄 **Проблема с каналами**\n\nОшибка ��олучения каналов для подписк��. Попробуйте еще раз.',
+            message: '🔄 **Проблема с каналами**\n\nОшибка ��олучения каналов для подписк��. Попроб��йте еще раз.',
             buttons: [
                 [{ text: '🔄 Обновить', callback_data: 'check_sponsors' }]
             ]
@@ -373,7 +379,7 @@ function formatStageMessage(stageInfo) {
             });
 
             message += '\n📌 После подписки нажмите кнопку проверки';
-            buttons.push([{ text: '✅ Провери��ь спонсоров', callback_data: 'check_sponsors' }]);
+            buttons.push([{ text: '✅ Провери��ь спон��оров', callback_data: 'check_sponsors' }]);
             break;
 
         case SUBSCRIPTION_STAGES.REQUIRED:
