@@ -1,41 +1,22 @@
 {
   "name": "telegram-stars-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for earning stars with referral system",
+  "description": "Telegram bot для заработка звёзд с реферальной системой",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js",
-    "postinstall": "pip3 install pyrogram tgcrypto || echo 'Python packages install failed'",
-    "admin": "node admin-tools.js",
-    "migrate": "node migrate-data.js",
-    "test-data": "node create-test-data.js",
-    "test-throttling": "node test-throttling.js",
-    "diagnose-userbot": "node diagnose-userbot.js",
-    "fix-userbot": "python3 fix-userbot-auth.py",
-    "test-stars": "python3 test-stars-sending.py",
-    "check-agent": "node check-agent-status.js",
-    "test-subgram": "node test-subgram.js",
-    "test-referrals": "node test-referral-system.js",
-    "fix-referrals": "node fix-referral-duplicates.js",
-    "monitor-referrals": "node monitor-referrals.js",
-    "railway-check": "node railway-diagnostic.js",
-    "reset-notifications": "node reset-subscription-notifications.js",
-    "test-subscription-fix": "node test-subscription-logic-fix.js",
-    "fix-encoding": "node fix-encoding.js"
+    "dev": "node index.js"
   },
-  "keywords": ["telegram", "bot", "stars", "referral"],
+  "keywords": ["telegram", "bot", "stars", "referral", "subgram"],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "node-telegram-bot-api": "^0.64.0",
-    "sqlite3": "^5.1.6",
-    "node-cron": "^3.0.3",
     "pg": "^8.11.3",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "node-cron": "^3.0.3"
   },
   "engines": {
-    "node": ">=16.0.0",
-    "python": ">=3.8.0"
+    "node": ">=16.0.0"
   }
 }

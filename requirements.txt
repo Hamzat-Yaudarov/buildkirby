@@ -1,8 +1,0 @@
-# Requirements for Telegram Userbot Agent
-pyrogram>=2.0.106
-tgcrypto>=1.2.5
-
-
-# Optional dependencies for better performance
-uvloop>=0.17.0; sys_platform != "win32"
-cryptg>=0.4.0
