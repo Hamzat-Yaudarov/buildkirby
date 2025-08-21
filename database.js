@@ -53,7 +53,7 @@ class Database {
 
             // Создание таблицы заданий
             await pool.query(`
-                CREATE TABLE tasks (
+                CREATE TABLE IF NOT EXISTS tasks (
                     id SERIAL PRIMARY KEY,
                     title VARCHAR(255) NOT NULL,
                     description TEXT,
@@ -68,7 +68,7 @@ class Database {
 
             // Создание таблицы выполненных заданий
             await pool.query(`
-                CREATE TABLE user_tasks (
+                CREATE TABLE IF NOT EXISTS user_tasks (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     task_id INTEGER NOT NULL,
@@ -80,7 +80,7 @@ class Database {
 
             // Создание таблицы промокодов
             await pool.query(`
-                CREATE TABLE promocodes (
+                CREATE TABLE IF NOT EXISTS promocodes (
                     id SERIAL PRIMARY KEY,
                     code VARCHAR(50) UNIQUE NOT NULL,
                     reward DECIMAL(10,2) NOT NULL,
@@ -94,7 +94,7 @@ class Database {
 
             // Создание таблицы использованных промокодов
             await pool.query(`
-                CREATE TABLE promocode_uses (
+                CREATE TABLE IF NOT EXISTS promocode_uses (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     promocode_id INTEGER NOT NULL,
@@ -106,7 +106,7 @@ class Database {
 
             // Создание таблицы лотерей
             await pool.query(`
-                CREATE TABLE lotteries (
+                CREATE TABLE IF NOT EXISTS lotteries (
                     id SERIAL PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     ticket_price DECIMAL(10,2) NOT NULL,
@@ -124,7 +124,7 @@ class Database {
 
             // Создание таблицы билетов лотереи
             await pool.query(`
-                CREATE TABLE lottery_tickets (
+                CREATE TABLE IF NOT EXISTS lottery_tickets (
                     id SERIAL PRIMARY KEY,
                     lottery_id INTEGER NOT NULL,
                     user_id BIGINT NOT NULL,
@@ -137,7 +137,7 @@ class Database {
 
             // Создание таблицы заявок на вывод
             await pool.query(`
-                CREATE TABLE withdrawal_requests (
+                CREATE TABLE IF NOT EXISTS withdrawal_requests (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     amount DECIMAL(10,2) NOT NULL,
@@ -151,7 +151,7 @@ class Database {
 
             // Создание таблицы статистики
             await pool.query(`
-                CREATE TABLE bot_stats (
+                CREATE TABLE IF NOT EXISTS bot_stats (
                     id SERIAL PRIMARY KEY,
                     date DATE DEFAULT CURRENT_DATE,
                     total_users INTEGER DEFAULT 0,
@@ -165,7 +165,7 @@ class Database {
 
             // Создание таблицы выполненных SubGram заданий
             await pool.query(`
-                CREATE TABLE subgram_tasks (
+                CREATE TABLE IF NOT EXISTS subgram_tasks (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     channel_link VARCHAR(500) NOT NULL,
@@ -179,7 +179,23 @@ class Database {
             console.log('База данных инициализирована успешно!');
         } catch (error) {
             console.error('Ошибка инициализации базы данных:', error);
-            throw error;
+
+            // Если ошибка связана с уже существующими таблицами - игнорируем
+            if (error.code === '42P07') {
+                console.log('⚠️ Некоторые таблицы уже существуют, продолжаем...');
+                return; // Не бросаем ошибку, продолжаем работу
+            }
+
+            // Для других ошибок пробуем переподключиться
+            console.log('🔄 Попытка переподключения к базе данных...');
+            try {
+                await pool.query('SELECT NOW()');
+                console.log('✅ Переподключение успешно, продолжаем работу');
+                return;
+            } catch (reconnectError) {
+                console.error('❌ Переподключение не удалось:', reconnectError);
+                throw error; // Только тогда бросаем ошибку
+            }
         }
     }
 
@@ -365,7 +381,7 @@ class Database {
             `, [userId, promocode.rows[0].id]);
             
             if (alreadyUsed.rows.length > 0) {
-                throw new Error('Промокод уже использован');
+                throw new Error('П��омокод уже использован');
             }
             
             await client.query(`
