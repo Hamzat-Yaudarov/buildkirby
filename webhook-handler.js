@@ -11,12 +11,31 @@ class WebhookHandler {
         // Настройка middleware
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
+
+        // Логирование всех запросов для отладки
+        this.app.use((req, res, next) => {
+            console.log(`📥 ${req.method} ${req.path} - ${req.ip}`);
+            next();
+        });
         
         // Настройка роутов
         this.setupRoutes();
     }
 
     setupRoutes() {
+        // Корневой маршрут для отладки
+        this.app.get('/', (req, res) => {
+            res.json({
+                message: 'Telegram Stars Bot Webhook Server',
+                status: 'running',
+                endpoints: {
+                    health: '/health',
+                    webhook: '/webhook/subgram'
+                },
+                timestamp: new Date().toISOString()
+            });
+        });
+
         // Эндпоинт для здоровья сервера
         this.app.get('/health', (req, res) => {
             res.json({ 
@@ -63,7 +82,7 @@ class WebhookHandler {
             return;
         }
 
-        // Логируем входящий вебхук
+        // Логируем вход��щий вебхук
         console.log('Получен вебхук SubGram:', JSON.stringify(req.body, null, 2));
 
         const { webhooks } = req.body;
@@ -72,7 +91,7 @@ class WebhookHandler {
             return;
         }
 
-        // Обрабатываем каждое событие асинхронно
+        // Обрабаты��аем каждое событие асинхронно
         for (const webhook of webhooks) {
             try {
                 await this.processWebhookEvent(webhook);
@@ -176,7 +195,7 @@ class WebhookHandler {
                 // Можем добавить логику награды за подписку
                 console.log(`Пользователь ${userId} получил подписку на ${link}`);
                 
-                // Если пользователь полностью подписан, можем отправить уведомление
+                // Если пользователь полностью подписан, можем отпра��ить уведомление
                 const subscriptionStatus = this.getUserSubscriptionStatus(userId);
                 if (subscriptionStatus.isSubscribed) {
                     try {
@@ -218,7 +237,7 @@ class WebhookHandler {
                 }
             }
         } catch (error) {
-            console.error('Ошибка обработки отписки:', error);
+            console.error('Ошибка обра��отки отписки:', error);
         }
     }
 
@@ -236,13 +255,15 @@ class WebhookHandler {
 
     start(port = 3000) {
         return new Promise((resolve, reject) => {
-            this.server = this.app.listen(port, (err) => {
+            this.server = this.app.listen(port, '0.0.0.0', (err) => {
                 if (err) {
                     reject(err);
                 } else {
                     console.log(`🚀 Webhook сервер запущен на порту ${port}`);
                     console.log(`📡 ��ндпоинт для SubGram: /webhook/subgram`);
                     console.log(`💚 Health check: /health`);
+                    console.log(`🌐 Railway URL: https://kirbystars.up.railway.app`);
+                    console.log(`📝 Доступные маршруты: GET /health, POST /webhook/subgram`);
                     resolve(this.server);
                 }
             });
