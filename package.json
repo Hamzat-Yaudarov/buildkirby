@@ -8,14 +8,21 @@
     "dev": "node index.js",
     "reset-db": "node reset-database.js"
   },
-  "keywords": ["telegram", "bot", "stars", "referral", "subgram"],
+  "keywords": [
+    "telegram",
+    "bot",
+    "stars",
+    "referral",
+    "subgram"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "node-telegram-bot-api": "^0.64.0",
-    "pg": "^8.11.3",
     "axios": "^1.6.0",
-    "node-cron": "^3.0.3"
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "node-telegram-bot-api": "^0.64.0",
+    "pg": "^8.11.3"
   },
   "engines": {
     "node": ">=16.0.0"
