@@ -308,7 +308,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     const now = Date.now();
     const last = lastStartAt.get(userId) || 0;
 
-    
+
     // защита от дублей в течение 8 секунд
     if (now - last < 8000) {
         console.log(`⏳ Игнорируем повторный /start от ${userId} (антидубль)`);
@@ -474,8 +474,16 @@ bot.on('callback_query', async (callbackQuery) => {
                     }
                 }
 
-                await bot.answerCallbackQuery(callbackQuery.id, '❌ Сначала подпишитесь на спонсорские каналы!');
-                return;
+            if (!subscriptionStatus.isSubscribed) {
+                console.log(`🔒 БЛОКИРУЕМ действие "${data}" для неподписанного пользователя ${userId}`);
+
+                // Просто показываем всплывашку, без отправки новых сообщений
+                await bot.answerCallbackQuery(callbackQuery.id, {
+                    text: '❌ Подпишитесь на спонсорские каналы, чтобы пользоваться ботом',
+                    show_alert: true // покажет большое окно, а не маленький тост
+                });
+
+                return; // ЖЁСТКАЯ остановка — ничего больше не делаем
             }
         }
 
@@ -592,7 +600,7 @@ async function handleSubscriptionCheck(chatId, userId, messageId, callbackQueryI
     if (subscriptionStatus.isSubscribed || !subscriptionStatus.subscriptionData?.links?.length) {
         await editMainMenu(chatId, messageId);
         if (callbackQueryId) {
-            await bot.answerCallbackQuery(callbackQueryId, '✅ Проверка пройдена!');
+            await (callbackQueryId, '✅ Проверка пройдена!');
         }
 
         // Проверяем условия для засчитывания реферала
@@ -1451,7 +1459,7 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
             reply_markup: createBackToMenuKeyboard()
         });
 
-        await bot.answerCallbackQuery(callbackQueryId, `🎉 Выиграли ${reward} звёзд!`);
+        await (callbackQueryId, `🎉 Выиграли ${reward} звёзд!`);
 
     } catch (error) {
         console.error('Ошибка открытия кейса:', error);
