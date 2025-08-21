@@ -21,12 +21,26 @@ class Database {
             await pool.query('SELECT NOW()');
             console.log('Подключение к базе данных успешно');
 
-            // БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ - создаем только отсутствующие таблицы
-            console.log('Проверка и создание недостающих таблиц...');
+            // ПОЛНАЯ ОЧИСТКА И ПЕРЕСОЗДАНИЕ
+            console.log('Очистка существующих таблиц...');
+
+            // Удаляем все таблицы в правильном порядке (с учетом внешних ключей)
+            await pool.query('DROP TABLE IF EXISTS withdrawal_requests CASCADE');
+            await pool.query('DROP TABLE IF EXISTS lottery_tickets CASCADE');
+            await pool.query('DROP TABLE IF EXISTS lotteries CASCADE');
+            await pool.query('DROP TABLE IF EXISTS promocode_uses CASCADE');
+            await pool.query('DROP TABLE IF EXISTS promocodes CASCADE');
+            await pool.query('DROP TABLE IF EXISTS user_tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS subgram_tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS bot_stats CASCADE');
+            await pool.query('DROP TABLE IF EXISTS users CASCADE');
+
+            console.log('Старые таблицы удалены');
 
             // Создание таблицы пользователей
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS users (
+                CREATE TABLE users (
                     user_id BIGINT PRIMARY KEY,
                     username VARCHAR(255),
                     first_name VARCHAR(255),
@@ -53,7 +67,7 @@ class Database {
 
             // Создание таблицы заданий
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS tasks (
+                CREATE TABLE tasks (
                     id SERIAL PRIMARY KEY,
                     title VARCHAR(255) NOT NULL,
                     description TEXT,
@@ -68,7 +82,7 @@ class Database {
 
             // Создание таблицы выполненных заданий
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS user_tasks (
+                CREATE TABLE user_tasks (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     task_id INTEGER NOT NULL,
@@ -80,7 +94,7 @@ class Database {
 
             // Создание таблицы промокодов
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS promocodes (
+                CREATE TABLE promocodes (
                     id SERIAL PRIMARY KEY,
                     code VARCHAR(50) UNIQUE NOT NULL,
                     reward DECIMAL(10,2) NOT NULL,
@@ -94,7 +108,7 @@ class Database {
 
             // Создание таблицы использованных промокодов
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS promocode_uses (
+                CREATE TABLE promocode_uses (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     promocode_id INTEGER NOT NULL,
@@ -106,7 +120,7 @@ class Database {
 
             // Создание таблицы лотерей
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS lotteries (
+                CREATE TABLE lotteries (
                     id SERIAL PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     ticket_price DECIMAL(10,2) NOT NULL,
@@ -124,7 +138,7 @@ class Database {
 
             // Создание таблицы билетов лотереи
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS lottery_tickets (
+                CREATE TABLE lottery_tickets (
                     id SERIAL PRIMARY KEY,
                     lottery_id INTEGER NOT NULL,
                     user_id BIGINT NOT NULL,
@@ -137,7 +151,7 @@ class Database {
 
             // Создание таблицы заявок на вывод
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                CREATE TABLE withdrawal_requests (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     amount DECIMAL(10,2) NOT NULL,
@@ -151,7 +165,7 @@ class Database {
 
             // Создание таблицы статистики
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS bot_stats (
+                CREATE TABLE bot_stats (
                     id SERIAL PRIMARY KEY,
                     date DATE DEFAULT CURRENT_DATE,
                     total_users INTEGER DEFAULT 0,
@@ -165,7 +179,7 @@ class Database {
 
             // Создание таблицы выполненных SubGram заданий
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS subgram_tasks (
+                CREATE TABLE subgram_tasks (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     channel_link VARCHAR(500) NOT NULL,
@@ -179,23 +193,7 @@ class Database {
             console.log('База данных инициализирована успешно!');
         } catch (error) {
             console.error('Ошибка инициализации базы данных:', error);
-
-            // Если ошибка связана с уже существующими таблицами - игнорируем
-            if (error.code === '42P07') {
-                console.log('⚠️ Некоторые таблицы уже существуют, продолжаем...');
-                return; // Не бросаем ошибку, продолжаем работу
-            }
-
-            // Для других ошибок пробуем переподключиться
-            console.log('🔄 Попытка переподключения к базе данных...');
-            try {
-                await pool.query('SELECT NOW()');
-                console.log('✅ Переподключение успешно, продолжаем работу');
-                return;
-            } catch (reconnectError) {
-                console.error('❌ Переподключение не удалось:', reconnectError);
-                throw error; // Только тогда бросаем ошибку
-            }
+            throw error;
         }
     }
 
@@ -381,7 +379,7 @@ class Database {
             `, [userId, promocode.rows[0].id]);
             
             if (alreadyUsed.rows.length > 0) {
-                throw new Error('П��омокод уже использован');
+                throw new Error('Промокод уже использован');
             }
             
             await client.query(`
@@ -543,24 +541,6 @@ class Database {
             WHERE user_id = $1 AND channel_link = $2
         `, [userId, channelLink]);
         return result.rows.length > 0;
-    }
-
-    // Статистика рефералов
-    static async getReferralStats(userId) {
-        const result = await pool.query(`
-            SELECT
-                COUNT(*) as total_referrals,
-                COUNT(CASE WHEN referral_completed = TRUE THEN 1 END) as active_referrals,
-                COUNT(CASE WHEN referral_completed = FALSE THEN 1 END) as inactive_referrals
-            FROM users
-            WHERE referrer_id = $1
-        `, [userId]);
-
-        return {
-            total: parseInt(result.rows[0].total_referrals),
-            active: parseInt(result.rows[0].active_referrals),
-            inactive: parseInt(result.rows[0].inactive_referrals)
-        };
     }
 }
 
