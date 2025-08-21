@@ -21,7 +21,7 @@ class SubGram {
 
             return response.data;
         } catch (error) {
-            console.error('Ошибка при проверке по��писки SubGram:', error.message);
+            console.error('Ошибка при проверке подписки SubGram:', error.message);
             return { status: 'error', message: 'Ошибка связи с сервисом' };
         }
     }

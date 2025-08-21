@@ -15,15 +15,31 @@ class Database {
 
     static async init() {
         try {
-            console.log('Инициализация базы данны��...');
+            console.log('Инициализация базы данных...');
 
             // Проверяем подключение
             await pool.query('SELECT NOW()');
             console.log('Подключение к базе данных успешно');
 
+            // ПОЛНАЯ ОЧИСТКА И ПЕРЕСОЗДАНИЕ
+            console.log('Очистка существующих таблиц...');
+
+            // Удаляем все таблицы в правильном порядке (с учетом внешних ключей)
+            await pool.query('DROP TABLE IF EXISTS withdrawal_requests CASCADE');
+            await pool.query('DROP TABLE IF EXISTS lottery_tickets CASCADE');
+            await pool.query('DROP TABLE IF EXISTS lotteries CASCADE');
+            await pool.query('DROP TABLE IF EXISTS promocode_uses CASCADE');
+            await pool.query('DROP TABLE IF EXISTS promocodes CASCADE');
+            await pool.query('DROP TABLE IF EXISTS user_tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS bot_stats CASCADE');
+            await pool.query('DROP TABLE IF EXISTS users CASCADE');
+
+            console.log('Старые таблицы удалены');
+
             // Создание таблицы пользователей
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS users (
+                CREATE TABLE users (
                     user_id BIGINT PRIMARY KEY,
                     username VARCHAR(255),
                     first_name VARCHAR(255),
@@ -49,7 +65,7 @@ class Database {
 
             // Создание таблицы заданий
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS tasks (
+                CREATE TABLE tasks (
                     id SERIAL PRIMARY KEY,
                     title VARCHAR(255) NOT NULL,
                     description TEXT,
@@ -60,10 +76,11 @@ class Database {
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             `);
+            console.log('Таблица tasks создана');
 
             // Создание таблицы выполненных заданий
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS user_tasks (
+                CREATE TABLE user_tasks (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     task_id INTEGER NOT NULL,
@@ -71,10 +88,11 @@ class Database {
                     FOREIGN KEY (task_id) REFERENCES tasks(id)
                 )
             `);
+            console.log('Таблица user_tasks создана');
 
             // Создание таблицы промокодов
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS promocodes (
+                CREATE TABLE promocodes (
                     id SERIAL PRIMARY KEY,
                     code VARCHAR(50) UNIQUE NOT NULL,
                     reward DECIMAL(10,2) NOT NULL,
@@ -84,10 +102,11 @@ class Database {
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             `);
+            console.log('Таблица promocodes создана');
 
             // Создание таблицы использованных промокодов
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS promocode_uses (
+                CREATE TABLE promocode_uses (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     promocode_id INTEGER NOT NULL,
@@ -95,10 +114,11 @@ class Database {
                     FOREIGN KEY (promocode_id) REFERENCES promocodes(id)
                 )
             `);
+            console.log('Таблица promocode_uses создана');
 
             // Создание таблицы лотерей
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS lotteries (
+                CREATE TABLE lotteries (
                     id SERIAL PRIMARY KEY,
                     name VARCHAR(255) NOT NULL,
                     ticket_price DECIMAL(10,2) NOT NULL,
@@ -112,10 +132,11 @@ class Database {
                     finished_at TIMESTAMP
                 )
             `);
+            console.log('Таблица lotteries создана');
 
             // Создание таблицы билетов лотереи
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS lottery_tickets (
+                CREATE TABLE lottery_tickets (
                     id SERIAL PRIMARY KEY,
                     lottery_id INTEGER NOT NULL,
                     user_id BIGINT NOT NULL,
@@ -124,10 +145,11 @@ class Database {
                     FOREIGN KEY (lottery_id) REFERENCES lotteries(id)
                 )
             `);
+            console.log('Таблица lottery_tickets создана');
 
             // Создание таблицы заявок на вывод
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                CREATE TABLE withdrawal_requests (
                     id SERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
                     amount DECIMAL(10,2) NOT NULL,
@@ -137,10 +159,11 @@ class Database {
                     processed_at TIMESTAMP
                 )
             `);
+            console.log('Таблица withdrawal_requests создана');
 
             // Создание таблицы статистики
             await pool.query(`
-                CREATE TABLE IF NOT EXISTS bot_stats (
+                CREATE TABLE bot_stats (
                     id SERIAL PRIMARY KEY,
                     date DATE DEFAULT CURRENT_DATE,
                     total_users INTEGER DEFAULT 0,
@@ -150,6 +173,7 @@ class Database {
                     active_users INTEGER DEFAULT 0
                 )
             `);
+            console.log('Таблица bot_stats создана');
 
             console.log('База данных инициализирована успешно!');
         } catch (error) {

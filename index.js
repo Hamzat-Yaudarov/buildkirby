@@ -531,10 +531,10 @@ async function showTasks(chatId, userId, messageId) {
             reply_markup: keyboard
         });
     } else {
-        // Нет заданий ��т SubGram, показываем кастомные
+        // Нет заданий от SubGram, показываем кастомные
         const message = `📋 Задания\n\n` +
                        `ℹ️ В данный момент нет доступных заданий.\n` +
-                       `⏰ Проверьте позже!`;
+                       ` Проверьте позже!`;
         
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -559,7 +559,7 @@ async function showInstructions(chatId, messageId) {
                    `📋 Задания:\n` +
                    `• Подписывайтесь на каналы\n` +
                    `• За задание: 0.3 звезды\n\n` +
-                   `🏆 Рейтинги:\n` +
+                   `• Рейтинги:\n` +
                    `• Зарабатывайте очки\n` +
                    `• Топ 5 недели получают бонусы\n\n` +
                    `🎁 Кейсы:\n` +
@@ -698,7 +698,7 @@ async function showLottery(chatId, messageId) {
     });
 }
 
-// Обработка ввода промокода
+// обработка ввода промокода
 async function handlePromocodeInput(chatId, userId) {
     userStates.set(userId, 'waiting_promocode');
     await bot.sendMessage(chatId, '🎫 Введите промокод:');
@@ -815,7 +815,7 @@ async function showBotStats(chatId, messageId) {
 
         const keyboard = {
             inline_keyboard: [
-                [{ text: '🔙 Наз��д к админ-панели', callback_data: 'admin_back' }]
+                [{ text: '🔙 Назад к админ-панели', callback_data: 'admin_back' }]
             ]
         };
 
@@ -1183,7 +1183,7 @@ cron.schedule('0 20 * * 0', async () => {
                 
                 try {
                     await bot.sendMessage(user.user_id, 
-                        `🏆 Поздравля��м! Вы заняли ${position} место в недельном рейтинге!\n` +
+                        `🏆 Поздравляем! Вы заняли ${position} место в недельном рейтинге!\n` +
                         `💰 Ваша награда: ${reward} звёзд`
                     );
                 } catch (e) {
@@ -1207,12 +1207,8 @@ cron.schedule('0 20 * * 0', async () => {
 bot.on('polling_error', (error) => {
     console.log('Polling error:', error.message);
     if (error.code === 'ETELEGRAM' && error.message.includes('409')) {
-        console.log('Конфликт polling - пробую переподключиться...');
-        setTimeout(() => {
-            bot.stopPolling().then(() => {
-                bot.startPolling();
-            });
-        }, 5000);
+        console.log('Конфликт polling - другой экземпляр бота уже запущен');
+        // Не пытаемся переподключиться, так как это усугубляет проблему
     }
 });
 
