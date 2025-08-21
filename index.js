@@ -38,7 +38,7 @@ async function initBot() {
         // Установка команд бота
         await bot.setMyCommands([
             { command: 'start', description: 'Запустить бота' },
-            { command: 'menu', description: 'Главное меню' },
+            { command: 'menu', description: 'Главн��е меню' },
             { command: 'admin', description: 'Админ панель' }
         ]);
         
@@ -76,7 +76,7 @@ function createBackToMenuKeyboard() {
 function createProfileKeyboard() {
     return {
         inline_keyboard: [
-            [{ text: '🎫 Промокод', callback_data: 'promocode' }],
+            [{ text: '���� Промокод', callback_data: 'promocode' }],
             [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
         ]
     };
@@ -143,6 +143,33 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             return { isSubscribed: true, subscriptionData: { status: 'error_fallback' } };
         }
 
+        // ВАЖНО: статус "warning" означает что пользователь НЕ подписан!
+        if (subscriptionCheck.status === 'warning') {
+            console.log(`⚠️ Пользователь ${userId} НЕ подписан (статус warning): ${subscriptionCheck.message}`);
+
+            // Для статуса warning SubGram может не возвращать ссылки, запрашиваем их отдельно
+            if (!subscriptionCheck.links || subscriptionCheck.links.length === 0) {
+                console.log(`🔄 Запрашиваем ссылки каналов для пользователя ${userId}`);
+                try {
+                    const linksCheck = await SubGram.getChannelLinks(userId, chatId, firstName, languageCode, isPremium);
+                    if (linksCheck.links && linksCheck.links.length > 0) {
+                        subscriptionCheck.links = linksCheck.links;
+                        subscriptionCheck.additional = linksCheck.additional;
+                        console.log(`✅ Получены ссылки: ${linksCheck.links.length} каналов`);
+                    } else {
+                        console.log(`⚠️ Не удалось получить ссылки каналов`);
+                    }
+                } catch (e) {
+                    console.error(`❌ Ошибка запроса ссылок:`, e);
+                }
+            }
+
+            return {
+                isSubscribed: false,
+                subscriptionData: subscriptionCheck
+            };
+        }
+
         // Если есть ссылки для подписки - значит пользователь не подписан
         if (subscriptionCheck.links && subscriptionCheck.links.length > 0) {
             console.log(`🔒 Пользователь ${userId} НЕ подписан, есть ${subscriptionCheck.links.length} каналов`);
@@ -152,8 +179,17 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             };
         }
 
-        // Нет ссылок - пользователь подписан
-        console.log(`✅ Пользователь ${userId} подписан на все каналы`);
+        // Статус "ok" и нет ссылок - пользователь подписан
+        if (subscriptionCheck.status === 'ok') {
+            console.log(`✅ Пользователь ${userId} под��исан на все каналы (статус ok)`);
+            return {
+                isSubscribed: true,
+                subscriptionData: subscriptionCheck
+            };
+        }
+
+        // Для всех остальных случаев логируем и считаем подписанным (безопасный fallback)
+        console.log(`🤷 Неизвестный статус для пользователя ${userId}: ${subscriptionCheck.status}, считаем подписанным`);
         return {
             isSubscribed: true,
             subscriptionData: subscriptionCheck
@@ -856,7 +892,7 @@ async function showCases(chatId, userId, messageId) {
                    `📊 Ваша статистика:\n` +
                    `👥 Рефералов сегодня: ${user.daily_referrals}\n` +
                    `🎁 Кейс ${lastCaseDate === today ? 'уже открыт' : 'доступен'}\n\n` +
-                   `💰 Возможный выигрыш: 1-10 звёзд`;
+                   `💰 Возможный выигрыш: 1-10 звё��д`;
     
     const keyboard = {
         inline_keyboard: [
@@ -1387,7 +1423,7 @@ cron.schedule('0 20 * * 0', async () => {
         console.log('Еженедельные награды начислены');
         
     } catch (error) {
-        console.error('Ошибка начисления еженедельных наград:', error);
+        console.error('Ошибка начислени�� еженедельных наград:', error);
     }
 }, {
     timezone: "Europe/Moscow"

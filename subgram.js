@@ -22,8 +22,8 @@ class SubGram {
             timestamp: new Date().toISOString()
         });
 
+        const startTime = Date.now();
         try {
-            const startTime = Date.now();
             const response = await axios.post('https://api.subgram.ru/request-op/', requestData, {
                 headers: {
                     'Auth': config.SUBGRAM_API_KEY,
@@ -83,8 +83,8 @@ class SubGram {
             timestamp: new Date().toISOString()
         });
 
+        const startTime = Date.now();
         try {
-            const startTime = Date.now();
             const response = await axios.post('https://api.subgram.ru/request-op/', requestData, {
                 headers: {
                     'Auth': config.SUBGRAM_API_KEY,
@@ -109,6 +109,58 @@ class SubGram {
             if (error.response) {
                 console.error(`  📊 Статус: ${error.response.status} - ${error.response.statusText}`);
                 console.error(`  📄 Данные:`, error.response.data);
+            } else if (error.request) {
+                console.error('  🌐 Нет ответа от сервера SubGram');
+            } else {
+                console.error('  ⚠️ Ошибка конфигурации:', error.message);
+            }
+
+            return { status: 'error', message: 'Ошибка связи с сервисом', error: error.message };
+        }
+    }
+
+    static async getChannelLinks(userId, chatId, firstName = '', languageCode = 'ru', isPremium = false) {
+        const requestData = {
+            UserId: userId.toString(),
+            ChatId: chatId.toString(),
+            first_name: firstName,
+            language_code: languageCode,
+            Premium: isPremium,
+            MaxOP: 10, // Запрашиваем больше каналов для получения всех ссылок
+            action: 'subscribe'
+        };
+
+        console.log(`🔗 SubGram getChannelLinks запрос для пользователя ${userId}:`, {
+            userId,
+            chatId,
+            maxOP: 10,
+            timestamp: new Date().toISOString()
+        });
+
+        const startTime = Date.now();
+        try {
+            const response = await axios.post('https://api.subgram.ru/request-op/', requestData, {
+                headers: {
+                    'Auth': config.SUBGRAM_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000 // 10 секунд таймаут
+            });
+
+            const responseTime = Date.now() - startTime;
+            console.log(`✅ SubGram getChannelLinks ответ для пользователя ${userId} (${responseTime}ms):`, {
+                status: response.status,
+                dataStatus: response.data?.status,
+                linksCount: response.data?.links?.length || 0
+            });
+
+            return response.data;
+        } catch (error) {
+            const responseTime = Date.now() - startTime;
+            console.error(`❌ SubGram getChannelLinks ошибка для пользователя ${userId} (${responseTime}ms):`);
+
+            if (error.response) {
+                console.error(`  📊 Статус: ${error.response.status} - ${error.response.statusText}`);
             } else if (error.request) {
                 console.error('  🌐 Нет ответа от сервера SubGram');
             } else {
