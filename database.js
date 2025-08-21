@@ -21,27 +21,22 @@ class Database {
             await pool.query('SELECT NOW()');
             console.log('Подключение к базе данных успешно');
 
-            // Проверяем существование таблиц и создаем только если их нет
-            const checkTable = async (tableName) => {
-                const result = await pool.query(`
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables
-                        WHERE table_schema = 'public'
-                        AND table_name = $1
-                    );
-                `, [tableName]);
-                return result.rows[0].exists;
-            };
+            // ПОЛНАЯ ОЧИСТКА И ПЕРЕСОЗДАНИЕ
+            console.log('Очистка существующих таблиц...');
 
-            console.log('Проверка существующих таблиц...');
-            const tablesExist = await checkTable('users');
+            // Удаляем все таблицы в правильном порядке (с учетом внешних ключей)
+            await pool.query('DROP TABLE IF EXISTS withdrawal_requests CASCADE');
+            await pool.query('DROP TABLE IF EXISTS lottery_tickets CASCADE');
+            await pool.query('DROP TABLE IF EXISTS lotteries CASCADE');
+            await pool.query('DROP TABLE IF EXISTS promocode_uses CASCADE');
+            await pool.query('DROP TABLE IF EXISTS promocodes CASCADE');
+            await pool.query('DROP TABLE IF EXISTS user_tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS subgram_tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS bot_stats CASCADE');
+            await pool.query('DROP TABLE IF EXISTS users CASCADE');
 
-            if (tablesExist) {
-                console.log('Таблицы уже существуют, пропускаем создание');
-                return;
-            }
-
-            console.log('Таблицы не существуют, создаем новые...');
+            console.log('Старые таблицы удалены');
 
             // Создание таблицы пользователей
             await pool.query(`
@@ -375,7 +370,7 @@ class Database {
             `, [code]);
             
             if (promocode.rows.length === 0) {
-                throw new Error('Промокод недействителен или исчерпа��');
+                throw new Error('Промокод недействителен или исчерпан');
             }
             
             const alreadyUsed = await client.query(`
@@ -546,26 +541,6 @@ class Database {
             WHERE user_id = $1 AND channel_link = $2
         `, [userId, channelLink]);
         return result.rows.length > 0;
-    }
-
-    // Подсчет активных и неактивных рефералов
-    static async getReferralStats(userId) {
-        // Активные рефералы - те, кто выполнил условия (referral_completed = true)
-        const activeReferrals = await pool.query(`
-            SELECT COUNT(*) as count FROM users
-            WHERE referrer_id = $1 AND referral_completed = true
-        `, [userId]);
-
-        // Неактивные рефералы - те, кто еще не выполнил условия (referral_completed = false)
-        const inactiveReferrals = await pool.query(`
-            SELECT COUNT(*) as count FROM users
-            WHERE referrer_id = $1 AND referral_completed = false
-        `, [userId]);
-
-        return {
-            active: parseInt(activeReferrals.rows[0].count) || 0,
-            inactive: parseInt(inactiveReferrals.rows[0].count) || 0
-        };
     }
 }
 

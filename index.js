@@ -18,9 +18,6 @@ const bot = new TelegramBot(config.BOT_TOKEN, {
 // Временное хранение состояний пользователей
 const userStates = new Map();
 
-// Защита от дублирования команд
-const userCommandLimiter = new Map();
-
 // Проверка выполнения условий для засчитывания реферала
 async function checkReferralConditions(userId) {
     try {
@@ -45,7 +42,7 @@ async function checkReferralConditions(userId) {
 
         // Проверяем не была ли уже начислена награда
         if (user.referral_completed) {
-            console.log(`👥 Реферальная награда за пользователя ${userId} уже была нач��слена`);
+            console.log(`👥 Реферальная награда за пользователя ${userId} уже была начислена`);
             return;
         }
 
@@ -123,7 +120,7 @@ function createMainMenuKeyboard() {
             [{ text: '👥 Пригласить друзей', callback_data: 'invite' }],
             [{ text: '🖱 Кликер', callback_data: 'clicker' }],
             [{ text: '💰 Вывод звёзд', callback_data: 'withdraw' }],
-            [{ text: '📋 Задани��', callback_data: 'tasks' }],
+            [{ text: '📋 Задания', callback_data: 'tasks' }],
             [{ text: '📖 Инструкция', callback_data: 'instructions' }],
             [{ text: '🏆 Рей��инги', callback_data: 'ratings' }],
             [{ text: '🎁 Кейсы', callback_data: 'cases' }],
@@ -152,7 +149,7 @@ function createProfileKeyboard() {
 // Проверка подписки пользователя (для блокировки функций)
 async function checkUserSubscription(userId, chatId, firstName = '', languageCode = 'ru', isPremium = false) {
     try {
-        // Сначала проверяем кеш вебх��ков (свежие данные - не старше 5 минут)
+        // Сначала проверяем кеш вебхуков (свежие данные - не старше 5 минут)
         const cachedStatus = webhookHandler.getUserSubscriptionStatus(userId);
 
         if (cachedStatus.lastUpdate && (Date.now() - cachedStatus.lastUpdate) < 5 * 60 * 1000) {
@@ -160,7 +157,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             console.log(`📊 Кеш:`, cachedStatus);
 
             if (cachedStatus.isSubscribed === false && cachedStatus.unsubscribedLinks.length > 0) {
-                // Пользователь точно не подписан - ес��ь неподписанные каналы
+                // Пользователь точно не подписан - есть неподписанные каналы
                 return {
                     isSubscribed: false,
                     subscriptionData: {
@@ -191,19 +188,11 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
         console.log(`📥 SubGram ответ:`, JSON.stringify(taskChannels, null, 2));
 
-        // Специальное логирование для диагностики
-        if (taskChannels.total_fixed_link > 0) {
-            console.log(`🔍 ДИАГНОСТИКА: total_fixed_link=${taskChannels.total_fixed_link}, links_count=${taskChannels.links?.length || 0}`);
-            if (!taskChannels.links || taskChannels.links.length === 0) {
-                console.log(`🚨 ПРОБЛЕМА: SubGram говорит что есть ${taskChannels.total_fixed_link} каналов, но не дает ссылки!`);
-            }
-        }
-
         // Проверяем ответ SubGram
-        if (taskChannels.status === 'error') {
+        if (subscriptionCheck.status === 'error') {
             console.log(`❌ Ошибка SubGram, проверяем кеш как fallback`);
             
-            // В случае ош��бки API исполь��уем кеш если есть
+            // В случае ошибки API используем кеш если есть
             if (cachedStatus.lastUpdate) {
                 return {
                     isSubscribed: cachedStatus.isSubscribed !== false,
@@ -218,12 +207,12 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             return { isSubscribed: true, subscriptionData: { status: 'error_fallback' } };
         }
 
-        // ВАЖНО: статус "warning" означа��т что пользователь НЕ подписан!
-        if (taskChannels.status === 'warning') {
-            console.log(`⚠️ Пользователь ${userId} НЕ подписан (статус warning): ${taskChannels.message}`);
+        // ВАЖНО: статус "warning" означает что пользователь НЕ подписан!
+        if (subscriptionCheck.status === 'warning') {
+            console.log(`⚠️ Пользователь ${userId} НЕ подписан (статус warning): ${subscriptionCheck.message}`);
 
             // Для статуса warning SubGram может не возвращать ссылки, попробуем разные способы получения
-            if (!taskChannels.links || taskChannels.links.length === 0) {
+            if (!subscriptionCheck.links || subscriptionCheck.links.length === 0) {
                 console.log(`🔄 Запрашиваем ссылки каналов для пользователя ${userId} (warning без ссылок)`);
 
                 // Попробуем несколько способов получения ссылок
@@ -236,12 +225,12 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
                 for (let i = 0; i < attempts.length; i++) {
                     try {
-                        console.log(`🔄 Попытка ${i + 1}/2 получе��ия ссылок`);
+                        console.log(`🔄 Попытка ${i + 1}/2 получения ссылок`);
                         const linksCheck = await attempts[i]();
 
                         if (linksCheck.links && linksCheck.links.length > 0) {
-                            taskChannels.links = linksCheck.links;
-                            taskChannels.additional = linksCheck.additional;
+                            subscriptionCheck.links = linksCheck.links;
+                            subscriptionCheck.additional = linksCheck.additional;
                             console.log(`✅ Получены ссылки (попытка ${i + 1}): ${linksCheck.links.length} каналов`);
                             break;
                         } else {
@@ -252,30 +241,8 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
                     }
                 }
 
-                if (!taskChannels.links || taskChannels.links.length === 0) {
-                    console.log(`⚠️ Обычные попытки получения ссылок не удались для пользователя ${userId}`);
-
-                    // Если SubGram указывает что есть каналы (total_fixed_link > 0), но не дает ссылки
-                    if (taskChannels.total_fixed_link && taskChannels.total_fixed_link > 0) {
-                        console.log(`🔍 SubGram указывает ${taskChannels.total_fixed_link} каналов, но не дает ссылки`);
-                        console.log(`🔥 Запускаем агрессивный поиск ссылок!`);
-
-                        // Используем агрессивную функцию для получения ссылок
-                        const aggressiveResult = await SubGram.getLinksAggressively(userId, chatId, firstName, languageCode, isPremium);
-
-                        if (aggressiveResult && aggressiveResult.links && aggressiveResult.links.length > 0) {
-                            console.log(`🎯 Агрессивный пои��к успешен! Найдено ${aggressiveResult.links.length} ссылок`);
-                            taskChannels.links = aggressiveResult.links;
-                            taskChannels.additional = aggressiveResult.additional;
-                        } else {
-                            console.log(`😞 Даже агрессивный поиск не дал результатов для пользователя ${userId}`);
-                            console.log(`🤷 Возможно проблема с API SubGram или аккаунтом пользователя`);
-
-                            // Последняя попытка - устанавливаем placeholder
-                            taskChannels.links = ['placeholder'];
-                            taskChannels.showPlaceholder = true;
-                        }
-                    }
+                if (!subscriptionCheck.links || subscriptionCheck.links.length === 0) {
+                    console.log(`⚠️ Все попытки получения ссылок не удались для пользователя ${userId}`);
                 }
             }
 
@@ -286,16 +253,16 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         }
 
         // Если есть ссылки для подписки - значит пользователь не подписан
-        if (taskChannels.links && taskChannels.links.length > 0) {
-            console.log(`🔒 Пользователь ${userId} НЕ подписан, есть ${taskChannels.links.length} каналов`);
+        if (subscriptionCheck.links && subscriptionCheck.links.length > 0) {
+            console.log(`🔒 Пользователь ${userId} НЕ подписан, есть ${subscriptionCheck.links.length} каналов`);
             return {
                 isSubscribed: false,
                 subscriptionData: taskChannels
             };
         }
 
-        // С��атус "ok" и нет ссылок - пользователь подписан
-        if (taskChannels.status === 'ok') {
+        // Статус "ok" и нет ссылок - пользователь подписан
+        if (subscriptionCheck.status === 'ok') {
             console.log(`✅ Пользователь ${userId} под��исан на все каналы (статус ok)`);
             return {
                 isSubscribed: true,
@@ -303,8 +270,8 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             };
         }
 
-        // Для всех остальных случаев логируем и считаем подписанным (безопасный fallback)
-        console.log(`🤷 Неизвестный статус для пользователя ${userId}: ${taskChannels.status}, считаем подписанным`);
+        // Для всех о��тальных случаев логируем и считаем подписанным (безопасный fallback)
+        console.log(`🤷 Неизвестный статус для пользователя ${userId}: ${subscriptionCheck.status}, считаем подписанным`);
         return {
             isSubscribed: true,
             subscriptionData: taskChannels
@@ -327,7 +294,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         }
 
         // Если нет ни API, ни кеша - считаем что подписан (fallback)
-        console.log(`⚠�� Нет данных о подписке, используем fallback (подписан)`);
+        console.log(`⚠️ Нет данных о подписке, используем fallback (подписан)`);
         return { isSubscribed: true, subscriptionData: { status: 'no_data_fallback' } };
     }
 }
@@ -337,16 +304,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const referralCode = match[1] ? match[1].trim() : null;
-
-    // Защита от дублирования команд (не чаще раза в 3 секунды)
-    const now = Date.now();
-    const lastCommand = userCommandLimiter.get(userId);
-    if (lastCommand && (now - lastCommand) < 3000) {
-        console.log(`⚠️ Игнорируем дублированную команду /start от пользователя ${userId}`);
-        return;
-    }
-    userCommandLimiter.set(userId, now);
-
+    
     try {
         let user = await Database.getUser(userId);
         
@@ -369,7 +327,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             }
         }
         
-        // СНАЧАЛА проверяем подписку - эт�� самое важное!
+        // СНАЧАЛА проверяем подписку - это самое важное!
         console.log(`🔍 Про��ерка подписки для пользователя ${userId}`);
         const subscriptionStatus = await checkUserSubscription(
             userId, 
@@ -381,23 +339,12 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         
         console.log(`📊 Статус подписки:`, subscriptionStatus);
 
-        // Если пользователь НЕ подписан - проверяем есть ли ссылки для показа
+        // Если пользователь НЕ подписан - показываем спонсорские каналы (даже если ссылки пустые)
         if (!subscriptionStatus.isSubscribed) {
-            console.log(`🔒 Пользователь ${userId} НЕ подписан`);
+            console.log(`🔒 Пользователь ${userId} НЕ подписан, блокируем доступ`);
 
-            // Если есть ссылки - показываем их и блокируем доступ
+            // Если есть ссылки - показываем их
             if (subscriptionStatus.subscriptionData?.links?.length > 0) {
-                // Проверяем не placeholder ли это
-                if (subscriptionStatus.subscriptionData.showPlaceholder) {
-                    console.log(`⚠️ SubGram не предоставил ссылки, показываем сообщение об ошибке`);
-                    await bot.sendMessage(chatId,
-                        '⚠️ Для доступа к боту необходимо п��дписаться на спонсорские каналы.\n\n' +
-                        '🔧 Технические проблемы с получением списка каналов.\n' +
-                        '📞 Обратитесь к администратору: @kirbyvivodstars'
-                    );
-                    return;
-                }
-
                 console.log(`📢 Показываем ${subscriptionStatus.subscriptionData.links.length} спонсорских каналов`);
                 const message = SubGram.formatSubscriptionMessage(
                     subscriptionStatus.subscriptionData.links,
@@ -405,16 +352,15 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                 );
                 const keyboard = SubGram.createSubscriptionKeyboard(subscriptionStatus.subscriptionData.links);
                 await bot.sendMessage(chatId, message, { reply_markup: keyboard });
-                return; // ВАЖНО: выходим, НЕ показываем главное меню
             } else {
-                // Если нет ссылок от SubGram - разрешаем доступ с предупреждением
-                console.log(`⚠️ Нет ссылок каналов от SubGram, разрешаем доступ с предупреждением`);
+                // Если нет ссылок, но пользователь не подписан - показываем общее сообщение
+                console.log(`⚠️ Нет ссылок каналов, показываем общее сообщение о подписке`);
                 await bot.sendMessage(chatId,
-                    '⚠️ Внимание! Возможно у вас есть неподписанные спонсорские каналы, но сейчас мы не можем их показать.\n\n' +
-                    '✅ Предоставляем временный доступ к боту. Если будут проблемы - обратитесь к администратору.'
+                    '🔒 Для доступа к боту необходимо подписаться на спонсорские каналы.\n\n' +
+                    '⏳ Пожалуйста, подождите немного или обратитесь к администратору.'
                 );
-                // НЕ возвращаемся, продолжаем показ главного меню
             }
+            return; // ВАЖНО: выходим, НЕ показываем главное меню
         }
 
         // Только если пользователь точно подписан - показываем главное меню
@@ -423,13 +369,13 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         
     } catch (error) {
         console.error('Ошибка в команде /start:', error);
-        await bot.sendMessage(chatId, '❌ Произош��а ошибка. П��пробуйте позже.');
+        await bot.sendMessage(chatId, '❌ Произошла ошибка. П��пробуйте позже.');
     }
 });
 
 // Показать главное меню
 async function showMainMenu(chatId, userId = null) {
-    const message = '🌟 Добро пожаловать в бота для ��аработка звёзд!\n\n' +
+    const message = '🌟 Добро пожаловать в бота для заработка звёзд!\n\n' +
                    '⭐ Зарабатывайте звёзды различными способами:\n' +
                    '• Приглашайте друзей\n' +
                    '• Выполняйте задания\n' +
@@ -461,7 +407,7 @@ bot.on('callback_query', async (callbackQuery) => {
             return;
         }
 
-        // КРИТИЧНО: Провер���ем подписку для ВСЕХ действий (кроме специальных команд)
+        // КРИТИЧНО: Провер��ем подписку для ВСЕХ действий (кроме специальных команд)
         const allowedWithoutSubscription = [
             'check_subscription', 
             'admin_', 
@@ -483,15 +429,9 @@ bot.on('callback_query', async (callbackQuery) => {
             );
 
             if (!subscriptionStatus.isSubscribed && subscriptionStatus.subscriptionData?.links?.length > 0) {
-                console.log(`🔒 БЛОКИРУЕМ действие "${data}" для неподписанного пользователя ${userId}`);
-
-                // Проверяем не placeholder ли это
-                if (subscriptionStatus.subscriptionData.showPlaceholder) {
-                    await bot.answerCallbackQuery(callbackQuery.id, '⚠️ Технические проблемы с проверкой подписки. Обратитесь к админу.');
-                    return;
-                }
-
-                // Пользователь не подписан - показываем каналы для подписки
+                console.log(`🔒 БЛОКИ��УЕМ действие "${data}" для неподписанного пол��зователя ${userId}`);
+                
+                // Пользователь не подписан - показываем каналы для ��одписки
                 const subscriptionData = subscriptionStatus.subscriptionData;
                 const message = SubGram.formatSubscriptionMessage(subscriptionData.links, subscriptionData.additional?.sponsors);
                 const keyboard = SubGram.createSubscriptionKeyboard(subscriptionData.links);
@@ -508,7 +448,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 }
 
                 await bot.answerCallbackQuery(callbackQuery.id, '❌ Сначала подпишитесь на спонсорские каналы!');
-                return; // ВАЖНО: блокируем выполнение команды
+                return; // ВАЖНО: блокируем ��ыполнение команды
             }
         }
 
@@ -617,53 +557,18 @@ async function handleSubscriptionCheck(chatId, userId, messageId, callbackQueryI
     const subscriptionStatus = await checkUserSubscription(
         userId,
         chatId,
-        '', // им�� не важно для проверки
+        '', // имя не важно для проверки
         'ru',
         false
     );
 
     console.log('📊 Результат проверки подписки:', subscriptionStatus);
 
-    // Если нет ссылок для подписки ИЛИ это placeholder - значит пользователь подписан (или есть проблемы с API)
-    if (subscriptionStatus.isSubscribed || !subscriptionStatus.subscriptionData?.links?.length || subscriptionStatus.subscriptionData?.showPlaceholder) {
-        // Показываем при��етственное сообщение для успешно подписавшихся
-        let welcomeMessage;
-        let answerMessage;
-
-        if (subscriptionStatus.subscriptionData?.showPlaceholder) {
-            // Специальное сообщение для случая с техническими проблемами
-            welcomeMessage = '⚠️ Предоставляем доступ к боту!\n\n' +
-                           '🔧 Возможны технические проблемы с проверкой подписки.\n' +
-                           '📞 Если будут проблемы - обратитесь к админу: @kirbyvivodstars\n\n' +
-                           '⭐ Зарабатывайте звёзды различными способами:\n' +
-                           '• Приглашайте друзей\n' +
-                           '• Выполняйте задания\n' +
-                           '• Используйте кликер\n' +
-                           '• Участвуйте в лотереях\n\n' +
-                           'Выберите действие:';
-            answerMessage = '⚠️ Доступ предоставлен (возможны технические проблемы)';
-        } else {
-            // Обычное приветственное сообщение
-            welcomeMessage = '🎉 Отлично! Теперь у вас есть полный доступ к боту!\n\n' +
-                           '⭐ Зарабатывайте звёзды различными способами:\n' +
-                           '• Приглашайте друзей\n' +
-                           '• Выполняйте задания\n' +
-                           '• Используйте кликер\n' +
-                           '• Участвуйте в лотереях\n\n' +
-                           'Выберите действие:';
-            answerMessage = '✅ Добро пожаловать в бота!';
-        }
-
-        const keyboard = createMainMenuKeyboard();
-
-        await bot.editMessageText(welcomeMessage, {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: keyboard
-        });
-
+    // Если нет ссылок для подписки - значит пользователь подписан
+    if (subscriptionStatus.isSubscribed || !subscriptionStatus.subscriptionData?.links?.length) {
+        await editMainMenu(chatId, messageId);
         if (callbackQueryId) {
-            await bot.answerCallbackQuery(callbackQueryId, answerMessage);
+            await bot.answerCallbackQuery(callbackQueryId, '✅ Проверка пройдена!');
         }
 
         // Проверяем условия для засчитывания реферала
@@ -705,22 +610,20 @@ async function editMainMenu(chatId, messageId) {
 async function showProfile(chatId, userId, messageId) {
     const user = await Database.getUser(userId);
     const completedTasks = await Database.getUserCompletedTasks(userId);
-    const referralStats = await Database.getReferralStats(userId);
-
+    
     const message = `👤 Ваш профиль\n\n` +
                    `🆔 ID: ${user.user_id}\n` +
                    `👤 Имя: ${user.first_name}\n` +
                    `🌟 Баланс: ${user.balance} звёзд\n` +
                    `💰 Заработано за рефералов: ${user.referral_earned}\n` +
-                   `💎 Всего заработан��: ${user.total_earned}\n` +
-                   `👥 Активных рефералов: ${referralStats.active}\n` +
-                   `⏳ Неактивных рефералов: ${referralStats.inactive}\n` +
-                   `📈 Рефералов за день: ${user.daily_referrals}\n` +
+                   `💎 Всего з��работано: ${user.total_earned}\n` +
+                   `👥 Всего рефералов: ${user.total_referrals}\n` +
+                   `��� Рефералов за день: ${user.daily_referrals}\n` +
                    `✅ Выполнено заданий: ${completedTasks}\n` +
                    `🏆 Очки: ${user.points}`;
-
+    
     const keyboard = createProfileKeyboard();
-
+    
     await bot.editMessageText(message, {
         chat_id: chatId,
         message_id: messageId,
@@ -733,18 +636,16 @@ async function showInviteInfo(chatId, userId, messageId) {
     const user = await Database.getUser(userId);
     const botUsername = (await bot.getMe()).username;
     const referralLink = `https://t.me/${botUsername}?start=${userId}`;
-    const referralStats = await Database.getReferralStats(userId);
-
+    
     const message = `👥 Пригласить друзей\n\n` +
-                   `🎯 Приглашайте друзей и зарабатывайте звёзды!\n\n` +
+                   `🎯 Пригл��шайте друзей и зарабатывайте звёзды!\n\n` +
                    `💰 За каждого реферала: 2 звезды\n` +
                    `📋 Реферал засчитывается когда:\n` +
                    `• Подписался на спонсорские каналы\n` +
                    `• Выполнил 2 задания\n\n` +
                    `🔗 Ваша ссылка:\n${referralLink}\n\n` +
                    `📊 Статистика:\n` +
-                   `✅ Актив��ых рефералов: ${referralStats.active}\n` +
-                   `⏳ Неактивных рефералов: ${referralStats.inactive}\n` +
+                   `👥 Всего рефералов: ${user.total_referrals}\n` +
                    `📈 За сегодня: ${user.daily_referrals}\n` +
                    `💰 Заработано: ${user.referral_earned} звёзд`;
     
@@ -788,7 +689,7 @@ async function showClicker(chatId, userId, messageId) {
                    `💰 За клик: 0.1 звезды\n` +
                    `📊 Кликов сегодня: ${clicksToday}/10\n` +
                    `⏳ Осталось кликов: ${remainingClicks}\n\n` +
-                   `${canClick ? '✅ Можете кликать!' : `��� Ждите ${timeToWait} мин.`}\n\n` +
+                   `${canClick ? '✅ Можете кликать!' : `⏰ Ждите ${timeToWait} мин.`}\n\n` +
                    `ℹ️ После каждого клика время ожидания\nувеличивается н�� 5 минут`;
     
     const keyboard = {
@@ -878,7 +779,7 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
                             `🆔 ID: ${user.user_id}\n` +
                             `📱 Username: @${user.username || 'отсутствует'}\n` +
                             `💰 Сумма: ${amount} звёзд\n` +
-                            `💎 Ос��аток: ${user.balance - amount} звёзд\n` +
+                            `💎 Остаток: ${user.balance - amount} звёзд\n` +
                             `🔗 Профиль: tg://user?id=${user.user_id}`;
 
         const adminKeyboard = {
@@ -911,15 +812,15 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
     }
 }
 
-// Показ��ть задания
-// Показа��ь задания
+// Показать задания
+// Показать задания
 async function showTasks(chatId, userId, messageId) {
     try {
         // 1. Получаем каналы для заданий через getTaskChannels (больше каналов чем для блокировки)
         const taskChannels = await SubGram.getTaskChannels(userId, chatId);
         console.log('SubGram задания (getTaskChannels):', JSON.stringify(taskChannels, null, 2));
         
-        // 2. Получаем уже выполненные SubGram задания пользовате��ем
+        // 2. Получаем уже выполненные SubGram задания пользователем
         const completedSubgramTasks = await Database.getCompletedSubgramTasks(userId);
         console.log(`Пользователь ${userId} уже выполнил ${completedSubgramTasks.length} SubGram заданий`);
         
@@ -937,7 +838,7 @@ async function showTasks(chatId, userId, messageId) {
             // Ошибка SubGram - показываем сообщение об ошибке
             const message = `📋 Задания\n\n` +
                            `⚠️ Временные проблемы с получением заданий.\n` +
-                           `🔄 Попробуйте позже или обратитесь к администрато��у.`;
+                           `🔄 Попробуйте позже или обратитесь к администратору.`;
 
             await bot.editMessageText(message, {
                 chat_id: chatId,
@@ -955,7 +856,7 @@ async function showTasks(chatId, userId, messageId) {
                            `📢 Подпишитесь на канал: ${channelName}\n` +
                            `💰 Награда: 0.3 звезды\n` +
                            `🏆 Бонус: +1 очко\n\n` +
-                           `ℹ️ После по��писки нажмите "Проверить выполнение"`;
+                           `ℹ️ После подписки нажмите "Проверить выполнение"`;
             
             const keyboard = {
                 inline_keyboard: [
@@ -998,7 +899,7 @@ async function showTasks(chatId, userId, messageId) {
                     inline_keyboard: [
                         availableCustomTask.link ? [{ text: '📢 Перейти к заданию', url: availableCustomTask.link }] : [],
                         [{ text: '✅ Проверить выполнение', callback_data: `check_custom_task_${availableCustomTask.id}` }],
-                        [{ text: '🏠 В главно�� меню', callback_data: 'main_menu' }]
+                        [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
                     ].filter(row => row.length > 0) // Убираем пустые строки
                 };
                 
@@ -1022,7 +923,7 @@ async function showTasks(chatId, userId, messageId) {
         }
     } catch (error) {
         console.error('Ошибка показа заданий:', error);
-        const message = `���� Задания\n\n` +
+        const message = `📋 Задания\n\n` +
                        `❌ Произошла ошибка при загрузке заданий.\n` +
                        `🔄 Попробуйте позже.`;
         
@@ -1036,7 +937,7 @@ async function showTasks(chatId, userId, messageId) {
 
 // Показать инструкции
 async function showInstructions(chatId, messageId) {
-    const message = `�� Инструкция по боту\n\n` +
+    const message = `📖 Инструкция по боту\n\n` +
                    `🌟 Как зарабатывать звёзды:\n\n` +
                    `👥 Рефералы:\n` +
                    `• Приглашайте друзей по своей ссылке\n` +
@@ -1045,8 +946,8 @@ async function showInstructions(chatId, messageId) {
                    `🖱 К��икер:\n` +
                    `• Кликайте до 10 раз в ��ень\n` +
                    `• За клик: 0.1 звезды\n` +
-                   `• Вре��я ожидания увеличивается\n\n` +
-                   `📋 Задани��:\n` +
+                   `• Время ожидания увеличивается\n\n` +
+                   `📋 Задания:\n` +
                    `• Подписывайтесь на каналы\n` +
                    `• За зад��ние: 0.3 звезды\n\n` +
                    `🏆 Рейтинги:\n` +
@@ -1054,7 +955,7 @@ async function showInstructions(chatId, messageId) {
                    `• Топ 5 недели получают бонусы\n\n` +
                    `🎁 Кейсы:\n` +
                    `• 1 кейс в день за 5 рефералов\n` +
-                   `• Выигры��: 1-10 звёзд\n\n` +
+                   `• Выигрыш: 1-10 звёзд\n\n` +
                    `💰 Вывод:\n` +
                    `• Минимум: 15 звёзд\n` +
                    `• Обработка админами`;
@@ -1086,7 +987,7 @@ async function showRatings(chatId, messageId) {
     });
 }
 
-// П��казать рейтинг по типу
+// Показать рейтинг по типу
 async function showRatingType(chatId, type, messageId) {
     let leaderboard, title;
     
@@ -1149,7 +1050,7 @@ async function showCases(chatId, userId, messageId) {
     const keyboard = {
         inline_keyboard: [
             [{ 
-                text: canOpenCase ? '🎁 Открыть кейс' : '�� Недоступно', 
+                text: canOpenCase ? '🎁 Открыть кейс' : '❌ Недоступно', 
                 callback_data: canOpenCase ? 'open_case' : 'disabled'
             }],
             [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
@@ -1176,7 +1077,7 @@ async function showLottery(chatId, messageId) {
             const progress = (lottery.sold_tickets / lottery.total_tickets * 100).toFixed(1);
             message += `🎟 ${lottery.name}\n`;
             message += `💰 Цена билета: ${lottery.ticket_price} звёзд\n`;
-            message += `🎫 Биле��ов: ${lottery.sold_tickets}/${lottery.total_tickets} (${progress}%)\n`;
+            message += `🎫 Билетов: ${lottery.sold_tickets}/${lottery.total_tickets} (${progress}%)\n`;
             message += `🏆 Победителей: ${lottery.winners_count}\n\n`;
         });
     }
@@ -1188,7 +1089,7 @@ async function showLottery(chatId, messageId) {
     });
 }
 
-// обработка ввода пр��мок��да
+// обработка ввода промок��да
 async function handlePromocodeInput(chatId, userId) {
     userStates.set(userId, 'waiting_promocode');
     await bot.sendMessage(chatId, '🎫 Введите промокод:');
@@ -1234,7 +1135,7 @@ bot.onText(/\/admin/, async (msg) => {
     await showAdminPanel(chatId);
 });
 
-// П��казать админ-панель
+// Показать админ-панель
 async function showAdminPanel(chatId) {
     const message = '👨‍💼 Админ-панель\n\nВыберите действие:';
 
@@ -1255,7 +1156,7 @@ async function showAdminPanel(chatId) {
 
 // Обработчик админских действий
 async function handleAdminCallback(chatId, userId, data, messageId, callbackQueryId) {
-    // ��роверка админских прав
+    // Проверка админских прав
     if (!config.ADMIN_IDS.includes(userId)) {
         await bot.answerCallbackQuery(callbackQueryId, '❌ Нет прав');
         return;
@@ -1297,7 +1198,7 @@ async function showBotStats(chatId, messageId) {
         const pendingWithdrawals = await Database.pool.query('SELECT COUNT(*) as count, SUM(amount) as sum FROM withdrawal_requests WHERE status = \'pending\'');
 
         const message = `📊 Статистика бота\n\n` +
-                       `👥 ��сего пользователей: ${totalUsers.rows[0].count}\n` +
+                       `👥 Всего пользователей: ${totalUsers.rows[0].count}\n` +
                        `⭐ Все��о заработано звёзд: ${totalStarsEarned.rows[0].sum || 0}\n` +
                        `💰 Всего выведено: ${totalWithdrawals.rows[0].sum || 0}\n` +
                        `⏳ Заявок в ожидании: ${pendingWithdrawals.rows[0].count}\n` +
@@ -1319,7 +1220,7 @@ async function showBotStats(chatId, messageId) {
     }
 }
 
-// Ос��альн��е функции для админ панели...
+// Ос��альные функции для админ панели...
 async function showAdminTasks(chatId, messageId) {
     const message = `📋 Управление заданиями\n\n` +
                    `Здесь вы можете создавать собственные задания\n` +
@@ -1328,7 +1229,7 @@ async function showAdminTasks(chatId, messageId) {
     const keyboard = {
         inline_keyboard: [
             [{ text: '➕ Создать задание', callback_data: 'create_task' }],
-            [{ text: '📋 Список ��аданий', callback_data: 'list_tasks' }],
+            [{ text: '📋 Список заданий', callback_data: 'list_tasks' }],
             [{ text: '🔙 Назад к адми��-панели', callback_data: 'admin_back' }]
         ]
     };
@@ -1376,12 +1277,12 @@ async function handleBroadcast(type) {
                 inline_keyboard: [
                     [{ text: '👥 Пригласить друзе��', callback_data: 'invite' }],
                     [{ text: '📋 Задания', callback_data: 'tasks' }],
-                    [{ text: '🏠 �� главное меню', callback_data: 'main_menu' }]
+                    [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
                 ]
             };
         } else {
             message = `📋 Новые задания уже ждут тебя!\n\n` +
-                     `💰 Зарабатывай звёзды выполняя про��тые задания!`;
+                     `💰 Зарабатывай звёзды выполняя простые задания!`;
 
             keyboard = {
                 inline_keyboard: [
@@ -1439,7 +1340,7 @@ async function showAdminWithdrawals(chatId, messageId) {
             reply_markup: keyboard
         });
     } catch (error) {
-        console.error('Ошибка показа ��ая��ок:', error);
+        console.error('Ошибка показа зая��ок:', error);
     }
 }
 
@@ -1459,7 +1360,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
             // Одобряем заявку
             await Database.processWithdrawal(requestId, 'approved');
 
-            // Отправл��ем в чат платежей
+            // Отправляем в чат платежей
             const paymentMessage = `✅ Выплата #${requestId} выполнена\n\n` +
                                  `👤 Пользователь: ${requestData.first_name}\n` +
                                  `💰 Сумма: ${requestData.amount} звёзд`;
@@ -1499,7 +1400,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
 
 async function showAdminLottery(chatId, messageId) {
     const message = `🎲 Управление лотере��ми\n\n` +
-                   `Здесь вы можете создавать и управл��ть лотереями`;
+                   `Здесь вы можете создавать и управлять лотереями`;
 
     const keyboard = {
         inline_keyboard: [
@@ -1548,7 +1449,7 @@ async function showAdminRewards(chatId, messageId) {
     const keyboard = {
         inline_keyboard: [
             [{ text: '🏆 Выдать награды сейчас', callback_data: 'give_rewards_now' }],
-            [{ text: '🔙 Назад к админ-пан��ли', callback_data: 'admin_back' }]
+            [{ text: '🔙 Назад к админ-панели', callback_data: 'admin_back' }]
         ]
     };
 
@@ -1578,12 +1479,12 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
         // Генерируем случайный выигрыш (1-10 звёзд)
         const reward = Math.floor(Math.random() * 10) + 1;
 
-        // Обновляе�� баланс и дату открыт��я кейса
+        // Обновляе�� баланс и дату открытия кейса
         await Database.updateUserBalance(userId, reward);
         await Database.pool.query('UPDATE users SET last_case_open = CURRENT_DATE WHERE user_id = $1', [userId]);
 
         const message = `🎁 Кейс открыт!\n\n` +
-                       `🎉 ��оздравляем! Вы выиграли ${reward} звёзд!\n` +
+                       `🎉 Поздравляем! Вы выиграли ${reward} звёзд!\n` +
                        `💰 Звёзды добавлены на ваш б��ланс`;
 
         await bot.editMessageText(message, {
@@ -1602,7 +1503,7 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
 
 async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
     try {
-        // 1. Получаем текущее задание - нужно знать како�� канал проверяем
+        // 1. Получаем текущее задание - нужно знать какой канал проверяем
         // Делаем то ��е самое что в showTasks - получаем доступные задания
         const taskChannels = await SubGram.getTaskChannels(userId, chatId);
         const completedSubgramTasks = await Database.getCompletedSubgramTasks(userId);
@@ -1618,7 +1519,7 @@ async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
         if (availableChannels.length > 0) {
             const taskLink = availableChannels[0];
             
-            // 3. Делаем новую проверку заданий п��сле возможной подписки пользователя
+            // 3. Делаем новую проверку заданий после возможной подписки пользователя
             const newCheck = await SubGram.getTaskChannels(userId, chatId);
 
             // 4. Если канал больше не в списке заданий - значит подписался
@@ -1639,7 +1540,7 @@ async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
                 console.log(`✅ Пользователь ${userId} выполнил SubGram задание: ${taskLink}`);
 
                 const message = `✅ Задание выполнено!\n\n` +
-                               `💰 Вы пол��чили 0.3 звезды\n` +
+                               `💰 Вы получили 0.3 звезды\n` +
                                `🏆 Вы получили 1 очко\n\n` +
                                `Хотите выполнить ещё одно задание?`;
 
@@ -1778,8 +1679,8 @@ cron.schedule('0 20 * * 0', async () => {
 bot.on('polling_error', (error) => {
     console.log('Polling error:', error.message);
     if (error.code === 'ETELEGRAM' && error.message.includes('409')) {
-        console.log('Конфликт polling - другой экзе��пляр бота уже запущен');
-        // Не пытаемся переподключиться, так как это усугубляет проблем��
+        console.log('Конфликт polling - другой экземпляр бота уже запущен');
+        // Не пытаемся переподключиться, так как это усугубляет проблему
     }
 });
 
@@ -1809,7 +1710,7 @@ process.on('SIGINT', () => {
 });
 
 process.on('SIGTERM', () => {
-    console.log('\nПол��чен сигнал SIGTERM. Завершение работы...');
+    console.log('\nПолучен сигнал SIGTERM. Завершение работы...');
     webhookHandler.stop();
     process.exit(0);
 });
