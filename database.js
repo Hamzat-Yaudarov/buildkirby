@@ -9,21 +9,29 @@ const pool = new Pool({
 });
 
 class Database {
+    static get pool() {
+        return pool;
+    }
+
     static async init() {
         try {
-            console.log('Инициализация базы данных...');
-            
+            console.log('Инициализация базы данны��...');
+
+            // Проверяем подключение
+            await pool.query('SELECT NOW()');
+            console.log('Подключение к базе данных успешно');
+
             // Создание таблицы пользователей
             await pool.query(`
                 CREATE TABLE IF NOT EXISTS users (
                     user_id BIGINT PRIMARY KEY,
                     username VARCHAR(255),
                     first_name VARCHAR(255),
-                    language_code VARCHAR(10),
+                    language_code VARCHAR(10) DEFAULT 'ru',
                     is_premium BOOLEAN DEFAULT FALSE,
-                    balance DECIMAL(10,2) DEFAULT 0,
-                    total_earned DECIMAL(10,2) DEFAULT 0,
-                    referral_earned DECIMAL(10,2) DEFAULT 0,
+                    balance DECIMAL(10,2) DEFAULT 0.00,
+                    total_earned DECIMAL(10,2) DEFAULT 0.00,
+                    referral_earned DECIMAL(10,2) DEFAULT 0.00,
                     total_referrals INTEGER DEFAULT 0,
                     daily_referrals INTEGER DEFAULT 0,
                     last_daily_reset DATE DEFAULT CURRENT_DATE,
@@ -37,6 +45,7 @@ class Database {
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             `);
+            console.log('Таблица users создана');
 
             // Создание таблицы заданий
             await pool.query(`

@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "reset-db": "node reset-database.js"
   },
   "keywords": ["telegram", "bot", "stars", "referral", "subgram"],
   "author": "",
