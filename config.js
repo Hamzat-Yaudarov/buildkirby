@@ -1,6 +1,6 @@
 module.exports = {
     BOT_TOKEN: '8379368723:AAEnG133OZ4qMrb5vQfM7VdEFSuLiWydsyM',
-    DATABASE_URL: 'postgresql://neondb_owner:npg_s6iWtmzZU8XA@ep-dawn-waterfall-a23jn5vi-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
+    DATABASE_URL: 'postgresql://neondb_owner:npg_kA5CYbq6KRQD@ep-late-math-a23qdcph-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
     SUBGRAM_API_KEY: '5d4c6c5283559a05a9558b677669871d6ab58e00e71587546b25b4940ea6029d',
     ADMIN_CHAT_ID: '@kirbyvivodstars',
     PAYMENTS_CHAT_ID: '@kirbystarspayments',
