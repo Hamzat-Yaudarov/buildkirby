@@ -14,7 +14,7 @@ class WebhookHandler {
 
         // Логирование всех запросов для отладки
         this.app.use((req, res, next) => {
-            console.log(`📥 ${req.method} ${req.path} - ${req.ip}`);
+            console.log(`📥 ${req.method} ${req.path} - ${req.ip} - Headers:`, JSON.stringify(req.headers, null, 2));
             next();
         });
         
@@ -36,12 +36,20 @@ class WebhookHandler {
             });
         });
 
+        // Простой тест эндпоинт
+        this.app.get('/test', (req, res) => {
+            console.log('🧪 Test endpoint вызван');
+            res.send('OK - Railway webhook server works!');
+        });
+
         // Эндпоинт для здоровья сервера
         this.app.get('/health', (req, res) => {
-            res.json({ 
-                status: 'ok', 
+            console.log('💚 Health endpoint вызван');
+            res.json({
+                status: 'ok',
                 timestamp: new Date().toISOString(),
-                service: 'telegram-stars-bot' 
+                service: 'telegram-stars-bot',
+                port: process.env.PORT || 'unknown'
             });
         });
 
@@ -60,14 +68,30 @@ class WebhookHandler {
             try {
                 const userId = parseInt(req.params.userId);
                 const subscription = this.getUserSubscriptionStatus(userId);
-                res.json({ 
-                    userId, 
+                res.json({
+                    userId,
                     subscription,
                     cached: this.userSubscriptionCache.has(userId)
                 });
             } catch (error) {
                 res.status(500).json({ error: error.message });
             }
+        });
+
+        // Catch-all маршрут для отладки неопознанных запросов
+        this.app.all('*', (req, res) => {
+            console.log(`🚫 Неопознанный запрос: ${req.method} ${req.path}`);
+            res.status(404).json({
+                error: 'Endpoint not found',
+                method: req.method,
+                path: req.path,
+                availableEndpoints: {
+                    '/': 'GET - Bot info',
+                    '/health': 'GET - Health check',
+                    '/webhook/subgram': 'POST - SubGram webhook',
+                    '/api/user/:userId/subscription': 'GET - User subscription status'
+                }
+            });
         });
     }
 

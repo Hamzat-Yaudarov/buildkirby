@@ -29,9 +29,13 @@ async function initBot() {
 
         // Запуск webhook сервера
         const webhookPort = process.env.PORT || process.env.WEBHOOK_PORT || 3000;
+        console.log('🔧 Переменные окружения:');
+        console.log('- PORT:', process.env.PORT);
+        console.log('- WEBHOOK_PORT:', process.env.WEBHOOK_PORT);
+        console.log('- Используемый порт:', webhookPort);
         await webhookHandler.start(webhookPort);
 
-        // Установка команд бота
+        // Уст��новка команд бота
         await bot.setMyCommands([
             { command: 'start', description: 'Запустить бота' },
             { command: 'menu', description: 'Главное меню' },
@@ -129,7 +133,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 
         // Проверяем есть ли неподписанные ка��алы
         if (subscriptionCheck.links && subscriptionCheck.links.length > 0) {
-            // Есть ка��алы для подписки - ТОЛЬКО показываем их, НЕ отправляем приветственное сообщение
+            // Есть ка��алы для подписки - ТОЛЬКО показываем их, НЕ отправл��ем приветственное сообщение
             const message = SubGram.formatSubscriptionMessage(subscriptionCheck.links, subscriptionCheck.additional?.sponsors);
             const keyboard = SubGram.createSubscriptionKeyboard(subscriptionCheck.links);
 
@@ -154,7 +158,7 @@ async function checkUserSubscription(userId, chatId) {
         // Сначала проверяем кеш вебхуков
         const cachedStatus = webhookHandler.getUserSubscriptionStatus(userId);
 
-        // Если есть свежие данные из вебхуков (не старше 10 минут)
+        // Если есть свежи�� данные из вебхуков (не старше 10 минут)
         if (cachedStatus.lastUpdate && (Date.now() - cachedStatus.lastUpdate) < 10 * 60 * 1000) {
             console.log(`Используем кешированные данные подписки для пользователя ${userId}`);
 
@@ -182,7 +186,7 @@ async function checkUserSubscription(userId, chatId) {
         console.log(`Запрос к SubGram API для пользователя ${userId}`);
         const subscriptionCheck = await SubGram.checkSubscription(userId, chatId);
 
-        // Ес��и есть ссылки для подписки - значит пользователь не подписан
+        // Ес��и есть ссылки ��ля подписки - значит пользователь не подписан
         if (subscriptionCheck.links && subscriptionCheck.links.length > 0) {
             return {
                 isSubscribed: false,
@@ -578,7 +582,7 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
                             `📱 Username: @${user.username || 'отсутствует'}\n` +
                             `💰 Сумма: ${amount} звёзд\n` +
                             `💎 Остаток: ${user.balance - amount} звёзд\n` +
-                            `🔗 [Профиль](tg://user?id=${user.user_id})`;
+                            `��� [Профиль](tg://user?id=${user.user_id})`;
         
         const adminKeyboard = {
             inline_keyboard: [
@@ -684,7 +688,7 @@ async function showInstructions(chatId, messageId) {
                    `• Подписывайтесь на к��н����ы\n` +
                    `• За задание: 0.3 звезды\n\n` +
                    `• Рейтинги:\n` +
-                   `• Зарабатывайте очки\n` +
+                   `�� Зарабатывайте очки\n` +
                    `• Топ 5 недели получают бонусы\n\n` +
                    `🎁 Кейсы:\n` +
                    `• 1 кейс в день за 5 рефералов\n` +
@@ -822,7 +826,7 @@ async function showLottery(chatId, messageId) {
     });
 }
 
-// обработка ввода промокода
+// обработка ��вода промокода
 async function handlePromocodeInput(chatId, userId) {
     userStates.set(userId, 'waiting_promocode');
     await bot.sendMessage(chatId, '🎫 Введите промокод:');
