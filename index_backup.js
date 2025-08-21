@@ -33,10 +33,10 @@ async function checkReferralConditions(userId) {
             return;
         }
 
-        // Проверяем количество выполненных SubGram заданий (именно заданий, а не общих задач)
-        const completedSubgramTasks = await Database.getUserSubgramTasksCount(userId);
-        if (completedSubgramTasks < 2) {
-            console.log(`👥 Реферал ${userId} выполнил только ${completedSubgramTasks}/2 SubGram заданий`);
+        // Проверяем количество выполненных заданий
+        const completedTasks = await Database.getUserCompletedTasks(userId);
+        if (completedTasks < 2) {
+            console.log(`👥 Реферал ${userId} выполнил только ${completedTasks}/2 заданий`);
             return;
         }
 
@@ -78,7 +78,7 @@ async function checkReferralConditions(userId) {
         }
 
     } catch (error) {
-        console.error('О��ибка проверки реферальных услов��й:', error);
+        console.error('Ошибка проверки реферальных условий:', error);
     }
 }
 
@@ -176,7 +176,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             }
         }
 
-        // Если ��ет кешированных данных, делаем запрос к SubGram
+        // Если нет кешированных данных, делаем запрос к SubGram
         console.log(`🌐 Запрос к SubGram API для пользователя ${userId}`);
         const subscriptionCheck = await SubGram.checkSubscription(
             userId, 
@@ -369,7 +369,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         
     } catch (error) {
         console.error('Ошибка в команде /start:', error);
-        await bot.sendMessage(chatId, '❌ Произошла ошибка. П��пробуйте позже.');
+        await bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте позже.');
     }
 });
 
@@ -429,7 +429,7 @@ bot.on('callback_query', async (callbackQuery) => {
             );
 
             if (!subscriptionStatus.isSubscribed && subscriptionStatus.subscriptionData?.links?.length > 0) {
-                console.log(`🔒 БЛОКИ��УЕМ действие "${data}" для неподписанного пол��зователя ${userId}`);
+                console.log(`🔒 БЛОКИРУЕМ действие "${data}" для неподписанного пол��зователя ${userId}`);
                 
                 // Пользователь не подписан - показываем каналы для ��одписки
                 const subscriptionData = subscriptionStatus.subscriptionData;
@@ -535,15 +535,12 @@ bot.on('callback_query', async (callbackQuery) => {
                     await handleTaskCheck(chatId, userId, message.message_id, callbackQuery.id);
                 } else if (data === 'skip_task') {
                     await showTasks(chatId, userId, message.message_id);
-                } else if (data.startsWith('check_custom_task_')) {
-                    const taskId = parseInt(data.split('_')[3]);
-                    await handleCustomTaskCheck(chatId, userId, taskId, message.message_id, callbackQuery.id);
                 }
                 break;
         }
         
     } catch (error) {
-        console.error('��ши��ка обработки callback:', error);
+        console.error('Оши��ка обработки callback:', error);
         try {
             await bot.answerCallbackQuery(callbackQuery.id, '❌ Произошла ошибка');
         } catch (e) {}
@@ -638,7 +635,7 @@ async function showInviteInfo(chatId, userId, messageId) {
     const referralLink = `https://t.me/${botUsername}?start=${userId}`;
     
     const message = `👥 Пригласить друзей\n\n` +
-                   `🎯 Пригл��шайте друзей и зарабатывайте звёзды!\n\n` +
+                   `🎯 Приглашайте друзей и зарабатывайте звёзды!\n\n` +
                    `💰 За каждого реферала: 2 звезды\n` +
                    `📋 Реферал засчитывается когда:\n` +
                    `• Подписался на спонсорские каналы\n` +
@@ -695,7 +692,7 @@ async function showClicker(chatId, userId, messageId) {
     const keyboard = {
         inline_keyboard: [
             [{ 
-                text: canClick && remainingClicks > 0 ? '🖱 КЛИК!' : '❌ Н��доступно', 
+                text: canClick && remainingClicks > 0 ? '🖱 КЛИК!' : '❌ Недоступно', 
                 callback_data: canClick && remainingClicks > 0 ? 'click' : 'disabled'
             }],
             [{ text: '��� В главное меню', callback_data: 'main_menu' }]
@@ -731,7 +728,7 @@ async function showWithdrawOptions(chatId, userId, messageId) {
     
     const message = `💰 Вывод звёзд\n\n` +
                    `💎 Ваш баланс: ${user.balance} звёзд\n\n` +
-                   `📋 Выбер��те сумму для вывода:`;
+                   `📋 Выберите сумму для вывода:`;
     
     const amounts = [15, 25, 50, 100, 1300];
     const keyboard = {
@@ -770,11 +767,11 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
         // Списываем средства
         await Database.updateUserBalance(userId, amount, 'subtract');
         
-        // Создаем ��аявку
+        // Создаем заявку
         const request = await Database.createWithdrawalRequest(userId, amount);
         
         // Отправляем в админ чат
-        const adminMessage = `💰 Нова�� заявка на вывод #${request.id}\n\n` +
+        const adminMessage = `💰 Новая заявка на вывод #${request.id}\n\n` +
                             `👤 Пользователь: ${user.first_name}\n` +
                             `🆔 ID: ${user.user_id}\n` +
                             `📱 Username: @${user.username || 'отсутствует'}\n` +
@@ -813,119 +810,53 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
 }
 
 // Показать задания
-// Показать задания
 async function showTasks(chatId, userId, messageId) {
-    try {
-        // 1. Сначала получаем список всех неподписанных каналов через checkSubscription
-        const subscriptionCheck = await SubGram.checkSubscription(userId, chatId);
-        console.log('SubGram задания (checkSubscription):', JSON.stringify(subscriptionCheck, null, 2));
-        
-        // 2. Получаем уже выполненные SubGram задания пользователем
-        const completedSubgramTasks = await Database.getCompletedSubgramTasks(userId);
-        console.log(`Пользователь ${userId} уже выполнил ${completedSubgramTasks.length} SubGram заданий`);
-        
-        // 3. Фильтруем каналы - иск��ючаем уже выполненные как задания
-        let availableChannels = [];
-        if (subscriptionCheck.links && subscriptionCheck.links.length > 0) {
-            availableChannels = subscriptionCheck.links.filter(link => 
-                !completedSubgramTasks.includes(link)
-            );
-        }
-        
-        console.log(`Доступно новых заданий: ${availableChannels.length}`);
-        
-        if (subscriptionCheck.status === 'error') {
-            // Ошибка SubGram - показываем сообщение об ошибке
-            const message = `📋 Задания\n\n` +
-                           `⚠️ Временные проблемы с получением заданий.\n` +
-                           `🔄 Попробуйте позже или обратитесь к администратору.`;
-
-            await bot.editMessageText(message, {
-                chat_id: chatId,
-                message_id: messageId,
-                reply_markup: createBackToMenuKeyboard()
-            });
-        } else if (availableChannels.length > 0) {
-            // Показываем ПЕРВОЕ доступное задание
-            const taskLink = availableChannels[0];
-            const sponsorIndex = subscriptionCheck.links.indexOf(taskLink);
-            const sponsor = subscriptionCheck.additional?.sponsors?.[sponsorIndex];
-            const channelName = sponsor?.resource_name || 'Канал';
-            
-            const message = `📋 Доступное задание\n\n` +
-                           `📢 Подпишитесь на канал: ${channelName}\n` +
-                           `💰 Награда: 0.3 звезды\n` +
-                           `🏆 Бонус: +1 очко\n\n` +
-                           `ℹ️ После подписки нажмите "Проверить выполнение"`;
-            
-            const keyboard = {
-                inline_keyboard: [
-                    [{ text: '📢 Перейти на канал', url: taskLink }],
-                    [{ text: '✅ Проверить выполнение', callback_data: 'check_task' }],
-                    [{ text: '⏭ Пропустить', callback_data: 'skip_task' }],
-                    [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
-                ]
-            };
-            
-            await bot.editMessageText(message, {
-                chat_id: chatId,
-                message_id: messageId,
-                reply_markup: keyboard
-            });
-} else {
-            // Нет доступных SubGram заданий, проверяем кастомные задания
-            const customTasks = await Database.getTasks(false); // false = не SubGram задания
-            
-            // Ищем первое невыполненное кастомное задание
-            let availableCustomTask = null;
-            for (const task of customTasks) {
-                const isCompleted = await Database.isTaskCompleted(userId, task.id);
-                if (!isCompleted) {
-                    availableCustomTask = task;
-                    break;
-                }
-            }
-            
-            if (availableCustomTask) {
-                // Показываем кастомное задание
-                const message = `📋 Доступное задание\n\n` +
-                               `📢 ${availableCustomTask.title}\n` +
-                               `📝 ${availableCustomTask.description || 'Выполните задание'}\n` +
-                               `💰 Награда: ${availableCustomTask.reward} звёзд\n` +
-                               `🏆 Бонус: +1 очко\n\n` +
-                               `ℹ️ После выполнения нажмите "Проверить выполнение"`;
-                
-                const keyboard = {
-                    inline_keyboard: [
-                        availableCustomTask.link ? [{ text: '📢 Перейти к заданию', url: availableCustomTask.link }] : [],
-                        [{ text: '✅ Проверить выполнение', callback_data: `check_custom_task_${availableCustomTask.id}` }],
-                        [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
-                    ].filter(row => row.length > 0) // Убираем пустые строки
-                };
-                
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    reply_markup: keyboard
-                });
-            } else {
-                // Нет доступных заданий вообще
-                const message = `📋 Задания\n\n` +
-                               `✅ Все задания выполнены!\n` +
-                               `⏰ Проверьте позже, возможно появятся новые.`;
-                
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    reply_markup: createBackToMenuKeyboard()
-                });
-            }
-        }
-    } catch (error) {
-        console.error('Ошибка показа заданий:', error);
+    // Получаем задание от SubGram
+    const subgramTask = await SubGram.getTaskChannels(userId, chatId);
+    console.log('Ответ задания SubGram:', JSON.stringify(subgramTask, null, 2));
+    
+    if (subgramTask.status === 'error') {
+        // Ошибка SubGram - показываем сообщение об ошибке
         const message = `📋 Задания\n\n` +
-                       `❌ Произошла ошибка при загрузке заданий.\n` +
-                       `🔄 Попробуйте позже.`;
+                       `⚠️ Временные проблемы с получением заданий.\n` +
+                       `🔄 Попробуйте позже или обратитесь к администратору.`;
+
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: createBackToMenuKeyboard()
+        });
+    } else if (subgramTask.links && subgramTask.links.length > 0) {
+        // Показываем первое задание от SubGram
+        const link = subgramTask.links[0];
+        const sponsor = subgramTask.additional?.sponsors?.[0];
+        const channelName = sponsor?.resource_name || 'Канал';
+        
+        const message = `📋 Доступное задание\n\n` +
+                       `📢 Подпишитесь на канал: ${channelName}\n` +
+                       `💰 Награда: 0.3 звезды\n` +
+                       `🏆 Бонус: +1 очко\n\n` +
+                       `ℹ️ После подписки нажмите "Проверить выполнение"`;
+        
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: '📢 Перейти на канал', url: link }],
+                [{ text: '✅ Проверить выполнение', callback_data: 'check_task' }],
+                [{ text: '⏭ Пропустить', callback_data: 'skip_task' }],
+                [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
+            ]
+        };
+        
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: keyboard
+        });
+    } else {
+        // Нет заданий от SubGram, показываем кастомные
+        const message = `📋 Задания\n\n` +
+                       `ℹ️ В данный момент нет дост��пных заданий.\n` +
+                       `⏰ Проверьте позже!`;
         
         await bot.editMessageText(message, {
             chat_id: chatId,
@@ -944,7 +875,7 @@ async function showInstructions(chatId, messageId) {
                    `• За каждого реферала: 2 звезды\n` +
                    `• Реферал засчитывается после подписки на спонсоров и выполнения 2 заданий\n\n` +
                    `🖱 Кликер:\n` +
-                   `• Кликайте до 10 раз в ��ень\n` +
+                   `• Кликайте до 10 раз в день\n` +
                    `• За клик: 0.1 звезды\n` +
                    `• Время ожидания увеличивается\n\n` +
                    `📋 Задания:\n` +
@@ -1199,7 +1130,7 @@ async function showBotStats(chatId, messageId) {
 
         const message = `📊 Статистика бота\n\n` +
                        `👥 Всего пользователей: ${totalUsers.rows[0].count}\n` +
-                       `⭐ Все��о заработано звёзд: ${totalStarsEarned.rows[0].sum || 0}\n` +
+                       `⭐ Всего заработано звёзд: ${totalStarsEarned.rows[0].sum || 0}\n` +
                        `💰 Всего выведено: ${totalWithdrawals.rows[0].sum || 0}\n` +
                        `⏳ Заявок в ожидании: ${pendingWithdrawals.rows[0].count}\n` +
                        `💎 Сумма в ожидании: ${pendingWithdrawals.rows[0].sum || 0}`;
@@ -1266,9 +1197,9 @@ async function handleBroadcast(type) {
         let message, keyboard;
 
         if (type === 'rating') {
-            message = `🏆 Быстрее попади �� топ 5 по очкам в недельном рейтинге и получи дополнительные звёзды в конце недели!\n\n` +
+            message = `🏆 Быстрее попади в топ 5 по очкам в недельном рейтинге и получи дополнительные звёзды в конце недели!\n\n` +
                      `🥇 1 место: 100 звёзд\n` +
-                     `🥈 2 мес��о: 75 звёзд\n` +
+                     `🥈 2 место: 75 звёзд\n` +
                      `🥉 3 место: 50 звёзд\n` +
                      `4 место: 25 звёзд\n` +
                      `5 место: 15 звёзд`;
@@ -1321,7 +1252,7 @@ async function showAdminWithdrawals(chatId, messageId) {
 
             for (const request of pending.slice(0, 5)) { // Показываем первые 5
                 message += `📄 Заявка #${request.id}\n`;
-                message += `👤 ${request.first_name} (@${request.username || 'н��т'})\n`;
+                message += `👤 ${request.first_name} (@${request.username || 'нет'})\n`;
                 message += `💰 Сумма: ${request.amount} звёзд\n`;
                 message += `💎 Остаток: ${request.balance} звёзд\n\n`;
             }
@@ -1503,73 +1434,43 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
 
 async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
     try {
-        // 1. Получаем текущее задание - нужно знать какой канал проверяем
-        // Делаем то ��е самое что в showTasks - получаем доступные задания
-        const subscriptionCheck = await SubGram.checkSubscription(userId, chatId);
-        const completedSubgramTasks = await Database.getCompletedSubgramTasks(userId);
-        
-        let availableChannels = [];
-        if (subscriptionCheck.links && subscriptionCheck.links.length > 0) {
-            availableChannels = subscriptionCheck.links.filter(link => 
-                !completedSubgramTasks.includes(link)
-            );
-        }
-        
-        // 2. Если есть доступные задания, проверяем первое
-        if (availableChannels.length > 0) {
-            const taskLink = availableChannels[0];
-            
-            // 3. Делаем новую проверку подписки после возможной подписки пользователя
-            const newCheck = await SubGram.checkSubscription(userId, chatId);
-            
-            // 4. Если канал больше не в списке неподписанных - значит подписался
-            if (!newCheck.links || !newCheck.links.includes(taskLink)) {
-                // Задание выполнено - подписался на канал!
-                
-                // 5. Записываем выпо��ненное задание в БД
-                const sponsorIndex = subscriptionCheck.links.indexOf(taskLink);
-                const sponsor = subscriptionCheck.additional?.sponsors?.[sponsorIndex];
-                const channelName = sponsor?.resource_name || 'Канал';
-                
-                await Database.completeSubgramTask(userId, taskLink, channelName);
-                
-                // 6. Начисляем награду
-                await Database.updateUserBalance(userId, 0.3);
-                await Database.updateUserPoints(userId, 1);
-                
-                console.log(`✅ Пользователь ${userId} выполнил SubGram задание: ${taskLink}`);
+        // Получаем новое задание от SubGram чтобы проверить подписку
+        const taskCheck = await SubGram.getTaskChannels(userId, chatId);
 
-                const message = `✅ Задание выполнено!\n\n` +
-                               `💰 Вы получили 0.3 звезды\n` +
-                               `🏆 Вы получили 1 очко\n\n` +
-                               `Хотите выполнить ещё одно задание?`;
+        console.log('Проверка задания:', JSON.stringify(taskCheck, null, 2));
 
-                const keyboard = {
-                    inline_keyboard: [
-                        [{ text: '📋 Следующее задание', callback_data: 'tasks' }],
-                        [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
-                    ]
-                };
+        // Если нет ссылок или статус ok - значит подписался
+        if (!taskCheck.links || taskCheck.links.length === 0 || taskCheck.status === 'ok') {
+            // Задание выполнено
+            await Database.updateUserBalance(userId, 0.3);
+            await Database.updateUserPoints(userId, 1);
 
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    reply_markup: keyboard
-                });
+            const message = `✅ Задание выполнено!\n\n` +
+                           `💰 Вы по��учили 0.3 звезды\n` +
+                           `🏆 Вы получили 1 очко\n\n` +
+                           `��отите выполнить ещё одно задание?`;
 
-                await bot.answerCallbackQuery(callbackQueryId, '✅ Задание выполнено!');
+            const keyboard = {
+                inline_keyboard: [
+                    [{ text: '📋 Следующее задание', callback_data: 'tasks' }],
+                    [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
+                ]
+            };
 
-                // 7. Проверяем условия для засчитывания реферала
-                await checkReferralConditions(userId);
+            await bot.editMessageText(message, {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: keyboard
+            });
 
-            } else {
-                // Все еще есть задание для выполнения
-                await bot.answerCallbackQuery(callbackQueryId, '❌ Подпишитесь на канал сн��чала!');
-            }
+            await bot.answerCallbackQuery(callbackQueryId, '✅ Задание выполнено!');
+
+            // Проверяем условия для засчитывания реферала
+            await checkReferralConditions(userId);
+
         } else {
-            // Нет доступных заданий
-            await bot.answerCallbackQuery(callbackQueryId, '❌ Нет доступных заданий');
-            await showTasks(chatId, userId, messageId); // Показать обновленное состояние
+            // Все еще ест�� задание для выполнения
+            await bot.answerCallbackQuery(callbackQueryId, '❌ Подпишитесь на канал сначала!');
         }
 
     } catch (error) {
@@ -1578,67 +1479,7 @@ async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
     }
 }
 
-
-// Проверка выполнения кастомного задания
-async function handleCustomTaskCheck(chatId, userId, taskId, messageId, callbackQueryId) {
-    try {
-        // Получаем задание
-        const task = await Database.pool.query('SELECT * FROM tasks WHERE id = $1 AND is_active = true', [taskId]);
-        
-        if (task.rows.length === 0) {
-            await bot.answerCallbackQuery(callbackQueryId, '❌ Задание не найдено');
-            return;
-        }
-        
-        const taskData = task.rows[0];
-        
-        // Проверяем не было ли уже выполнено
-        const isCompleted = await Database.isTaskCompleted(userId, taskId);
-        if (isCompleted) {
-            await bot.answerCallbackQuery(callbackQueryId, '✅ Задание уже выполнено');
-            await showTasks(chatId, userId, messageId);
-            return;
-        }
-        
-        // Записываем выполнение задания
-        await Database.completeTask(userId, taskId);
-        
-        // Начисляем награду
-        await Database.updateUserBalance(userId, taskData.reward);
-        await Database.updateUserPoints(userId, 1);
-        
-        console.log(`✅ Пользователь ${userId} выполнил кастомное задание ${taskId}: ${taskData.title}`);
-
-        const message = `✅ Задание выполнено!\n\n` +
-                       `💰 Вы получили ${taskData.reward} звёзд\n` +
-                       `🏆 Вы получили 1 очко\n\n` +
-                       `Хотите выполнить ещё одно задание?`;
-
-        const keyboard = {
-            inline_keyboard: [
-                [{ text: '📋 Следующее задание', callback_data: 'tasks' }],
-                [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
-            ]
-        };
-
-        await bot.editMessageText(message, {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: keyboard
-        });
-
-        await bot.answerCallbackQuery(callbackQueryId, `✅ +${taskData.reward} звёзд!`);
-
-        // Проверяем условия для засчитывания реферала (но кастомные задания не считаются для рефералов)
-        // await checkReferralConditions(userId); // Не вызываем, только SubGram задания считаются
-
-    } catch (error) {
-        console.error('Ошибка проверки кастомного задания:', error);
-        await bot.answerCallbackQuery(callbackQueryId, '❌ Ошибка проверки');
-    }
-}
-
-// Еженедельное начисление наград (воскресенье в 20:00 М��К)
+// Еженедельное начисление наград (воскресенье в 20:00 МСК)
 cron.schedule('0 20 * * 0', async () => {
     console.log('Начисление еженедельных наград...');
     
@@ -1669,7 +1510,7 @@ cron.schedule('0 20 * * 0', async () => {
         console.log('Еженедельные награды начислены');
         
     } catch (error) {
-        console.error('Ошибка начислени�� е��енедельных наград:', error);
+        console.error('Ошибка начислени�� еженедельных наград:', error);
     }
 }, {
     timezone: "Europe/Moscow"

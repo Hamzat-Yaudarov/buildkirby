@@ -19,7 +19,7 @@ class Database {
 
             // Проверяем подключение
             await pool.query('SELECT NOW()');
-            console.log('Подключение к базе данных успешно');
+            console.log('Подключение к базе д��нных успешно');
 
             // ПОЛНАЯ ОЧИСТКА И ПЕРЕСОЗДАНИЕ
             console.log('Очистка существующих таблиц...');
@@ -32,6 +32,7 @@ class Database {
             await pool.query('DROP TABLE IF EXISTS promocodes CASCADE');
             await pool.query('DROP TABLE IF EXISTS user_tasks CASCADE');
             await pool.query('DROP TABLE IF EXISTS tasks CASCADE');
+            await pool.query('DROP TABLE IF EXISTS subgram_tasks CASCADE');
             await pool.query('DROP TABLE IF EXISTS bot_stats CASCADE');
             await pool.query('DROP TABLE IF EXISTS users CASCADE');
 
@@ -175,6 +176,19 @@ class Database {
                 )
             `);
             console.log('Таблица bot_stats создана');
+
+            // Создание таблицы выполненных SubGram заданий
+            await pool.query(`
+                CREATE TABLE subgram_tasks (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    channel_link VARCHAR(500) NOT NULL,
+                    channel_name VARCHAR(255),
+                    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, channel_link)
+                )
+            `);
+            console.log('Таблица subgram_tasks создана');
 
             console.log('База данных инициализирована успешно!');
         } catch (error) {
@@ -494,6 +508,39 @@ class Database {
             RETURNING *
         `, [requestId, status, reason]);
         return result.rows[0];
+    }
+
+    // SubGram задания
+    static async completeSubgramTask(userId, channelLink, channelName = null) {
+        const result = await pool.query(`
+            INSERT INTO subgram_tasks (user_id, channel_link, channel_name)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, channel_link) DO NOTHING
+            RETURNING *
+        `, [userId, channelLink, channelName]);
+        return result.rows[0];
+    }
+
+    static async getCompletedSubgramTasks(userId) {
+        const result = await pool.query(`
+            SELECT channel_link FROM subgram_tasks WHERE user_id = $1
+        `, [userId]);
+        return result.rows.map(row => row.channel_link);
+    }
+
+    static async getUserSubgramTasksCount(userId) {
+        const result = await pool.query(`
+            SELECT COUNT(*) as count FROM subgram_tasks WHERE user_id = $1
+        `, [userId]);
+        return parseInt(result.rows[0].count);
+    }
+
+    static async isSubgramTaskCompleted(userId, channelLink) {
+        const result = await pool.query(`
+            SELECT * FROM subgram_tasks
+            WHERE user_id = $1 AND channel_link = $2
+        `, [userId, channelLink]);
+        return result.rows.length > 0;
     }
 }
 
