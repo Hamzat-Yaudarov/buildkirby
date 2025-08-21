@@ -191,11 +191,19 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
         console.log(`📥 SubGram ответ:`, JSON.stringify(taskChannels, null, 2));
 
+        // Специальное логирование для диагностики
+        if (taskChannels.total_fixed_link > 0) {
+            console.log(`🔍 ДИАГНОСТИКА: total_fixed_link=${taskChannels.total_fixed_link}, links_count=${taskChannels.links?.length || 0}`);
+            if (!taskChannels.links || taskChannels.links.length === 0) {
+                console.log(`🚨 ПРОБЛЕМА: SubGram говорит что есть ${taskChannels.total_fixed_link} каналов, но не дает ссылки!`);
+            }
+        }
+
         // Проверяем ответ SubGram
         if (taskChannels.status === 'error') {
             console.log(`❌ Ошибка SubGram, проверяем кеш как fallback`);
             
-            // В случае ош��бки API используем кеш если есть
+            // В случае ош��бки API исполь��уем кеш если есть
             if (cachedStatus.lastUpdate) {
                 return {
                     isSubscribed: cachedStatus.isSubscribed !== false,
@@ -245,16 +253,28 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
                 }
 
                 if (!taskChannels.links || taskChannels.links.length === 0) {
-                    console.log(`⚠️ Все попытки получения ссылок не удались для пользователя ${userId}`);
+                    console.log(`⚠️ Обычные попытки получения ссылок не удались для пользователя ${userId}`);
 
-                    // Если SubGram указывает что есть каналы (total_fixed_link > 0), но не ��ает ссылки
+                    // Если SubGram указывает что есть каналы (total_fixed_link > 0), но не дает ссылки
                     if (taskChannels.total_fixed_link && taskChannels.total_fixed_link > 0) {
                         console.log(`🔍 SubGram указывает ${taskChannels.total_fixed_link} каналов, но не дает ссылки`);
-                        console.log(`🤷 Возможно проблема с API SubGram для пользователя ${userId}`);
+                        console.log(`🔥 Запускаем агрессивный поиск ссылок!`);
 
-                        // Устанавливаем фиктивную ссылку чтобы показать что есть проблема
-                        taskChannels.links = ['placeholder'];
-                        taskChannels.showPlaceholder = true;
+                        // Используем агрессивную функцию для получения ссылок
+                        const aggressiveResult = await SubGram.getLinksAggressively(userId, chatId, firstName, languageCode, isPremium);
+
+                        if (aggressiveResult && aggressiveResult.links && aggressiveResult.links.length > 0) {
+                            console.log(`🎯 Агрессивный пои��к успешен! Найдено ${aggressiveResult.links.length} ссылок`);
+                            taskChannels.links = aggressiveResult.links;
+                            taskChannels.additional = aggressiveResult.additional;
+                        } else {
+                            console.log(`😞 Даже агрессивный поиск не дал результатов для пользователя ${userId}`);
+                            console.log(`🤷 Возможно проблема с API SubGram или аккаунтом пользователя`);
+
+                            // Последняя попытка - устанавливаем placeholder
+                            taskChannels.links = ['placeholder'];
+                            taskChannels.showPlaceholder = true;
+                        }
                     }
                 }
             }
@@ -349,7 +369,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             }
         }
         
-        // СНАЧАЛА проверяем подписку - это самое важное!
+        // СНАЧАЛА проверяем подписку - эт�� самое важное!
         console.log(`🔍 Про��ерка подписки для пользователя ${userId}`);
         const subscriptionStatus = await checkUserSubscription(
             userId, 
@@ -371,7 +391,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                 if (subscriptionStatus.subscriptionData.showPlaceholder) {
                     console.log(`⚠️ SubGram не предоставил ссылки, показываем сообщение об ошибке`);
                     await bot.sendMessage(chatId,
-                        '⚠️ Для доступа к боту необходимо подписаться на спонсорские каналы.\n\n' +
+                        '⚠️ Для доступа к боту необходимо п��дписаться на спонсорские каналы.\n\n' +
                         '🔧 Технические проблемы с получением списка каналов.\n' +
                         '📞 Обратитесь к администратору: @kirbyvivodstars'
                     );
@@ -606,7 +626,7 @@ async function handleSubscriptionCheck(chatId, userId, messageId, callbackQueryI
 
     // Если нет ссылок для подписки ИЛИ это placeholder - значит пользователь подписан (или есть проблемы с API)
     if (subscriptionStatus.isSubscribed || !subscriptionStatus.subscriptionData?.links?.length || subscriptionStatus.subscriptionData?.showPlaceholder) {
-        // Показываем приветственное сообщение для успешно подписавшихся
+        // Показываем при��етственное сообщение для успешно подписавшихся
         let welcomeMessage;
         let answerMessage;
 
@@ -768,7 +788,7 @@ async function showClicker(chatId, userId, messageId) {
                    `💰 За клик: 0.1 звезды\n` +
                    `📊 Кликов сегодня: ${clicksToday}/10\n` +
                    `⏳ Осталось кликов: ${remainingClicks}\n\n` +
-                   `${canClick ? '✅ Можете кликать!' : `⏰ Ждите ${timeToWait} мин.`}\n\n` +
+                   `${canClick ? '✅ Можете кликать!' : `��� Ждите ${timeToWait} мин.`}\n\n` +
                    `ℹ️ После каждого клика время ожидания\nувеличивается н�� 5 минут`;
     
     const keyboard = {
@@ -899,7 +919,7 @@ async function showTasks(chatId, userId, messageId) {
         const taskChannels = await SubGram.getTaskChannels(userId, chatId);
         console.log('SubGram задания (getTaskChannels):', JSON.stringify(taskChannels, null, 2));
         
-        // 2. Получаем уже выполненные SubGram задания пользователем
+        // 2. Получаем уже выполненные SubGram задания пользовате��ем
         const completedSubgramTasks = await Database.getCompletedSubgramTasks(userId);
         console.log(`Пользователь ${userId} уже выполнил ${completedSubgramTasks.length} SubGram заданий`);
         
@@ -917,7 +937,7 @@ async function showTasks(chatId, userId, messageId) {
             // Ошибка SubGram - показываем сообщение об ошибке
             const message = `📋 Задания\n\n` +
                            `⚠️ Временные проблемы с получением заданий.\n` +
-                           `🔄 Попробуйте позже или обратитесь к администратору.`;
+                           `🔄 Попробуйте позже или обратитесь к администрато��у.`;
 
             await bot.editMessageText(message, {
                 chat_id: chatId,
@@ -1277,7 +1297,7 @@ async function showBotStats(chatId, messageId) {
         const pendingWithdrawals = await Database.pool.query('SELECT COUNT(*) as count, SUM(amount) as sum FROM withdrawal_requests WHERE status = \'pending\'');
 
         const message = `📊 Статистика бота\n\n` +
-                       `👥 Всего пользователей: ${totalUsers.rows[0].count}\n` +
+                       `👥 ��сего пользователей: ${totalUsers.rows[0].count}\n` +
                        `⭐ Все��о заработано звёзд: ${totalStarsEarned.rows[0].sum || 0}\n` +
                        `💰 Всего выведено: ${totalWithdrawals.rows[0].sum || 0}\n` +
                        `⏳ Заявок в ожидании: ${pendingWithdrawals.rows[0].count}\n` +
@@ -1582,7 +1602,7 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
 
 async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
     try {
-        // 1. Получаем текущее задание - нужно знать какой канал проверяем
+        // 1. Получаем текущее задание - нужно знать како�� канал проверяем
         // Делаем то ��е самое что в showTasks - получаем доступные задания
         const taskChannels = await SubGram.getTaskChannels(userId, chatId);
         const completedSubgramTasks = await Database.getCompletedSubgramTasks(userId);

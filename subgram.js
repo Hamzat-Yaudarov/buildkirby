@@ -37,8 +37,16 @@ class SubGram {
                 status: response.status,
                 dataStatus: response.data?.status,
                 linksCount: response.data?.links?.length || 0,
-                hasSponsors: !!response.data?.additional?.sponsors
+                totalFixedLink: response.data?.total_fixed_link || 0,
+                hasSponsors: !!response.data?.additional?.sponsors,
+                sponsorsCount: response.data?.additional?.sponsors?.length || 0
             });
+
+            // Подробное логирование если есть несоответствие
+            if (response.data?.total_fixed_link > 0 && (!response.data?.links || response.data.links.length === 0)) {
+                console.log(`🚨 НЕСООТВЕТСТВИЕ! total_fixed_link=${response.data.total_fixed_link} но links=${response.data?.links?.length || 0}`);
+                console.log(`📋 Полный ответ от SubGram:`, JSON.stringify(response.data, null, 2));
+            }
 
             return response.data;
         } catch (error) {
@@ -113,8 +121,15 @@ class SubGram {
                 status: response.status,
                 dataStatus: response.data?.status,
                 linksCount: response.data?.links?.length || 0,
+                totalFixedLink: response.data?.total_fixed_link || 0,
                 hasSponsors: !!response.data?.additional?.sponsors
             });
+
+            // Подробное логирование если есть несоответствие
+            if (response.data?.total_fixed_link > 0 && (!response.data?.links || response.data.links.length === 0)) {
+                console.log(`🚨 getTaskChannels НЕСООТВЕТСТВИЕ! total_fixed_link=${response.data.total_fixed_link} но links=${response.data?.links?.length || 0}`);
+                console.log(`📋 Полный ответ:`, JSON.stringify(response.data, null, 2));
+            }
 
             return response.data;
         } catch (error) {
@@ -157,7 +172,7 @@ class SubGram {
             first_name: firstName,
             language_code: languageCode,
             Premium: isPremium,
-            MaxOP: 10, // Запрашиваем больше каналов для получения всех ссылок
+            MaxOP: 10, // Запрашиваем больше каналов для полу��ения всех ссылок
             action: 'subscribe' // Попробуем обычный action
         };
 
@@ -182,8 +197,15 @@ class SubGram {
             console.log(`✅ SubGram getChannelLinks ответ для пользователя ${userId} (${responseTime}ms):`, {
                 status: response.status,
                 dataStatus: response.data?.status,
-                linksCount: response.data?.links?.length || 0
+                linksCount: response.data?.links?.length || 0,
+                totalFixedLink: response.data?.total_fixed_link || 0
             });
+
+            // Подробное логирование если есть несоответствие
+            if (response.data?.total_fixed_link > 0 && (!response.data?.links || response.data.links.length === 0)) {
+                console.log(`🚨 getChannelLinks НЕСООТВЕТСТВИЕ! total_fixed_link=${response.data.total_fixed_link} но links=${response.data?.links?.length || 0}`);
+                console.log(`📋 Полный ответ:`, JSON.stringify(response.data, null, 2));
+            }
 
             return response.data;
         } catch (error) {
@@ -234,7 +256,7 @@ class SubGram {
             return response.data;
         } catch (error) {
             if (error.response) {
-                console.error(`Ошибка при проверке подписок пользователя: ${error.response.status} - ${error.response.statusText}`);
+                console.error(`Ошибка при прове��ке подписок пользователя: ${error.response.status} - ${error.response.statusText}`);
             } else if (error.request) {
                 console.error('Ошибка при проверке подписок пользователя: Нет ответа от сервера');
             } else {
@@ -282,6 +304,126 @@ class SubGram {
         }]);
 
         return keyboard;
+    }
+
+    // Агрессивная функция для получения ссылок когда знаем что они должны быть
+    static async getLinksAggressively(userId, chatId, firstName = '', languageCode = 'ru', isPremium = false) {
+        console.log(`🔥 Агрессивный поиск ссылок для пользователя ${userId}`);
+
+        // Различные стратегии для получения ссылок
+        const strategies = [
+            // 1. С MaxOP = 1 и action = 'subscribe'
+            {
+                name: 'MaxOP=1,subscribe',
+                data: {
+                    UserId: userId.toString(),
+                    ChatId: chatId.toString(),
+                    first_name: firstName,
+                    language_code: languageCode,
+                    Premium: isPremium,
+                    MaxOP: 1,
+                    action: 'subscribe'
+                }
+            },
+            // 2. С MaxOP = 5 и action = 'subscribe'
+            {
+                name: 'MaxOP=5,subscribe',
+                data: {
+                    UserId: userId.toString(),
+                    ChatId: chatId.toString(),
+                    first_name: firstName,
+                    language_code: languageCode,
+                    Premium: isPremium,
+                    MaxOP: 5,
+                    action: 'subscribe'
+                }
+            },
+            // 3. С MaxOP = 10 и action = 'subscribe'
+            {
+                name: 'MaxOP=10,subscribe',
+                data: {
+                    UserId: userId.toString(),
+                    ChatId: chatId.toString(),
+                    first_name: firstName,
+                    language_code: languageCode,
+                    Premium: isPremium,
+                    MaxOP: 10,
+                    action: 'subscribe'
+                }
+            },
+            // 4. С MaxOP = 1 и action = 'newtask'
+            {
+                name: 'MaxOP=1,newtask',
+                data: {
+                    UserId: userId.toString(),
+                    ChatId: chatId.toString(),
+                    first_name: firstName,
+                    language_code: languageCode,
+                    Premium: isPremium,
+                    MaxOP: 1,
+                    action: 'newtask'
+                }
+            },
+            // 5. С MaxOP = 10 и action = 'newtask'
+            {
+                name: 'MaxOP=10,newtask',
+                data: {
+                    UserId: userId.toString(),
+                    ChatId: chatId.toString(),
+                    first_name: firstName,
+                    language_code: languageCode,
+                    Premium: isPremium,
+                    MaxOP: 10,
+                    action: 'newtask'
+                }
+            },
+            // 6. Без action (возможно по умолчанию)
+            {
+                name: 'MaxOP=5,no-action',
+                data: {
+                    UserId: userId.toString(),
+                    ChatId: chatId.toString(),
+                    first_name: firstName,
+                    language_code: languageCode,
+                    Premium: isPremium,
+                    MaxOP: 5
+                }
+            }
+        ];
+
+        for (let i = 0; i < strategies.length; i++) {
+            const strategy = strategies[i];
+            console.log(`🔄 Попытка ${i + 1}/${strategies.length}: ${strategy.name}`);
+
+            try {
+                const response = await axios.post('https://api.subgram.ru/request-op/', strategy.data, {
+                    headers: {
+                        'Auth': config.SUBGRAM_API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 10000
+                });
+
+                console.log(`📋 Стратегия ${strategy.name} ответ:`, {
+                    status: response.data?.status,
+                    linksCount: response.data?.links?.length || 0,
+                    totalFixed: response.data?.total_fixed_link || 0,
+                    hasSponsors: !!response.data?.additional?.sponsors
+                });
+
+                // Если получили ссылки - возвращаем их
+                if (response.data?.links && response.data.links.length > 0) {
+                    console.log(`✅ Стратегия ${strategy.name} дала ${response.data.links.length} ссылок!`);
+                    return response.data;
+                }
+
+            } catch (error) {
+                console.log(`❌ Стратегия ${strategy.name} не сработала:`, error.response?.status || error.message);
+            }
+        }
+
+        console.log(`😞 Все стратегии исчерпаны для пользователя ${userId}, ссылки не найдены`);
+        return null;
     }
 }
 
