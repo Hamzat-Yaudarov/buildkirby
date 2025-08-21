@@ -16,12 +16,22 @@ class SubGram {
                 headers: {
                     'Auth': config.SUBGRAM_API_KEY,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 10000 // 10 секунд таймаут
             });
 
             return response.data;
         } catch (error) {
-            console.error('Ошибка при проверке подписки SubGram:', error.message);
+            if (error.response) {
+                // Сервер ответил с ошибкой
+                console.error(`Ошибка при регистрации подписки SubGram: ${error.response.status} - ${error.response.statusText}`);
+            } else if (error.request) {
+                // Запрос был отправлен, но ответа не получено
+                console.error('Ошибка при регистрации подписки SubGram: Нет ответа от сервера');
+            } else {
+                // Другая ошибка
+                console.error('Ошибка при регистрации подписки SubGram:', error.message);
+            }
             return { status: 'error', message: 'Ошибка связи с сервисом' };
         }
     }
@@ -40,12 +50,19 @@ class SubGram {
                 headers: {
                     'Auth': config.SUBGRAM_API_KEY,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 10000 // 10 секунд таймаут
             });
 
             return response.data;
         } catch (error) {
-            console.error('Ошибка при получении заданий SubGram:', error.message);
+            if (error.response) {
+                console.error(`Ошибка при получении заданий SubGram: ${error.response.status} - ${error.response.statusText}`);
+            } else if (error.request) {
+                console.error('Ошибка при получении заданий SubGram: Нет ответа от сервера');
+            } else {
+                console.error('Ошибка при получении заданий SubGram:', error.message);
+            }
             return { status: 'error', message: 'Ошибка связи с сервисом' };
         }
     }
@@ -59,12 +76,19 @@ class SubGram {
                 headers: {
                     'Auth': config.SUBGRAM_API_KEY,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 10000 // 10 секунд таймаут
             });
 
             return response.data;
         } catch (error) {
-            console.error('Ошибка при проверке подписок пользователя:', error.message);
+            if (error.response) {
+                console.error(`Ошибка при проверке подписок пользователя: ${error.response.status} - ${error.response.statusText}`);
+            } else if (error.request) {
+                console.error('Ошибка при проверке подписок пользователя: Нет ответа от сервера');
+            } else {
+                console.error('Ошибка при проверке подписок пользователя:', error.message);
+            }
             return { status: 'error', message: 'Ошибка связи с сервисом' };
         }
     }
@@ -74,7 +98,7 @@ class SubGram {
             return '✅ Вы подписаны на все спонсорские каналы!';
         }
 
-        let message = 'Чтобы продолжить пользоваться ботом, пожалуйста, выполни следующие задания! 😇\n\n';
+        let message = '🔒 Для доступа к боту необходимо подписаться на спонсорские каналы:\n\n';
 
         for (let i = 0; i < links.length; i++) {
             const link = links[i];
