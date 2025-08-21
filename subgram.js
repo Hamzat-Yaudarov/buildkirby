@@ -86,7 +86,7 @@ class SubGram {
             first_name: firstName,
             language_code: languageCode,
             Premium: isPremium,
-            MaxOP: 1,
+            MaxOP: 10,
             action: 'newtask'
         };
 
@@ -193,7 +193,7 @@ class SubGram {
                 // 404 от SubGram означает "нет спонсоров для этого пользователя"
                 const responseData = error.response.data;
                 if (responseData && responseData.message === 'Нет подходящих рекламодателей для данного пользователя') {
-                    console.log(`ℹ️ SubGram getChannelLinks: нет спонсоров для пользов��теля ${userId}`);
+                    console.log(`ℹ️ SubGram getChannelLinks: нет спонсоров для пользоветеля ${userId}`);
                     return {
                         status: 'ok',
                         code: 200,
@@ -238,7 +238,7 @@ class SubGram {
             } else if (error.request) {
                 console.error('Ошибка при проверке подписок пользователя: Нет ответа от сервера');
             } else {
-                console.error('Ошибка при пр��верке подписок пользователя:', error.message);
+                console.error('Ошибка при проверке подписок пользователя:', error.message);
             }
             return { status: 'error', message: 'Ошибка связи с сервисом' };
         }

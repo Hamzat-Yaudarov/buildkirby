@@ -19,28 +19,14 @@ class Database {
 
             // Проверяем подключение
             await pool.query('SELECT NOW()');
-            console.log('Подключение к базе д��нных успешно');
+            console.log('Подключение к базе данных успешно');
 
-            // ПОЛНАЯ ОЧИСТКА И ПЕРЕСОЗДАНИЕ
-            console.log('Очистка существующих таблиц...');
-
-            // Удаляем все таблицы в правильном порядке (с учетом внешних ключей)
-            await pool.query('DROP TABLE IF EXISTS withdrawal_requests CASCADE');
-            await pool.query('DROP TABLE IF EXISTS lottery_tickets CASCADE');
-            await pool.query('DROP TABLE IF EXISTS lotteries CASCADE');
-            await pool.query('DROP TABLE IF EXISTS promocode_uses CASCADE');
-            await pool.query('DROP TABLE IF EXISTS promocodes CASCADE');
-            await pool.query('DROP TABLE IF EXISTS user_tasks CASCADE');
-            await pool.query('DROP TABLE IF EXISTS tasks CASCADE');
-            await pool.query('DROP TABLE IF EXISTS subgram_tasks CASCADE');
-            await pool.query('DROP TABLE IF EXISTS bot_stats CASCADE');
-            await pool.query('DROP TABLE IF EXISTS users CASCADE');
-
-            console.log('Старые таблицы удалены');
+            // БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ - создаем только отсутствующие таблицы
+            console.log('Проверка и создание недостающих таблиц...');
 
             // Создание таблицы пользователей
             await pool.query(`
-                CREATE TABLE users (
+                CREATE TABLE IF NOT EXISTS users (
                     user_id BIGINT PRIMARY KEY,
                     username VARCHAR(255),
                     first_name VARCHAR(255),
@@ -541,6 +527,24 @@ class Database {
             WHERE user_id = $1 AND channel_link = $2
         `, [userId, channelLink]);
         return result.rows.length > 0;
+    }
+
+    // Статистика рефералов
+    static async getReferralStats(userId) {
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) as total_referrals,
+                COUNT(CASE WHEN referral_completed = TRUE THEN 1 END) as active_referrals,
+                COUNT(CASE WHEN referral_completed = FALSE THEN 1 END) as inactive_referrals
+            FROM users
+            WHERE referrer_id = $1
+        `, [userId]);
+
+        return {
+            total: parseInt(result.rows[0].total_referrals),
+            active: parseInt(result.rows[0].active_referrals),
+            inactive: parseInt(result.rows[0].inactive_referrals)
+        };
     }
 }
 
