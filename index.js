@@ -26,7 +26,7 @@ async function checkReferralConditions(userId) {
             return; // Нет реферера
         }
 
-        // Проверяем подписку на спонсорские каналы
+        // Проверяем подписку на спонсорски�� каналы
         const subscriptionStatus = await checkUserSubscription(userId, userId);
         if (!subscriptionStatus.isSubscribed) {
             console.log(`👥 Реферал ${userId} еще не подписан на спонсорские каналы`);
@@ -153,8 +153,9 @@ async function checkUserSubscriptionForTasks(userId, chatId, firstName = '', lan
         console.log(`📋 Получение заданий SubGram для пользователя ${userId}`);
 
         // Получаем задания через getTaskChannels с action='newtask' и MaxOP=10 (больше заданий)
+        console.log(`🌐 ВЫЗЫВАЕМ SubGram.getTaskChannels для заданий`);
         const taskChannels = await SubGram.getTaskChannels(userId, chatId, firstName, languageCode, isPremium);
-        console.log(`📥 SubGram задания для заработка:`, JSON.stringify(taskChannels, null, 2));
+        console.log(`📥 SubGram ОТВЕТ для заданий (getTaskChannels):`, JSON.stringify(taskChannels, null, 2));
 
         return {
             status: taskChannels.status || 'ok',
@@ -186,7 +187,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             console.log(`📊 Кеш:`, cachedStatus);
 
             if (cachedStatus.isSubscribed === false && cachedStatus.unsubscribedLinks.length > 0) {
-                // Пользователь точно не подписан - есть неподписанные каналы
+                // Пользователь точно не подписан - есть неподписанные канал��
                 return {
                     isSubscribed: false,
                     subscriptionData: {
@@ -247,7 +248,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         if (taskChannels.status === 'warning') {
             console.log(`⚠️ Пользователь ${userId} НЕ подписан (статус warning): ${taskChannels.message}`);
 
-            // Для статуса warning SubGram может не возвращать ссылки, попробуем разные способы получения
+            // Для статуса warning SubGram может не ��озвращать ссылки, попробуем разные способы получения
             if (!taskChannels.links || taskChannels.links.length === 0) {
                 console.log(`🔄 Запрашиваем ссылки каналов для пользователя ${userId} (warning без с��ылок)`);
 
@@ -492,7 +493,7 @@ bot.on('callback_query', async (callbackQuery) => {
             if (!subscriptionStatus.isSubscribed) {
                 console.log(`🔒 ЖЁСТКАЯ БЛОКИРОВКА действ��я "${data}" для неподписанного пользователя ${userId}`);
 
-                // Показываем алерт с жёсткой блокировкой
+                // Показываем алерт с жёсткой блокировко��
                 await bot.answerCallbackQuery(callbackQuery.id, {
                     text: '🔒 Доступ заблокирован! Сначала подпишитесь на все ��понсорские каналы!',
                     show_alert: true
@@ -512,7 +513,7 @@ bot.on('callback_query', async (callbackQuery) => {
                             reply_markup: keyboard
                         });
                     } catch (e) {
-                        console.log('Не удалось отредактировать сообщение, удаляем старое и отправляем новое');
+                        console.log('Не удалось отредактировать сообщ��ние, удаляем старое и отправляем новое');
                         // Пытаемся удалить старое сообщение с меню
                         try {
                             await bot.deleteMessage(chatId, callbackQuery.message.message_id);
@@ -916,7 +917,7 @@ async function showClicker(chatId, userId, messageId) {
                    `📊 Кликов сег��дня: ${clicksToday}/10\n` +
                    `⏳ Осталось кл��ков: ${remainingClicks}\n\n` +
                    `${canClick ? '✅ Можете кликать!' : `⏰ Ждите ${timeToWait} мин.`}\n\n` +
-                   `ℹ️ После каждого клика время ожидания\nувеличивается на 5 минут`;
+                   `ℹ️ После каждого клика время ожидани��\nувеличивается на 5 минут`;
     
     const keyboard = {
         inline_keyboard: [
@@ -996,7 +997,7 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
         // Списываем средства
         await Database.updateUserBalance(userId, amount, 'subtract');
         
-        // Создаем заявку
+        // Со��даем заявку
         const request = await Database.createWithdrawalRequest(userId, amount);
         
         // Отправляем в админ чат
@@ -1041,14 +1042,15 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
 // Показать задания
 async function showTasks(chatId, userId, messageId) {
     try {
-        console.log(`📋 Загрузка заданий для пользователя ${userId}`);
+        console.log(`📋 ФУНКЦИЯ showTasks ВЫЗВАНА для пользователя ${userId}`);
 
         // 1. Получаем каналы для заданий через специальную функцию (НЕ блокирующую)
         const taskData = await checkUserSubscriptionForTasks(userId, chatId);
+        console.log(`📋 РЕЗУЛЬТАТ checkUserSubscriptionForTasks:`, JSON.stringify(taskData, null, 2));
 
         // 2. Получаем уже выполненные SubGram задания пользователем
         const completedSubgramTasks = await Database.getCompletedSubgramTasks(userId);
-        console.log(`Пользователь ${userId} уже выполнил ${completedSubgramTasks.length} SubGram заданий`);
+        console.log(`📋 Пользователь ${userId} уже выполнил ${completedSubgramTasks.length} SubGram заданий:`, completedSubgramTasks);
 
         // 3. Фильтруем каналы - исключаем уже выполненные как задания
         let availableChannels = [];
@@ -1058,13 +1060,16 @@ async function showTasks(chatId, userId, messageId) {
             );
         }
 
-        console.log(`📊 Доступно новых SubGram заданий: ${availableChannels.length}`);
+        console.log(`📊 ДОСТУПНО НОВЫХ SubGram ЗАДАНИЙ: ${availableChannels.length}`);
+        console.log(`📊 СПИСОК ДОСТУПНЫХ ЗАДАНИЙ:`, availableChannels);
 
         if (taskData.status === 'error') {
+            console.log(`❌ ПОКАЗЫВАЕМ ОШИБКУ ЗАДАНИЙ`);
+            // Ошибка SubGram - показываем сообщение об ошибке
             // Ошибка SubGram - показываем сообщение об ошибке
             const message = `📋 Задания\n\n` +
                            `⚠️ Временные проблемы с получением заданий.\n` +
-                           `🔄 Попробуйте позже или обратитесь к администратору.`;
+                           `🔄 Попробуйте позже или обратитесь к админис��ратору.`;
 
             await bot.editMessageText(message, {
                 chat_id: chatId,
@@ -1072,6 +1077,7 @@ async function showTasks(chatId, userId, messageId) {
                 reply_markup: createBackToMenuKeyboard()
             });
         } else if (availableChannels.length > 0) {
+            console.log(`✅ ПОКАЗЫВАЕМ SUBGRAM ЗАДАНИЕ`);
             // Показываем ПЕРВОЕ доступное задание SubGram в правильном формате
             const taskLink = availableChannels[0];
             const sponsorIndex = taskData.availableChannels.indexOf(taskLink);
@@ -1099,8 +1105,10 @@ async function showTasks(chatId, userId, messageId) {
                 reply_markup: keyboard
             });
         } else {
+            console.log(`🔍 НЕТ SUBGRAM ЗАДАНИЙ, ПРОВЕРЯЕМ КАСТОМНЫЕ`);
             // Нет доступных SubGram заданий, проверяем кастомные задания
             const customTasks = await Database.getTasks(false); // false = не SubGram задания
+            console.log(`🔍 НАЙДЕНО КАСТОМНЫХ ЗАДАНИЙ: ${customTasks.length}`);
             
             // Ищем первое невыполненное кастомное задание
             let availableCustomTask = null;
@@ -1113,6 +1121,7 @@ async function showTasks(chatId, userId, messageId) {
             }
             
             if (availableCustomTask) {
+                console.log(`✅ ПОКАЗЫВАЕМ КАСТОМНОЕ ЗАДАНИЕ:`, availableCustomTask);
                 // Показываем кастомное задание
                 const message = `📋 Доступное задание\n\n` +
                                `📢 ${availableCustomTask.title}\n` +
@@ -1135,6 +1144,7 @@ async function showTasks(chatId, userId, messageId) {
                     reply_markup: keyboard
                 });
             } else {
+                console.log(`❌ НЕТ ДОСТУПНЫХ ЗАДАНИЙ ВООБЩЕ`);
                 // Нет доступных заданий вообще
                 const message = `📋 Задания\n\n` +
                                `✅ Все зад��ния выполнены!\n` +
@@ -1708,7 +1718,7 @@ async function showAdminLottery(chatId, messageId) {
 
 async function showAdminPromocodes(chatId, messageId) {
     const message = `🎫 Управление промокодами\n\n` +
-                   `Со��давайте и управляйте промокодами`;
+                   `Со��давайте и управляйте п��омокодами`;
 
     const keyboard = {
         inline_keyboard: [
@@ -2028,7 +2038,7 @@ async function handleGiveWeeklyRewards(chatId, userId, callbackQueryId) {
         }
         
         await bot.answerCallbackQuery(callbackQueryId, 
-            `✅ Награды выданы ${rewardedCount} по��ьзователям!`);
+            `✅ Награды выданы ${rewardedCount} ��о��ьзователям!`);
         
     } catch (error) {
         console.error('Ошибка выдачи наград:', error);
