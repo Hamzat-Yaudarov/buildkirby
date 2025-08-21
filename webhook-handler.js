@@ -96,15 +96,21 @@ class WebhookHandler {
     }
 
     async handleSubgramWebhook(req, res) {
-        // Быстро отвечаем на запрос, чтобы SubGram не считал его неуспешным
-        res.status(200).json({ received: true, timestamp: new Date().toISOString() });
+        // Проверяем API ключ в заголовке СНАЧАЛА (до ответа)
+        const apiKey = req.headers['api-key'] || req.headers['authorization'] || req.headers['auth'];
+        console.log('🔑 Проверка API ключа:', {
+            received: apiKey ? 'есть' : 'отсутствует',
+            expected: config.SUBGRAM_API_KEY ? 'настроен' : 'не настроен'
+        });
 
-        // Проверяем API ключ в заголовке
-        const apiKey = req.headers['api-key'];
         if (!apiKey || apiKey !== config.SUBGRAM_API_KEY) {
-            console.error('Неверный API ключ в вебхуке SubGram:', apiKey);
+            console.error('❌ Неверный API ключ в вебхуке SubGram. Получен:', apiKey, 'Ожидался:', config.SUBGRAM_API_KEY);
+            res.status(401).json({ error: 'Unauthorized', message: 'Invalid API key' });
             return;
         }
+
+        // Быстро отвечаем на запрос, чтобы SubGram не считал его неуспешным
+        res.status(200).json({ received: true, timestamp: new Date().toISOString() });
 
         // Логируем вход��щий вебхук
         console.log('Получен вебхук SubGram:', JSON.stringify(req.body, null, 2));
@@ -156,6 +162,8 @@ class WebhookHandler {
     }
 
     updateUserSubscriptionCache(userId, status, link) {
+        console.log(`🔄 Обновление кеша подписки: пользователь ${userId}, статус ${status}, ссылка ${link}`);
+
         if (!this.userSubscriptionCache.has(userId)) {
             this.userSubscriptionCache.set(userId, {
                 subscriptions: new Map(),
@@ -169,6 +177,11 @@ class WebhookHandler {
             timestamp: Date.now()
         });
         userCache.lastUpdate = Date.now();
+
+        console.log(`📊 Кеш пользователя ${userId} обновлен:`, {
+            totalSubscriptions: userCache.subscriptions.size,
+            lastUpdate: new Date(userCache.lastUpdate).toISOString()
+        });
 
         // Очищаем старые записи (старше 1 часа)
         this.cleanupCache();
@@ -188,22 +201,37 @@ class WebhookHandler {
     getUserSubscriptionStatus(userId) {
         const userCache = this.userSubscriptionCache.get(userId);
         if (!userCache) {
-            return { isSubscribed: null, links: [], lastUpdate: null };
+            console.log(`📭 Нет кеша для пользователя ${userId}`);
+            return { isSubscribed: null, unsubscribedLinks: [], lastUpdate: null };
         }
 
         const unsubscribedLinks = [];
-        let isFullySubscribed = true;
+        const subscribedLinks = [];
+        let hasUnsubscribed = false;
 
         for (const [link, data] of userCache.subscriptions.entries()) {
             if (data.status === 'unsubscribed') {
                 unsubscribedLinks.push(link);
-                isFullySubscribed = false;
+                hasUnsubscribed = true;
+            } else if (data.status === 'subscribed' || data.status === 'notgetted') {
+                subscribedLinks.push(link);
             }
         }
 
+        const isFullySubscribed = !hasUnsubscribed && userCache.subscriptions.size > 0;
+
+        console.log(`📊 Статус подписки пользователя ${userId}:`, {
+            isSubscribed: isFullySubscribed,
+            unsubscribedCount: unsubscribedLinks.length,
+            subscribedCount: subscribedLinks.length,
+            totalLinks: userCache.subscriptions.size,
+            lastUpdate: new Date(userCache.lastUpdate).toISOString()
+        });
+
         return {
-            isSubscribed: isFullySubscribed && unsubscribedLinks.length === 0,
+            isSubscribed: isFullySubscribed,
             unsubscribedLinks,
+            subscribedLinks,
             lastUpdate: userCache.lastUpdate,
             totalLinks: userCache.subscriptions.size
         };
@@ -219,7 +247,7 @@ class WebhookHandler {
                 // Можем добавить логику награды за подписку
                 console.log(`Пользователь ${userId} получил подписку на ${link}`);
                 
-                // Если пользователь полностью подписан, можем отпра��ить уведомление
+                // Если пользователь полностью подписан, можем отпра���ить уведомление
                 const subscriptionStatus = this.getUserSubscriptionStatus(userId);
                 if (subscriptionStatus.isSubscribed) {
                     try {

@@ -3,16 +3,28 @@ const config = require('./config');
 
 class SubGram {
     static async checkSubscription(userId, chatId, firstName = '', languageCode = 'ru', isPremium = false) {
+        const requestData = {
+            UserId: userId.toString(),
+            ChatId: chatId.toString(),
+            first_name: firstName,
+            language_code: languageCode,
+            Premium: isPremium,
+            MaxOP: 3,
+            action: 'subscribe'
+        };
+
+        console.log(`🌐 SubGram checkSubscription запрос для пользователя ${userId}:`, {
+            userId,
+            chatId,
+            firstName: firstName || 'не указано',
+            languageCode,
+            isPremium,
+            timestamp: new Date().toISOString()
+        });
+
         try {
-            const response = await axios.post('https://api.subgram.ru/request-op/', {
-                UserId: userId.toString(),
-                ChatId: chatId.toString(),
-                first_name: firstName,
-                language_code: languageCode,
-                Premium: isPremium,
-                MaxOP: 3,
-                action: 'subscribe'
-            }, {
+            const startTime = Date.now();
+            const response = await axios.post('https://api.subgram.ru/request-op/', requestData, {
                 headers: {
                     'Auth': config.SUBGRAM_API_KEY,
                     'Content-Type': 'application/json'
@@ -20,33 +32,60 @@ class SubGram {
                 timeout: 10000 // 10 секунд таймаут
             });
 
+            const responseTime = Date.now() - startTime;
+            console.log(`✅ SubGram checkSubscription ответ для пользователя ${userId} (${responseTime}ms):`, {
+                status: response.status,
+                dataStatus: response.data?.status,
+                linksCount: response.data?.links?.length || 0,
+                hasSponsors: !!response.data?.additional?.sponsors
+            });
+
             return response.data;
         } catch (error) {
+            const responseTime = Date.now() - startTime;
+            console.error(`❌ SubGram checkSubscription ошибка для пользователя ${userId} (${responseTime}ms):`);
+
             if (error.response) {
                 // Сервер ответил с ошибкой
-                console.error(`Ошибка при регистрации подписки SubGram: ${error.response.status} - ${error.response.statusText}`);
+                console.error(`  📊 Статус: ${error.response.status} - ${error.response.statusText}`);
+                console.error(`  📄 Данные:`, error.response.data);
+                console.error(`  🔗 URL:`, error.config?.url);
+                console.error(`  📋 Заголовки:`, error.config?.headers);
             } else if (error.request) {
                 // Запрос был отправлен, но ответа не получено
-                console.error('Ошибка при регистрации подписки SubGram: Нет ответа от сервера');
+                console.error('  🌐 Нет ответа от сервера SubGram');
+                console.error('  ⏱️ Таймаут или сетевая ошибка');
             } else {
                 // Другая ошибка
-                console.error('Ошибка при регистрации подписки SubGram:', error.message);
+                console.error('  ⚠️ Ошибка конфигурации:', error.message);
             }
-            return { status: 'error', message: 'Ошибка связи с сервисом' };
+
+            return { status: 'error', message: 'Ошибка связи с сервисом', error: error.message };
         }
     }
 
     static async getTaskChannels(userId, chatId, firstName = '', languageCode = 'ru', isPremium = false) {
+        const requestData = {
+            UserId: userId.toString(),
+            ChatId: chatId.toString(),
+            first_name: firstName,
+            language_code: languageCode,
+            Premium: isPremium,
+            MaxOP: 1,
+            action: 'newtask'
+        };
+
+        console.log(`📋 SubGram getTaskChannels запрос для пользователя ${userId}:`, {
+            userId,
+            chatId,
+            action: 'newtask',
+            maxOP: 1,
+            timestamp: new Date().toISOString()
+        });
+
         try {
-            const response = await axios.post('https://api.subgram.ru/request-op/', {
-                UserId: userId.toString(),
-                ChatId: chatId.toString(),
-                first_name: firstName,
-                language_code: languageCode,
-                Premium: isPremium,
-                MaxOP: 1,
-                action: 'newtask'
-            }, {
+            const startTime = Date.now();
+            const response = await axios.post('https://api.subgram.ru/request-op/', requestData, {
                 headers: {
                     'Auth': config.SUBGRAM_API_KEY,
                     'Content-Type': 'application/json'
@@ -54,16 +93,29 @@ class SubGram {
                 timeout: 10000 // 10 секунд таймаут
             });
 
+            const responseTime = Date.now() - startTime;
+            console.log(`✅ SubGram getTaskChannels ответ для пользователя ${userId} (${responseTime}ms):`, {
+                status: response.status,
+                dataStatus: response.data?.status,
+                linksCount: response.data?.links?.length || 0,
+                hasSponsors: !!response.data?.additional?.sponsors
+            });
+
             return response.data;
         } catch (error) {
+            const responseTime = Date.now() - startTime;
+            console.error(`❌ SubGram getTaskChannels ошибка для пользователя ${userId} (${responseTime}ms):`);
+
             if (error.response) {
-                console.error(`Ошибка при получении заданий SubGram: ${error.response.status} - ${error.response.statusText}`);
+                console.error(`  📊 Статус: ${error.response.status} - ${error.response.statusText}`);
+                console.error(`  📄 Данные:`, error.response.data);
             } else if (error.request) {
-                console.error('Ошибка при получении заданий SubGram: Нет ответа от сервера');
+                console.error('  🌐 Нет ответа от сервера SubGram');
             } else {
-                console.error('Ошибка при получении заданий SubGram:', error.message);
+                console.error('  ⚠️ Ошибка конфигурации:', error.message);
             }
-            return { status: 'error', message: 'Ошибка связи с сервисом' };
+
+            return { status: 'error', message: 'Ошибка связи с сервисом', error: error.message };
         }
     }
 
@@ -87,7 +139,7 @@ class SubGram {
             } else if (error.request) {
                 console.error('Ошибка при проверке подписок пользователя: Нет ответа от сервера');
             } else {
-                console.error('Ошибка при проверке подписок пользователя:', error.message);
+                console.error('Ошибка при пр��верке подписок пользователя:', error.message);
             }
             return { status: 'error', message: 'Ошибка связи с сервисом' };
         }
