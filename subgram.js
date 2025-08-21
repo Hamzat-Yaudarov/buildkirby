@@ -2,6 +2,7 @@ const axios = require('axios');
 const config = require('./config');
 
 class SubGram {
+    // Проверка СПОНСОРСКИХ каналов для доступа к боту (action='subscribe', MaxOP=3)
     static async checkSubscription(userId, chatId, firstName = '', languageCode = 'ru', isPremium = false) {
         const requestData = {
             UserId: userId.toString(),
@@ -62,7 +63,7 @@ class SubGram {
 
             if (error.response) {
                 // Сервер ответил с ошибкой
-                console.error(`  📊 Статус: ${error.response.status} - ${error.response.statusText}`);
+                console.error(`  ��� Статус: ${error.response.status} - ${error.response.statusText}`);
                 console.error(`  📄 Данные:`, error.response.data);
                 console.error(`  🔗 URL:`, error.config?.url);
                 console.error(`  📋 Заголовки:`, error.config?.headers);
@@ -79,6 +80,7 @@ class SubGram {
         }
     }
 
+    // Получение ЗАДАНИЙ для заработка звёзд (action='newtask', MaxOP=10)
     static async getTaskChannels(userId, chatId, firstName = '', languageCode = 'ru', isPremium = false) {
         const requestData = {
             UserId: userId.toString(),
@@ -175,7 +177,7 @@ class SubGram {
                     'Auth': config.SUBGRAM_API_KEY,
                     'Content-Type': 'application/json'
                 },
-                timeout: 10000 // 10 секунд таймаут
+                timeout: 10000 // 10 секунд та��маут
             });
 
             const responseTime = Date.now() - startTime;
@@ -258,7 +260,7 @@ class SubGram {
             message += `${i + 1}. ${channelName}\n${link}\n\n`;
         }
 
-        message += '✅ После подписки нажмите "Проверить подписки"';
+        message += '✅ После подписки нажмите "��роверить подписки"';
         return message;
     }
 
