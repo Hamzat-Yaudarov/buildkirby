@@ -401,7 +401,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                 console.log(`⚠️ Нет ссылок каналов, показываем общее сообщение о подписке`);
                 await bot.sendMessage(chatId,
                     '🔒 Для доступа к боту необходимо подписаться на спонсорские каналы.\n\n' +
-                    '⏳ Пожалуйста, подождите немного или обратитесь к администратору.'
+                    '⏳ Пожалуйста, подождите немного или обратитесь к а��министратору.'
                 );
             }
             return; // ВАЖНО: выходим, НЕ показываем главное меню
@@ -442,6 +442,8 @@ bot.on('callback_query', async (callbackQuery) => {
     const chatId = message.chat.id;
     const userId = callbackQuery.from.id;
     const data = callbackQuery.data;
+
+    console.log(`🔔 ПОЛУЧЕН CALLBACK: "${data}" от пользователя ${userId}`);
 
     try {
         // Получаем пользователя
@@ -562,7 +564,7 @@ bot.on('callback_query', async (callbackQuery) => {
             }
         }
 
-        // Отвечаем на callback_query только для команд, которые н�� отвечают сами
+        // Отвечаем на callback_query только для команд, к��торые н�� отвечают сами
         const commandsThatAnswerThemselves = [
             'check_subscription',
             'click',
@@ -614,6 +616,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 break;
                 
             case 'tasks':
+                console.log(`📋 ВЫЗЫВАЮ showTasks для пользователя ${userId}`);
                 await showTasks(chatId, userId, message.message_id);
                 break;
                 
@@ -925,7 +928,7 @@ async function showClicker(chatId, userId, messageId) {
                 text: canClick && remainingClicks > 0 ? '🖱 КЛИК!' : '��� Недоступно', 
                 callback_data: canClick && remainingClicks > 0 ? 'click' : 'disabled'
             }],
-            [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
+            [{ text: '🏠 �� главное меню', callback_data: 'main_menu' }]
         ]
     };
     
@@ -1373,7 +1376,7 @@ bot.onText(/\/admin/, async (msg) => {
 
 // Показать админ-панель
 async function showAdminPanel(chatId, messageId = null) {
-    const message = '👨‍💼 Админ-панель\n\nВыберите действие:';
+    const message = '👨‍💼 Админ-панел��\n\nВыберите действие:';
 
     const keyboard = {
         inline_keyboard: [
@@ -1458,7 +1461,7 @@ async function handleAdminCallback(chatId, userId, data, messageId, callbackQuer
                 break;
         }
 
-        // Отвечаем на callback query для о��ычных команд (ко��анды создания уже ответили через return)
+        // Отв��чаем на callback query для о��ычных команд (ко��анды создания уже ответили через return)
         if (!['admin_give_rewards', 'admin_reset_weekly'].includes(data)) {
             await bot.answerCallbackQuery(callbackQueryId);
         }
@@ -1534,7 +1537,7 @@ async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
     }
 }
 
-// Проверка выполнения кастомного задания
+// Проверка выполнения ��астомного задания
 async function handleCustomTaskCheck(chatId, userId, taskId, messageId, callbackQueryId) {
     try {
         console.log(`✅ Проверка выполнения кастомного задания ${taskId} для пользователя ${userId}`);
