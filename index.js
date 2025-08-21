@@ -267,22 +267,32 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         
         console.log(`📊 Статус подписки:`, subscriptionStatus);
 
-        // Если пользователь НЕ подписан - показываем ТОЛЬКО спонсорские каналы
-        if (!subscriptionStatus.isSubscribed && subscriptionStatus.subscriptionData?.links?.length > 0) {
-            console.log(`🔒 Пользователь ${userId} не подписан, показываем спонсорские каналы`);
-            
-            const message = SubGram.formatSubscriptionMessage(
-                subscriptionStatus.subscriptionData.links, 
-                subscriptionStatus.subscriptionData.additional?.sponsors
-            );
-            const keyboard = SubGram.createSubscriptionKeyboard(subscriptionStatus.subscriptionData.links);
+        // Если пользователь НЕ подписан - показываем спонсорские каналы (даже если ссылки пустые)
+        if (!subscriptionStatus.isSubscribed) {
+            console.log(`🔒 Пользователь ${userId} НЕ подписан, блокируем доступ`);
 
-            await bot.sendMessage(chatId, message, { reply_markup: keyboard });
+            // Если есть ссылки - показываем их
+            if (subscriptionStatus.subscriptionData?.links?.length > 0) {
+                console.log(`📢 Показываем ${subscriptionStatus.subscriptionData.links.length} спонсорских каналов`);
+                const message = SubGram.formatSubscriptionMessage(
+                    subscriptionStatus.subscriptionData.links,
+                    subscriptionStatus.subscriptionData.additional?.sponsors
+                );
+                const keyboard = SubGram.createSubscriptionKeyboard(subscriptionStatus.subscriptionData.links);
+                await bot.sendMessage(chatId, message, { reply_markup: keyboard });
+            } else {
+                // Если нет ссылок, но пользователь не подписан - показываем общее сообщение
+                console.log(`⚠️ Нет ссылок каналов, показываем общее сообщение о подписке`);
+                await bot.sendMessage(chatId,
+                    '🔒 Для доступа к боту необходимо подписаться на спонсорские каналы.\n\n' +
+                    '⏳ Пожалуйста, подождите немного или обратитесь к администратору.'
+                );
+            }
             return; // ВАЖНО: выходим, НЕ показываем главное меню
         }
-        
-        // Если пользователь подписан ИЛИ нет спонсорских каналов - показываем главное меню
-        console.log(`✅ Пользователь ${userId} подписан или нет спонсоров, показываем главное меню`);
+
+        // Только если пользователь точно подписан - показываем главное меню
+        console.log(`✅ Пользователь ${userId} подписан, показываем главное меню`);
         await showMainMenu(chatId, userId);
         
     } catch (error) {
@@ -347,7 +357,7 @@ bot.on('callback_query', async (callbackQuery) => {
             );
 
             if (!subscriptionStatus.isSubscribed && subscriptionStatus.subscriptionData?.links?.length > 0) {
-                console.log(`🔒 БЛОКИРУЕМ действие "${data}" для неподписанного пользователя ${userId}`);
+                console.log(`🔒 БЛОКИРУЕМ действие "${data}" для неподписанного пол��зователя ${userId}`);
                 
                 // Пользователь не подписан - показываем каналы для подписки
                 const subscriptionData = subscriptionStatus.subscriptionData;
@@ -528,7 +538,7 @@ async function showProfile(chatId, userId, messageId) {
                    `👤 Имя: ${user.first_name}\n` +
                    `🌟 Баланс: ${user.balance} звёзд\n` +
                    `💰 Заработано за рефералов: ${user.referral_earned}\n` +
-                   `💎 Всего заработано: ${user.total_earned}\n` +
+                   `💎 Всего з��работано: ${user.total_earned}\n` +
                    `👥 Всего рефералов: ${user.total_referrals}\n` +
                    `📈 Рефералов за день: ${user.daily_referrals}\n` +
                    `✅ Выполнено заданий: ${completedTasks}\n` +
@@ -692,8 +702,8 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
                             `📱 Username: @${user.username || 'отсутствует'}\n` +
                             `💰 Сумма: ${amount} звёзд\n` +
                             `💎 Остаток: ${user.balance - amount} звёзд\n` +
-                            `👤 [Профиль](tg://user?id=${user.user_id})`;
-        
+                            `🔗 Профиль: tg://user?id=${user.user_id}`;
+
         const adminKeyboard = {
             inline_keyboard: [
                 [
@@ -702,10 +712,9 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
                 ]
             ]
         };
-        
+
         await bot.sendMessage(config.ADMIN_CHAT_ID, adminMessage, {
-            reply_markup: adminKeyboard,
-            parse_mode: 'Markdown'
+            reply_markup: adminKeyboard
         });
         
         // Уведомляем пользователя
@@ -936,7 +945,7 @@ async function showLottery(chatId, messageId) {
     });
 }
 
-// обработка ввода промокода
+// обработка ввода промок��да
 async function handlePromocodeInput(chatId, userId) {
     userStates.set(userId, 'waiting_promocode');
     await bot.sendMessage(chatId, '🎫 Введите промокод:');
@@ -1187,7 +1196,7 @@ async function showAdminWithdrawals(chatId, messageId) {
             reply_markup: keyboard
         });
     } catch (error) {
-        console.error('Ошибка показа заявок:', error);
+        console.error('Ошибка показа зая��ок:', error);
     }
 }
 
@@ -1246,7 +1255,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
 }
 
 async function showAdminLottery(chatId, messageId) {
-    const message = `🎲 Управление лотереями\n\n` +
+    const message = `🎲 Управление лотере��ми\n\n` +
                    `Здесь вы можете создавать и управлять лотереями`;
 
     const keyboard = {
@@ -1364,7 +1373,7 @@ async function handleTaskCheck(chatId, userId, messageId, callbackQueryId) {
             const message = `✅ Задание выполнено!\n\n` +
                            `💰 Вы получили 0.3 звезды\n` +
                            `🏆 Вы получили 1 очко\n\n` +
-                           `Хотите выполнить ещё одно задание?`;
+                           `��отите выполнить ещё одно задание?`;
 
             const keyboard = {
                 inline_keyboard: [

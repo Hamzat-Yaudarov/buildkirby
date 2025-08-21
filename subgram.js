@@ -43,6 +43,21 @@ class SubGram {
             return response.data;
         } catch (error) {
             const responseTime = Date.now() - startTime;
+
+            if (error.response && error.response.status === 404) {
+                // 404 от SubGram может означать "нет спонсоров для этого пользователя"
+                const responseData = error.response.data;
+                if (responseData && responseData.message === 'Нет подходящих рекламодателей для данного пользователя') {
+                    console.log(`ℹ️ SubGram: нет спонсоров для пользователя ${userId}`);
+                    return {
+                        status: 'ok',
+                        code: 200,
+                        message: 'Нет спонсорских каналов для данного пользователя',
+                        total_fixed_link: 0
+                    };
+                }
+            }
+
             console.error(`❌ SubGram checkSubscription ошибка для пользователя ${userId} (${responseTime}ms):`);
 
             if (error.response) {
@@ -104,6 +119,22 @@ class SubGram {
             return response.data;
         } catch (error) {
             const responseTime = Date.now() - startTime;
+
+            if (error.response && error.response.status === 404) {
+                // 404 от SubGram означает "нет заданий для этого пользователя"
+                const responseData = error.response.data;
+                if (responseData && responseData.message === 'Нет подходящих рекламодателей для данного пользователя') {
+                    console.log(`ℹ️ SubGram getTaskChannels: нет заданий для пользователя ${userId}`);
+                    return {
+                        status: 'ok',
+                        code: 200,
+                        message: 'Нет заданий для данного пользователя',
+                        links: [],
+                        total_fixed_link: 0
+                    };
+                }
+            }
+
             console.error(`❌ SubGram getTaskChannels ошибка для пользователя ${userId} (${responseTime}ms):`);
 
             if (error.response) {
@@ -157,6 +188,22 @@ class SubGram {
             return response.data;
         } catch (error) {
             const responseTime = Date.now() - startTime;
+
+            if (error.response && error.response.status === 404) {
+                // 404 от SubGram означает "нет спонсоров для этого пользователя"
+                const responseData = error.response.data;
+                if (responseData && responseData.message === 'Нет подходящих рекламодателей для данного пользователя') {
+                    console.log(`ℹ️ SubGram getChannelLinks: нет спонсоров для пользователя ${userId}`);
+                    return {
+                        status: 'ok',
+                        code: 200,
+                        message: 'Нет спонсорских каналов для данного пользователя',
+                        links: [],
+                        total_fixed_link: 0
+                    };
+                }
+            }
+
             console.error(`❌ SubGram getChannelLinks ошибка для пользователя ${userId} (${responseTime}ms):`);
 
             if (error.response) {
