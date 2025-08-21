@@ -57,6 +57,7 @@ class Database {
                     weekly_points INTEGER DEFAULT 0,
                     last_case_open DATE,
                     referrer_id BIGINT,
+                    referral_completed BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )

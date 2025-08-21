@@ -158,7 +158,7 @@ class SubGram {
             language_code: languageCode,
             Premium: isPremium,
             MaxOP: 10, // Запрашиваем больше каналов для получения всех ссылок
-            action: 'subscribe'
+            action: 'subscribe' // Попробуем обычный action
         };
 
         console.log(`🔗 SubGram getChannelLinks запрос для пользователя ${userId}:`, {
@@ -193,7 +193,7 @@ class SubGram {
                 // 404 от SubGram означает "нет спонсоров для этого пользователя"
                 const responseData = error.response.data;
                 if (responseData && responseData.message === 'Нет подходящих рекламодателей для данного пользователя') {
-                    console.log(`ℹ️ SubGram getChannelLinks: нет спонсоров для пользователя ${userId}`);
+                    console.log(`ℹ️ SubGram getChannelLinks: нет спонсоров для пользов��теля ${userId}`);
                     return {
                         status: 'ok',
                         code: 200,

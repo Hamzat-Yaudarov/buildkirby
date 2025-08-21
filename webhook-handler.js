@@ -244,20 +244,15 @@ class WebhookHandler {
             // Проверяем, есть ли пользователь в базе
             const user = await Database.getUser(userId);
             if (user) {
-                // Можем добавить логику награды за подписку
+                // Можем добави��ь логику награды за подписку
                 console.log(`Пользователь ${userId} получил подписку на ${link}`);
                 
                 // Если пользователь полностью подписан, можем отпра���ить уведомление
+                // Не отправляем автоматические уведомления от вебхука
+                // Логика уведомлений должна быть в основном боте при проверке подписки
                 const subscriptionStatus = this.getUserSubscriptionStatus(userId);
                 if (subscriptionStatus.isSubscribed) {
-                    try {
-                        await this.bot.sendMessage(userId, 
-                            '✅ Спасибо! Вы подписались на все спонсорские каналы.\n' +
-                            'Теперь вам доступны все функции бота!'
-                        );
-                    } catch (e) {
-                        console.log(`Не удалось отправить уведомление пользователю ${userId}`);
-                    }
+                    console.log(`✅ Пользователь ${userId} полностью подписан (кеш обновлен)`);
                 }
             }
         } catch (error) {
