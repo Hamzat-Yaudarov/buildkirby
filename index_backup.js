@@ -17,7 +17,6 @@ const bot = new TelegramBot(config.BOT_TOKEN, {
 
 // Временное хранение состояний пользователей
 const userStates = new Map();
-const lastStartAt = new Map();
 
 // Проверка выполнения условий для засчитывания реферала
 async function checkReferralConditions(userId) {
@@ -191,21 +190,21 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
         // Проверяем ответ SubGram
         if (subscriptionCheck.status === 'error') {
-            console.log(`❌ Ошибка SubGram, используем кеш как fallback`);
+            console.log(`❌ Ошибка SubGram, проверяем кеш как fallback`);
+            
+            // В случае ошибки API используем кеш если есть
             if (cachedStatus.lastUpdate) {
                 return {
-                    isSubscribed: cachedStatus.isSubscribed === true,
+                    isSubscribed: cachedStatus.isSubscribed !== false,
                     subscriptionData: { 
                         status: 'fallback_cache',
                         links: cachedStatus.unsubscribedLinks 
                     }
                 };
             }
-            // Если совсем ничего не знаем — считаем НЕ подписан (строгий режим)
-            return { 
-                isSubscribed: false, 
-                subscriptionData: { status: 'error_no_cache', links: [] } 
-            };
+            
+            // Если нет кеша - считаем что подписан (fallback для работы бота)
+            return { isSubscribed: true, subscriptionData: { status: 'error_fallback' } };
         }
 
         // ВАЖНО: статус "warning" означает что пользователь НЕ подписан!
@@ -272,10 +271,10 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         }
 
         // Для всех остальных случаев логируем и считаем подписанным (безопасный fallback)
-        console.log(`🤷 Неизвестный статус для пользователя ${userId}: ${subscriptionCheck.status} — трактуем как НЕ подписан`);
+        console.log(`🤷 Неизвестный статус для пользователя ${userId}: ${subscriptionCheck.status}, считаем подписанным`);
         return {
-            isSubscribed: false,
-            subscriptionData: subscriptionCheck || { status: 'unknown', links: [] }
+            isSubscribed: true,
+            subscriptionData: subscriptionCheck
         };
         
     } catch (error) {
@@ -295,8 +294,8 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         }
 
         // Если нет ни API, ни кеша - считаем что подписан (fallback)
-        console.log(`⚠️ Нет данных о подписке, строгий fallback — НЕ подписан`);
-        return { isSubscribed: false, subscriptionData: { status: 'no_data', links: [] } };
+        console.log(`⚠️ Нет данных о подписке, используем fallback (подписан)`);
+        return { isSubscribed: true, subscriptionData: { status: 'no_data_fallback' } };
     }
 }
 
@@ -305,16 +304,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const referralCode = match[1] ? match[1].trim() : null;
-    const now = Date.now();
-    const last = lastStartAt.get(userId) || 0;
-
-
-    // защита от дублей в течение 8 секунд
-    if (now - last < 8000) {
-        console.log(`⏳ Игнорируем повторный /start от ${userId} (антидубль)`);
-        return;
-    }
-    lastStartAt.set(userId, now);
+    
     try {
         let user = await Database.getUser(userId);
         
@@ -438,52 +428,27 @@ bot.on('callback_query', async (callbackQuery) => {
                 callbackQuery.from.is_premium || false
             );
 
-            if (!subscriptionStatus.isSubscribed) {
+            if (!subscriptionStatus.isSubscribed && subscriptionStatus.subscriptionData?.links?.length > 0) {
                 console.log(`🔒 БЛОКИРУЕМ действие "${data}" для неподписанного пользователя ${userId}`);
+                
+                // Пользователь не подписан - показываем каналы для подписки
+                const subscriptionData = subscriptionStatus.subscriptionData;
+                const message = SubGram.formatSubscriptionMessage(subscriptionData.links, subscriptionData.additional?.sponsors);
+                const keyboard = SubGram.createSubscriptionKeyboard(subscriptionData.links);
 
-                // если есть ссылки — показываем их, иначе универсальное сообщение
-                if (subscriptionStatus.subscriptionData?.links?.length > 0) {
-                    const subData = subscriptionStatus.subscriptionData;
-                    const message = SubGram.formatSubscriptionMessage(subData.links, subData.additional?.sponsors);
-                    const keyboard = SubGram.createSubscriptionKeyboard(subData.links);
-
-                    try {
-                        await bot.editMessageText(message, {
-                            chat_id: chatId,
-                            message_id: callbackQuery.message.message_id,
-                            reply_markup: keyboard
-                        });
-                    } catch (e) {
-                        await bot.sendMessage(chatId, message, { reply_markup: keyboard });
-                    }
-                } else {
-                    const message = '🔒 Для доступа к боту необходимо подписаться на спонсорские каналы.\n\n' +
-                                    '⏳ Пожалуйста, попробуйте позже нажать «Проверить подписки» или обратитесь к администратору.';
-                    const keyboard = {
-                        inline_keyboard: [[{ text: '✅ Проверить подписки', callback_data: 'check_subscription' }]]
-                    };
-
-                    try {
-                        await bot.editMessageText(message, {
-                            chat_id: chatId,
-                            message_id: callbackQuery.message.message_id,
-                            reply_markup: keyboard
-                        });
-                    } catch (e) {
-                        await bot.sendMessage(chatId, message, { reply_markup: keyboard });
-                    }
+                try {
+                    await bot.editMessageText(message, {
+                        chat_id: chatId,
+                        message_id: callbackQuery.message.message_id,
+                        reply_markup: keyboard
+                    });
+                } catch (e) {
+                    // Если не удается редактировать, отправляем новое сообщение
+                    await bot.sendMessage(chatId, message, { reply_markup: keyboard });
                 }
 
-            if (!subscriptionStatus.isSubscribed) {
-                console.log(`🔒 БЛОКИРУЕМ действие "${data}" для неподписанного пользователя ${userId}`);
-
-                // Просто показываем всплывашку, без отправки новых сообщений
-                await bot.answerCallbackQuery(callbackQuery.id, {
-                    text: '❌ Подпишитесь на спонсорские каналы, чтобы пользоваться ботом',
-                    show_alert: true // покажет большое окно, а не маленький тост
-                });
-
-                return; // ЖЁСТКАЯ остановка — ничего больше не делаем
+                await bot.answerCallbackQuery(callbackQuery.id, '❌ Сначала подпишитесь на спонсорские каналы!');
+                return; // ВАЖНО: блокируем выполнение команды
             }
         }
 
@@ -600,7 +565,7 @@ async function handleSubscriptionCheck(chatId, userId, messageId, callbackQueryI
     if (subscriptionStatus.isSubscribed || !subscriptionStatus.subscriptionData?.links?.length) {
         await editMainMenu(chatId, messageId);
         if (callbackQueryId) {
-            await (callbackQueryId, '✅ Проверка пройдена!');
+            await bot.answerCallbackQuery(callbackQueryId, '✅ Проверка пройдена!');
         }
 
         // Проверяем условия для засчитывания реферала
@@ -1459,7 +1424,7 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
             reply_markup: createBackToMenuKeyboard()
         });
 
-        await (callbackQueryId, `🎉 Выиграли ${reward} звёзд!`);
+        await bot.answerCallbackQuery(callbackQueryId, `🎉 Выиграли ${reward} звёзд!`);
 
     } catch (error) {
         console.error('Ошибка открытия кейса:', error);
