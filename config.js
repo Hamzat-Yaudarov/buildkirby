@@ -11,5 +11,11 @@ module.exports = {
         3: 50,
         4: 25,
         5: 15
-    }
+    },
+    // Личные спонсорские каналы (добавьте свои)
+    PERSONAL_SPONSOR_CHANNELS: [
+        '@your_personal_channel1',
+        '@your_personal_channel2',
+        '@your_personal_channel3'
+    ]
 };
