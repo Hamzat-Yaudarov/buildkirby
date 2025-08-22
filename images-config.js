@@ -4,10 +4,10 @@
 module.exports = {
     // Основные разделы
     MAIN_MENU: 'https://imgur.com/09xddzK', // Картинка для главного меню
-    WELCOME: 'https://imgur.com/09xddzK', // Приветственное сообщение
+    WELCOME: 'https://imgur.com/ZXQRIzE', // Приветственное сообщение
     
     // Разделы функционала
-    PROFILE: 'https://imgur.com/undefined', // Профиль пользователя
+    PROFILE: 'https://imgur.com/k1sSUYM', // Профиль пользователя
     REFERRAL: 'https://imgur.com/NzrGU3a', // Реферальная система
     CLICKER: 'https://imgur.com/2tAlqP8', // Кликер
     TASKS: 'https://imgur.com/undefined', // Задания
