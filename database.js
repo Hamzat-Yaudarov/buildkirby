@@ -119,7 +119,7 @@ class Database {
                     FOREIGN KEY (promocode_id) REFERENCES promocodes(id)
                 )
             `);
-            console.log('Т��блица promocode_uses создана');
+            console.log('Таблица promocode_uses создана');
 
             // Создание таблицы лотерей
             await pool.query(`
@@ -179,41 +179,6 @@ class Database {
                 )
             `);
             console.log('Таблица bot_stats создана');
-
-            // Создание таблицы рулетки
-            await pool.query(`
-                CREATE TABLE roulette_bets (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL,
-                    bet_amount DECIMAL(10,2) NOT NULL,
-                    is_winner BOOLEAN DEFAULT FALSE,
-                    payout DECIMAL(10,2) DEFAULT 0,
-                    bet_sequence INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
-            console.log('Таблица roulette_bets создана');
-
-            // Создание таблицы статистики рулетки
-            await pool.query(`
-                CREATE TABLE roulette_stats (
-                    id SERIAL PRIMARY KEY,
-                    total_bets INTEGER DEFAULT 0,
-                    total_wagered DECIMAL(15,2) DEFAULT 0,
-                    total_paid_out DECIMAL(15,2) DEFAULT 0,
-                    total_profit DECIMAL(15,2) DEFAULT 0,
-                    current_sequence INTEGER DEFAULT 0,
-                    last_reset DATE DEFAULT CURRENT_DATE
-                )
-            `);
-            console.log('Таблица roulette_stats создана');
-
-            // Инициализируем статистику рулетки
-            await pool.query(`
-                INSERT INTO roulette_stats (id, total_bets, total_wagered, total_paid_out, total_profit, current_sequence)
-                VALUES (1, 0, 0, 0, 0, 0)
-            `);
-            console.log('Статистика рулетки инициализирована');
 
             // Создание таблицы выполненных SubGram заданий
             await pool.query(`
@@ -581,7 +546,7 @@ class Database {
         return result.rows.length > 0;
     }
 
-    // Методы для рабо��ы с рефералами
+    // Методы для работы с рефералами
     static async getUserReferrals(userId) {
         const result = await pool.query(`
             SELECT user_id, first_name, username, referral_completed, created_at
@@ -673,91 +638,6 @@ class Database {
             console.error('Ошибка получения информации о пользователе для вывода:', error);
             return null;
         }
-    }
-
-    // Методы рулетки
-    static async makeRouletteBet(userId, betAmount) {
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-
-            // Проверяем баланс пользователя
-            const user = await client.query('SELECT balance FROM users WHERE user_id = $1', [userId]);
-            if (user.rows.length === 0) {
-                throw new Error('Пользователь не найден');
-            }
-
-            if (user.rows[0].balance < betAmount) {
-                throw new Error('Недостаточно средств');
-            }
-
-            // Получаем текущую статистику рулетки
-            const stats = await client.query('SELECT current_sequence FROM roulette_stats WHERE id = 1');
-            let currentSequence = stats.rows[0].current_sequence;
-
-            // Увеличиваем последовательность
-            currentSequence += 1;
-
-            // Проверяем выигрыш (каждая 10-я ставка)
-            const isWinner = currentSequence % 10 === 0;
-            const payout = isWinner ? betAmount * 2 : 0;
-
-            // Списываем ставку
-            await client.query('UPDATE users SET balance = balance - $1 WHERE user_id = $2', [betAmount, userId]);
-
-            // Если выигрыш, добавляем выплату
-            if (isWinner) {
-                await client.query('UPDATE users SET balance = balance + $1 WHERE user_id = $2', [payout, userId]);
-            }
-
-            // Записываем ставку
-            await client.query(`
-                INSERT INTO roulette_bets (user_id, bet_amount, is_winner, payout, bet_sequence)
-                VALUES ($1, $2, $3, $4, $5)
-            `, [userId, betAmount, isWinner, payout, currentSequence]);
-
-            // Обновляем статистику
-            await client.query(`
-                UPDATE roulette_stats SET
-                    total_bets = total_bets + 1,
-                    total_wagered = total_wagered + $1,
-                    total_paid_out = total_paid_out + $2,
-                    total_profit = total_profit + $1 - $2,
-                    current_sequence = $3
-                WHERE id = 1
-            `, [betAmount, payout, currentSequence]);
-
-            await client.query('COMMIT');
-
-            return {
-                isWinner,
-                payout,
-                betAmount,
-                sequence: currentSequence
-            };
-
-        } catch (error) {
-            await client.query('ROLLBACK');
-            throw error;
-        } finally {
-            client.release();
-        }
-    }
-
-    static async getRouletteStats() {
-        const result = await pool.query('SELECT * FROM roulette_stats WHERE id = 1');
-        return result.rows[0];
-    }
-
-    static async getUserRouletteBets(userId, limit = 10) {
-        const result = await pool.query(`
-            SELECT bet_amount, is_winner, payout, created_at
-            FROM roulette_bets
-            WHERE user_id = $1
-            ORDER BY created_at DESC
-            LIMIT $2
-        `, [userId, limit]);
-        return result.rows;
     }
 }
 
