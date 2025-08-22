@@ -56,7 +56,7 @@ async function sendSponsorMessage(chatId, userId, subscriptionData, messageId = 
                 console.log(`✅ Отредактировали спонсорское сообщение для пользователя ${userId}`);
                 return true;
             } catch (editError) {
-                console.log(`⚠️ Редактирование не удалось для пользователя ${userId}, НО НЕ ОТПРАВЛЯЕМ НОВОЕ (защита от дублирования)`);
+                console.log(`⚠️ Редактирование не удалось для пользо��ателя ${userId}, НО НЕ ОТПРАВЛЯЕМ НОВОЕ (защита от дублирования)`);
                 return false; // НЕ отправляем новое сообщение при ошибке редактирования
             }
         } else {
@@ -82,7 +82,7 @@ async function checkReferralConditions(userId) {
             return; // Нет реферера
         }
 
-        // Проверяем подписку на спонсорские каналы
+        // Пров��ряем подписку на спонсорские каналы
         const subscriptionStatus = await checkUserSubscription(userId, userId);
         if (!subscriptionStatus.isSubscribed) {
             console.log(`👥 Реферал ${userId} еще не подписан на спонсорские к��налы`);
@@ -331,7 +331,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             };
         }
 
-        // Для всех остальных случаев используем СТРОГИЙ подход - НЕ подписан!
+        // Для всех о��тальных случаев используем СТРОГИЙ подход - НЕ подписан!
         console.log(`⚠️ Неизвестный статус для пользователя ${userId}: ${taskChannels.status}, считаем НЕ подписанным (СТРОГО)`);
         return {
             isSubscribed: false,
@@ -386,7 +386,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         let user = await Database.getUser(userId);
         
         if (!user) {
-            // Создаем нового пользователя
+            // Со��даем нового пользователя
             const referrerId = referralCode ? parseInt(referralCode) : null;
             user = await Database.createUser({
                 userId: userId,
@@ -428,7 +428,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                 // Если нет ссылок, но пользователь не подписан - показываем общее сообщение
                 console.log(`⚠️ Н��т ссылок каналов, показываем общее сообщение о подписке`);
                 await bot.sendMessage(chatId,
-                    '🔒 Для доступа к боту необходимо подписаться на спонсорские каналы.\n\n' +
+                    '🔒 Для доступа к бот�� необходимо подписаться на спонсорские каналы.\n\n' +
                     '⏳ Пожалуйста, подождите немного или обратитесь к администрат��ру.\n\n' +
                     '���� Нажмите кнопку ниже для повторной проверки.',
                     {
@@ -549,7 +549,7 @@ bot.on('callback_query', async (callbackQuery) => {
                             reply_markup: keyboard
                         });
                     } catch (e) {
-                        console.log('Не удалось отредактировать сообщение, удаляем старое и отправляем новое');
+                        console.log('Не удалось отредактировать сообщен��е, удаляем старое и отправляем новое');
                         // Пытаемся удалить старое сообщение с ��еню
                         try {
                             await bot.deleteMessage(chatId, callbackQuery.message.message_id);
@@ -688,7 +688,7 @@ bot.on('callback_query', async (callbackQuery) => {
                 } else if (data.startsWith('admin_')) {
                     await handleAdminCallback(chatId, userId, data, message.message_id, callbackQuery.id);
                 } else if (data.startsWith('approve_') || data.startsWith('reject_')) {
-                    await handleWithdrawalAction(chatId, userId, data, callbackQuery.id);
+                    await handleWithdrawalAction(chatId, userId, data, callbackQuery.id, message.message_id);
                 } else if (data.startsWith('broadcast_')) {
                     const type = data.split('_')[1];
                     await handleBroadcast(type);
@@ -749,7 +749,7 @@ async function handleSubscriptionCheck(chatId, userId, messageId, callbackQueryI
                               '• 📋 Выполняйте задания\n' +
                               '• 🖱 Используйте кликер\n' +
                               '• 🎁 Открывайте кейсы\n' +
-                              '• 💰 Выводите звёзды\n\n' +
+                              '• 💰 Выводите зв��зды\n\n' +
                               'Выберите действие:';
 
         const keyboard = createMainMenuKeyboard();
@@ -1171,7 +1171,7 @@ async function showInstructions(chatId, messageId) {
                    `🖱 Кликер:\n` +
                    `• Кликайте до 10 раз в день\n` +
                    `• За клик: 0.1 звезды\n` +
-                   `• Время ожидания у��еличивается\n\n` +
+                   `• Время ожидания у��еличив��ется\n\n` +
                    `📋 Задания:\n` +
                    `• Выполняйте кастомные задания\n` +
                    `• Награда указана в каждом задании\n\n` +
@@ -1432,7 +1432,7 @@ async function showAdminPanel(chatId, messageId = null) {
 
 // Обработчик админских действий (упрощенная версия - нужно добавить полную реали��ацию)
 async function handleAdminCallback(chatId, userId, data, messageId, callbackQueryId) {
-    // Про��ерка админских прав
+    // П��о��ерка админских прав
     if (!config.ADMIN_IDS.includes(userId)) {
         await bot.answerCallbackQuery(callbackQueryId, '❌ Нет прав');
         return;
@@ -1489,8 +1489,8 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
     }
 }
 
-// Обработчик заявок на вывод с отправкой номеров в платежный чат
-async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
+// Обработчик заявок на вывод с убиранием кнопок и отправкой в платежный чат
+async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, messageId) {
     // Проверка админских прав
     if (!config.ADMIN_IDS.includes(userId)) {
         await bot.answerCallbackQuery(callbackQueryId, '❌ Нет прав');
@@ -1515,14 +1515,45 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
             // Одобряем заявку
             await Database.processWithdrawal(id, 'approved');
 
-            // Отправляем в чат платежей С НОМЕРОМ ЗАЯВКИ
+            // УБИРАЕМ КНОПКИ из админского сообщения
+            try {
+                await bot.editMessageReplyMarkup(null, {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+
+                // Добавляем статус к тексту сообщения
+                const originalText = await bot.getChat(chatId).then(() => "Заявка ��бработана");
+                await bot.editMessageText(`${originalText}\n\n✅ ЗАЯВКА ОДОБРЕНА`, {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+            } catch (e) {
+                console.log('Не удалось отредактировать админское сообщение');
+            }
+
+            // Отправляем в чат платежей С НОМЕРОМ ЗАЯВКИ И КНОПКАМИ
             const paymentMessage = `✅ Выплата #${id} выполнена\n\n` +
                                  `👤 Пользователь: ${user?.first_name || 'Неизвестен'}\n` +
                                  `🆔 ID: ${requestData.user_id}\n` +
                                  `💰 Сумма: ${requestData.amount} звёзд\n` +
                                  `📅 Дата: ${new Date().toLocaleDateString('ru-RU')}`;
 
-            await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage);
+            const paymentKeyboard = {
+                inline_keyboard: [
+                    [
+                        { text: '📢 Наш Канал', url: 'https://t.me/kirbystarschanel' },
+                        { text: '💬 Наш чат', url: 'https://t.me/kirbistarschat' }
+                    ],
+                    [
+                        { text: '🤖 Наш бот', url: 'https://t.me/kirbystarsfarmbot' }
+                    ]
+                ]
+            };
+
+            await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage, {
+                reply_markup: paymentKeyboard
+            });
 
             // Уведомляем пользователя
             try {
@@ -1540,7 +1571,23 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
             await Database.processWithdrawal(id, 'rejected', 'Отклонено администратором');
             await Database.updateUserBalance(requestData.user_id, requestData.amount, 'add');
 
-            // Отправляем в чат платежей С НОМЕРОМ ЗАЯВКИ
+            // УБИРАЕМ КНОПКИ из админского сообщения
+            try {
+                await bot.editMessageReplyMarkup(null, {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+
+                // Добавляем статус к тексту сообщения
+                await bot.editMessageText(`Заявка обработана\n\n❌ ЗАЯВКА ОТКЛОНЕНА`, {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+            } catch (e) {
+                console.log('Не удалось отредактировать админское сообщение');
+            }
+
+            // Отправляем в чат платежей С НОМЕРОМ ЗАЯВКИ И КНОПКАМИ
             const paymentMessage = `❌ Заявка #${id} отклонена\n\n` +
                                  `👤 Пользователь: ${user?.first_name || 'Неизвестен'}\n` +
                                  `🆔 ID: ${requestData.user_id}\n` +
@@ -1548,7 +1595,21 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
                                  `📅 Дата: ${new Date().toLocaleDateString('ru-RU')}\n` +
                                  `💰 Средства возвращены пользователю`;
 
-            await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage);
+            const paymentKeyboard = {
+                inline_keyboard: [
+                    [
+                        { text: '📢 Наш Канал', url: 'https://t.me/kirbystarschanel' },
+                        { text: '💬 Наш чат', url: 'https://t.me/kirbistarschat' }
+                    ],
+                    [
+                        { text: '🤖 Наш бот', url: 'https://t.me/kirbystarsfarmbot' }
+                    ]
+                ]
+            };
+
+            await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage, {
+                reply_markup: paymentKeyboard
+            });
 
             // Уведомляем пользователя
             try {
@@ -1569,7 +1630,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId) {
     }
 }
 
-// Обработчик рассылки (упрощенная версия)
+// Обработчик рассылки (упр��щенная версия)
 async function handleBroadcast(type) {
     console.log(`📢 Рассылка типа ${type} (функция б��дет добавлена позже)`);
 }
