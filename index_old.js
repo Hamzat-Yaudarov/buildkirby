@@ -710,6 +710,7 @@ async function handleSubscriptionCheck(chatId, userId, messageId, callbackQueryI
                               '• 💰 Выводите звёзды\n\n' +
                               'Выберите действие:';
 
+                              
         const keyboard = createMainMenuKeyboard();
 
         await bot.editMessageText(successMessage, {
