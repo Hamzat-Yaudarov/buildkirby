@@ -36,7 +36,7 @@ class Database {
             if (usersTableExists.rows[0].exists) {
                 console.log('✅ Таблицы уже существуют, пропускаем создание');
                 console.log('База данных готова к работе!');
-                return; // Выходим, не создав��я таблицы заново
+                return; // Выходим, не создавая таблицы заново
             }
 
             console.log('📝 Таблицы не найдены, создаём структуру БД...');
@@ -587,6 +587,57 @@ class Database {
             WHERE referrer_id = $1
         `, [userId]);
         return result.rows[0];
+    }
+
+    // Оценка количества подписок пользователя на спонсорские каналы
+    // Базируется на том, что активир��ванные пользователи точно подписаны
+    static async getUserSponsorSubscriptions(userId) {
+        const user = await pool.query('SELECT referral_completed FROM users WHERE user_id = $1', [userId]);
+        if (user.rows.length === 0) return 0;
+
+        // Если пользователь активирован (referral_completed = true), значит подписан на спонсорские каналы
+        // Примерная оценка: 3-5 спонсорских каналов в среднем
+        return user.rows[0].referral_completed ? 4 : 0;
+    }
+
+    // Оценка количества подписок рефералов пользователя
+    static async getReferralsSponsorSubscriptions(userId) {
+        const result = await pool.query(`
+            SELECT COUNT(CASE WHEN referral_completed = TRUE THEN 1 END) as activated_referrals
+            FROM users
+            WHERE referrer_id = $1
+        `, [userId]);
+
+        // Каждый активированный реферал подписан на спонсорские каналы (примерно 4 канала)
+        const activatedReferrals = parseInt(result.rows[0].activated_referrals) || 0;
+        return activatedReferrals * 4;
+    }
+
+    // Получить расширенную информацию о пользователе для заявки на вывод
+    static async getUserWithdrawalInfo(userId) {
+        try {
+            const user = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
+            if (user.rows.length === 0) return null;
+
+            const userData = user.rows[0];
+
+            // Получаем статистику рефералов
+            const referralStats = await this.getReferralStats(userId);
+
+            // Получаем оценку подписок
+            const userSubscriptions = await this.getUserSponsorSubscriptions(userId);
+            const referralsSubscriptions = await this.getReferralsSponsorSubscriptions(userId);
+
+            return {
+                ...userData,
+                referral_stats: referralStats,
+                sponsor_subscriptions: userSubscriptions,
+                referrals_subscriptions: referralsSubscriptions
+            };
+        } catch (error) {
+            console.error('Ошибка получения информации о пользователе для вывода:', error);
+            return null;
+        }
     }
 }
 

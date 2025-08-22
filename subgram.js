@@ -63,7 +63,7 @@ class SubGram {
 
             if (error.response) {
                 // Сервер ответил с ошибкой
-                console.error(`  ��� Статус: ${error.response.status} - ${error.response.statusText}`);
+                console.error(`   Статус: ${error.response.status} - ${error.response.statusText}`);
                 console.error(`  📄 Данные:`, error.response.data);
                 console.error(`  🔗 URL:`, error.config?.url);
                 console.error(`  📋 Заголовки:`, error.config?.headers);
@@ -177,7 +177,7 @@ class SubGram {
                     'Auth': config.SUBGRAM_API_KEY,
                     'Content-Type': 'application/json'
                 },
-                timeout: 10000 // 10 секунд та��маут
+                timeout: 10000 // 10 секунд таймаут
             });
 
             const responseTime = Date.now() - startTime;
@@ -260,7 +260,7 @@ class SubGram {
             message += `${i + 1}. ${channelName}\n${link}\n\n`;
         }
 
-        message += '✅ После подписки нажмите "��роверить подписки"';
+        message += '✅ После подписки нажмите "проверить подписки"';
         return message;
     }
 
