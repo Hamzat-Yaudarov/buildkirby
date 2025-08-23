@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "reset-db": "node reset-database.js"
+    "reset-db": "node reset-database.js",
+    "set-withdrawal-number": "node set-withdrawal-start-number.js"
   },
   "keywords": [
     "telegram",

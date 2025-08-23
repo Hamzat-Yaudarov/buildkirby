@@ -180,7 +180,7 @@ class Database {
             `);
             console.log('Таблица bot_stats создана');
 
-            // Создание таблицы выполненных SubGram заданий
+            // Созд��ние таблицы выполненных SubGram заданий
             await pool.query(`
                 CREATE TABLE subgram_tasks (
                     id SERIAL PRIMARY KEY,
@@ -631,6 +631,46 @@ class Database {
         } catch (error) {
             console.error('Ошибка получения информации о пользователе для вывода:', error);
             return null;
+        }
+    }
+
+    // Установка начального номера для заявок на вывод
+    static async setWithdrawalStartNumber(startNumber) {
+        try {
+            // Проверяем текущее значение последовательности
+            const currentSeq = await pool.query(`
+                SELECT last_value FROM withdrawal_requests_id_seq;
+            `);
+
+            const currentValue = parseInt(currentSeq.rows[0]?.last_value) || 0;
+            console.log(`Текущее значение последовательности: ${currentValue}`);
+
+            // Устанавливаем новое значение (startNumber - 1, чтобы следующий ID был именно startNumber)
+            await pool.query(`
+                SELECT setval('withdrawal_requests_id_seq', $1, true);
+            `, [startNumber - 1]);
+
+            // Проверяем установленное значение
+            const newSeq = await pool.query(`
+                SELECT last_value FROM withdrawal_requests_id_seq;
+            `);
+
+            const newValue = parseInt(newSeq.rows[0]?.last_value);
+            console.log(`✅ Последовательность установлена! Следующая заявка будет иметь номер ${newValue + 1}`);
+
+            return {
+                success: true,
+                previousValue: currentValue,
+                newValue: newValue,
+                nextWithdrawalId: newValue + 1
+            };
+
+        } catch (error) {
+            console.error('Ошибка установки начального номера заявок:', error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 }
