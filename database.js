@@ -180,7 +180,7 @@ class Database {
             `);
             console.log('Таблица bot_stats создана');
 
-            // Созд��ние таблицы выполненных SubGram заданий
+            // Создание таблицы выполненных SubGram заданий
             await pool.query(`
                 CREATE TABLE subgram_tasks (
                     id SERIAL PRIMARY KEY,

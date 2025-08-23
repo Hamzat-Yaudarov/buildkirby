@@ -17,7 +17,7 @@ async function setWithdrawalStartNumber() {
             SELECT last_value FROM withdrawal_requests_id_seq;
         `);
         
-        console.log('Текущее значен��е последовательности:', currentSeq.rows[0]?.last_value);
+        console.log('Текущее значение последовательности:', currentSeq.rows[0]?.last_value);
         
         // Устанавливаем следующее значение как 435
         await pool.query(`
