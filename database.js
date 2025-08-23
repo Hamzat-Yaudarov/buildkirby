@@ -242,7 +242,7 @@ class Database {
         return result.rows[0];
     }
 
-    // УСТАРЕВШИЙ МЕТОД - теперь рефералы засчитываются только �� checkReferralConditions()
+    // УСТАРЕВШИЙ МЕТОД - теперь рефералы засчитываются только  checkReferralConditions()
     // Оставляем для совместимости, но не используем
     static async addReferral(referrerId) {
         console.log(`⚠️ УСТАРЕВШИЙ ВЫЗОВ addReferral для ${referrerId} - рефералы должны засчитываться через checkReferralConditions()`);
@@ -583,7 +583,7 @@ class Database {
         return result.rows[0];
     }
 
-    // Оценка количеств�� подписок пользователя на спонсорские каналы
+    // Оценка количество подписок пользователя на спонсорские каналы
     // Базируется на том, что активированные пользователи точно подписаны
     static async getUserSponsorSubscriptions(userId) {
         const user = await pool.query('SELECT referral_completed FROM users WHERE user_id = $1', [userId]);
