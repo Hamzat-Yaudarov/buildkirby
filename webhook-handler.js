@@ -232,6 +232,8 @@ class WebhookHandler {
             isSubscribed: isFullySubscribed,
             unsubscribedLinks,
             subscribedLinks,
+            subscribedCount: subscribedLinks.length,
+            unsubscribedCount: unsubscribedLinks.length,
             lastUpdate: userCache.lastUpdate,
             totalLinks: userCache.subscriptions.size
         };
@@ -249,7 +251,7 @@ class WebhookHandler {
                 
                 // Если пользователь полностью подписан, можем отправить уведомление
                 // Не отправляем автоматические уведомления от вебхука
-                // Логика уведомлений должна быть в основном боте при проверке подписки
+                // Логика уведомлений должна быть в основном боте при пров��рке подписки
                 const subscriptionStatus = this.getUserSubscriptionStatus(userId);
                 if (subscriptionStatus.isSubscribed) {
                     console.log(`✅ Пользователь ${userId} полностью подписан (кеш обновлен)`);
@@ -267,16 +269,26 @@ class WebhookHandler {
     }
 
     async handleUnsubscribed(userId, link) {
-        console.log(`Пользователь ${userId} отписался от ${link}`);
-        
+        console.log(`📉 Пользователь ${userId} отписался от ${link}`);
+
         try {
+            // Получаем статус подписки после обновления кеша
+            const subscriptionStatus = this.getUserSubscriptionStatus(userId);
+            console.log(`📊 Новый статус подписки пользователя ${userId}:`, {
+                subscribedCount: subscriptionStatus.subscribedCount,
+                unsubscribedCount: subscriptionStatus.unsubscribedCount,
+                totalLinks: subscriptionStatus.totalLinks,
+                isFullySubscribed: subscriptionStatus.isSubscribed
+            });
+
             // Уведомляем пользователя об отписке (если нужно)
             const user = await Database.getUser(userId);
             if (user) {
                 // Можем отправить предупреждение об ограничении функций
                 try {
-                    await this.bot.sendMessage(userId, 
+                    await this.bot.sendMessage(userId,
                         '⚠️ Обнаружена отписка от спонсорского канала.\n' +
+                        `📊 Активных подписок: ${subscriptionStatus.subscribedCount} из ${subscriptionStatus.totalLinks}\n` +
                         'Для полного доступа к боту необходимо быть подписанным на все каналы.'
                     );
                 } catch (e) {
