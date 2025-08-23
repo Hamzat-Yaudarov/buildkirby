@@ -14,6 +14,6 @@ module.exports = {
     },
     // Личные спонсорские каналы (добавьте свои)
     PERSONAL_SPONSOR_CHANNELS: [
-
+        '@BorshPodarki'
     ]
 };

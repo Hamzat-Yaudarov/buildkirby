@@ -219,12 +219,13 @@ class Database {
                 updated_at = CURRENT_TIMESTAMP
             RETURNING *
         `, [userId, username, firstName, languageCode, isPremium, referrerId]);
-        
-        // Если есть реферер, увеличиваем его счетчики
+
+        // НЕ увеличиваем счетчики рефералов при создании пользователя
+        // Рефералы будут засчитаны только после выполнения условий в checkReferralConditions()
         if (referrerId) {
-            await this.addReferral(referrerId);
+            console.log(`👥 Новый пользователь ${userId} добавлен с реферером ${referrerId}, но счетчики пока не увеличиваем`);
         }
-        
+
         return result.rows[0];
     }
 
@@ -241,18 +242,11 @@ class Database {
         return result.rows[0];
     }
 
+    // УСТАРЕВШИЙ МЕТОД - теперь рефералы засчитываются только �� checkReferralConditions()
+    // Оставляем для совместимости, но не используем
     static async addReferral(referrerId) {
-        await pool.query(`
-            UPDATE users 
-            SET total_referrals = total_referrals + 1,
-                daily_referrals = CASE 
-                    WHEN last_daily_reset = CURRENT_DATE THEN daily_referrals + 1
-                    ELSE 1
-                END,
-                last_daily_reset = CURRENT_DATE,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = $1
-        `, [referrerId]);
+        console.log(`⚠️ УСТАРЕВШИЙ ВЫЗОВ addReferral для ${referrerId} - рефералы должны засчитываться через checkReferralConditions()`);
+        // НЕ ДЕЛАЕМ НИЧЕГО - рефералы засчитываются только после выполнения условий
     }
 
     static async updateUserClicks(userId) {
@@ -589,8 +583,8 @@ class Database {
         return result.rows[0];
     }
 
-    // Оценка количества подписок пользователя на спонсорские каналы
-    // Базируется на том, что активир��ванные пользователи точно подписаны
+    // Оценка количеств�� подписок пользователя на спонсорские каналы
+    // Базируется на том, что активированные пользователи точно подписаны
     static async getUserSponsorSubscriptions(userId) {
         const user = await pool.query('SELECT referral_completed FROM users WHERE user_id = $1', [userId]);
         if (user.rows.length === 0) return 0;
