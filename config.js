@@ -15,10 +15,6 @@ module.exports = {
     // Личные спонсорские каналы (добавьте свои)
     PERSONAL_SPONSOR_CHANNELS: [
         '@BorshPodarki'
-    ],
-
-    // Каналы с обязательной подачей заявок (ID каналов)
-    CUSTOM_REQUEST_CHANNELS: [
-        -1002739109891
+        'https://t.me/+TK4BRcZ21ohiNDli'
     ]
 };

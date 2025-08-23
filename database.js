@@ -193,23 +193,6 @@ class Database {
             `);
             console.log('Таблица subgram_tasks создана');
 
-            // Создание таблицы заявок на вступление в каналы
-            await pool.query(`
-                CREATE TABLE join_requests (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL,
-                    chat_id BIGINT NOT NULL,
-                    first_name VARCHAR(255),
-                    username VARCHAR(255),
-                    channel_title VARCHAR(255),
-                    request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status VARCHAR(20) DEFAULT 'pending',
-                    processed_at TIMESTAMP,
-                    UNIQUE(user_id, chat_id)
-                )
-            `);
-            console.log('Таблица join_requests создана');
-
             console.log('База данных инициализирована успешно!');
         } catch (error) {
             console.error('Ошибка инициализации базы данных:', error);
@@ -417,7 +400,7 @@ class Database {
         }
     }
 
-    // Лотере��
+    // Лотереи
     static async createLottery(lotteryData) {
         const { name, ticketPrice, totalTickets, winnersCount, botPercentage } = lotteryData;
         const result = await pool.query(`
@@ -601,7 +584,7 @@ class Database {
     }
 
     // Оценка количество подписок пользователя на спонсорские каналы
-    // Базируется на том, что активированные поль��ователи точно подписаны
+    // Базируется на том, что активированные пользователи точно подписаны
     static async getUserSponsorSubscriptions(userId) {
         const user = await pool.query('SELECT referral_completed FROM users WHERE user_id = $1', [userId]);
         if (user.rows.length === 0) return 0;
@@ -649,67 +632,6 @@ class Database {
             console.error('Ошибка получения информации о пользователе для вывода:', error);
             return null;
         }
-    }
-
-    // Методы для работы с заявками на вступление
-    static async createJoinRequest(requestData) {
-        const { userId, chatId, firstName, username, channelTitle } = requestData;
-        const result = await pool.query(`
-            INSERT INTO join_requests (user_id, chat_id, first_name, username, channel_title)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (user_id, chat_id) DO UPDATE SET
-                first_name = $3,
-                username = $4,
-                channel_title = $5,
-                request_date = CURRENT_TIMESTAMP,
-                status = 'pending'
-            RETURNING *
-        `, [userId, chatId, firstName, username, channelTitle]);
-        return result.rows[0];
-    }
-
-    static async getJoinRequest(userId, chatId) {
-        const result = await pool.query(`
-            SELECT * FROM join_requests
-            WHERE user_id = $1 AND chat_id = $2
-        `, [userId, chatId]);
-        return result.rows[0];
-    }
-
-    static async hasJoinRequestForChannel(userId, chatId) {
-        const result = await pool.query(`
-            SELECT * FROM join_requests
-            WHERE user_id = $1 AND chat_id = $2
-        `, [userId, chatId]);
-        return result.rows.length > 0;
-    }
-
-    static async updateJoinRequestStatus(userId, chatId, status) {
-        const result = await pool.query(`
-            UPDATE join_requests
-            SET status = $3, processed_at = CURRENT_TIMESTAMP
-            WHERE user_id = $1 AND chat_id = $2
-            RETURNING *
-        `, [userId, chatId, status]);
-        return result.rows[0];
-    }
-
-    static async getUserJoinRequests(userId) {
-        const result = await pool.query(`
-            SELECT * FROM join_requests
-            WHERE user_id = $1
-            ORDER BY request_date DESC
-        `, [userId]);
-        return result.rows;
-    }
-
-    static async getChannelJoinRequests(chatId) {
-        const result = await pool.query(`
-            SELECT * FROM join_requests
-            WHERE chat_id = $1
-            ORDER BY request_date DESC
-        `, [chatId]);
-        return result.rows;
     }
 }
 
