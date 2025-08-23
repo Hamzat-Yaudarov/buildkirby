@@ -15,7 +15,7 @@ const bot = new TelegramBot(config.BOT_TOKEN, {
     }
 });
 
-// Временное хранение состояний пользователей
+// Временное хранение состояний пользователе��
 const userStates = new Map();
 
 // Защита от спама - храним последний вызов для каждого пользователя
@@ -75,7 +75,7 @@ async function sendSponsorMessage(chatId, userId, subscriptionData, messageId = 
     const lastMessage = lastSponsorMessage.get(userId);
     const uniqueKey = `${userId}_${chatId}`; // Уникальный ключ для защиты
 
-    // УСИЛЕННАЯ ЗАЩИТА: если недавно отправляли спонсорское сообщение - не отправляем повторно
+    // УСИЛЕННАЯ ЗАЩИТА: если недавно отп��авляли спонсорское сообщение - не отправляем повторно
     if (lastMessage && (now - lastMessage) < 8000) { // 8 секунд усиленная защита
         console.log(`🛡️ БЛОКИРОВКА: недавно уже отправили спонсорское сообщение пользователю ${userId} (${(now - lastMessage)/1000}с назад)`);
         return false;
@@ -136,10 +136,17 @@ async function checkReferralConditions(userId) {
             return; // Нет реферера
         }
 
-        // Проверяем подписку на спонсорские каналы
+        // Проверяем подписку на спонсорские каналы от SubGram
         const subscriptionStatus = await checkUserSubscription(userId, userId);
         if (!subscriptionStatus.isSubscribed) {
-            console.log(`👥 Реферал ${userId} еще не подписан на спонсорские каналы`);
+            console.log(`👥 Реферал ${userId} еще не подписан на спонсорские каналы SubGram`);
+            return;
+        }
+
+        // Проверяем подписку на личные спонсорские каналы
+        const personalChannelsStatus = await checkPersonalChannelsSubscription(userId);
+        if (!personalChannelsStatus.isSubscribed) {
+            console.log(`👥 Реферал ${userId} еще не подписан на личные спонсорские каналы (${personalChannelsStatus.unsubscribedChannels.length} каналов не подписан)`);
             return;
         }
 
@@ -162,7 +169,7 @@ async function checkReferralConditions(userId) {
         await Database.updateUserBalance(user.referrer_id, 2);
         await Database.updateUserPoints(user.referrer_id, 1);
 
-        // Отмечаем что реферальная награда начислена
+        // Отмечаем что реферальная награда начисл��на
         await Database.pool.query(
             'UPDATE users SET referral_completed = TRUE WHERE user_id = $1',
             [userId]
@@ -178,7 +185,8 @@ async function checkReferralConditions(userId) {
         try {
             await bot.sendMessage(user.referrer_id,
                 '🎉 Ваш реферал выполнил все условия!\n' +
-                '✅ Подписался на спонсорские каналы\n' +
+                '✅ Подписался на спонсорские каналы SubGram\n' +
+                '✅ Подписался на наши основные каналы\n' +
                 '✅ Выполнил 2 задания\n\n' +
                 '💰 Вы получили 2 ⭐️\n' +
                 '🏆 Вы получили 1 очко'
@@ -461,7 +469,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             }
         }
         
-        // СНАЧАЛА проверяем подписку - это самое важное!
+        // СНАЧАЛА проверя��м подписку - это самое важное!
         console.log(`🔍 Проверка подписки для пользователя ${userId}`);
         const subscriptionStatus = await checkUserSubscription(
             userId, 
@@ -480,7 +488,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             // Показываем ТОЛЬКО общее сообщение с кнопкой проверки
             await bot.sendMessage(chatId,
                 '🔒 Для доступа к боту необходимо подписаться на спонсорские каналы.\n\n' +
-                '📢 Нажмите кнопку ниже для получения списка каналов и проверки подписки.',
+                '👇 Нажмите кнопку ниже для получения списка каналов и проверки подписки.',
                 {
                     reply_markup: {
                         inline_keyboard: [[
@@ -579,7 +587,7 @@ bot.on('callback_query', async (callbackQuery) => {
             if (!subscriptionStatus.isSubscribed) {
                 console.log(`🔒 ЖЁСТКАЯ БЛОКИРОВКА действий "${data}" для неподписанного пользователя ${userId}`);
 
-                // Показываем алерт с жёсткой блокировкой
+                // Показываем алерт с жёсткой блокир��вкой
                 await bot.answerCallbackQuery(callbackQuery.id, {
                     text: '🔒 Доступ заблокирован! Сначала подпишитесь на все спонсорские каналы!',
                     show_alert: true
@@ -1070,7 +1078,7 @@ async function getUserWithdrawalInfo(userId) {
         // Статистика рефералов
         const referralStats = await Database.getReferralStats(userId);
 
-        // Реальные данные о подписках пользователя из webhook кеша
+        // Реальные данные о подписках пользователя из webhook кеш��
         const userSubscriptionStatus = webhookHandler.getUserSubscriptionStatus(userId);
         let userSubscriptions = 0;
 
@@ -1186,7 +1194,7 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
         // Получаем расширенную информацию с реальными данными о подписках
         const userInfo = await getUserWithdrawalInfo(userId);
 
-        // Отправляем в админ чат расширенную информацию
+        // Отправляем в адми�� чат расширенную информацию
         const adminMessage = `💰 Новая заявка на вывод\n\n` +
                             `👤 Пользователь: ${user.first_name}\n` +
                             `🆔 ID: ${user.user_id}\n` +
@@ -1233,7 +1241,7 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
     }
 }
 
-// Показать задания (только кастомные, без SubGram)
+// Показать ��адания (только кастомные, без SubGram)
 async function showTasks(chatId, userId, messageId) {
     try {
         console.log(`📋 ФУНКЦИЯ showTasks ВЫЗВАНА для пользователя ${userId}`);
@@ -1687,7 +1695,196 @@ async function showAdminPanel(chatId, messageId = null) {
     }
 }
 
-// Обработчик админских действий (упрощенная версия - нужно добавить полную реализацию)
+// Показать статистику бота
+async function showBotStats(chatId, messageId) {
+    try {
+        // Получаем статистику из базы данных
+        const totalUsers = await Database.pool.query('SELECT COUNT(*) as count FROM users');
+        const activeUsers = await Database.pool.query('SELECT COUNT(*) as count FROM users WHERE last_activity > NOW() - INTERVAL \'24 hours\'');
+        const totalReferrals = await Database.pool.query('SELECT COUNT(*) as count FROM users WHERE referrer_id IS NOT NULL');
+        const activatedReferrals = await Database.pool.query('SELECT COUNT(*) as count FROM users WHERE referral_completed = TRUE');
+        const totalBalance = await Database.pool.query('SELECT SUM(balance) as sum FROM users');
+        const totalEarned = await Database.pool.query('SELECT SUM(total_earned) as sum FROM users');
+        const pendingWithdrawals = await Database.pool.query('SELECT COUNT(*) as count, SUM(amount) as sum FROM withdrawal_requests WHERE status = \'pending\'');
+        const completedWithdrawals = await Database.pool.query('SELECT COUNT(*) as count, SUM(amount) as sum FROM withdrawal_requests WHERE status = \'completed\'');
+
+        const message = `📊 Статистика бота\n\n` +
+                       `👥 Пользователи:\n` +
+                       `• Всего: ${totalUsers.rows[0].count}\n` +
+                       `• Активные (24ч): ${activeUsers.rows[0].count}\n\n` +
+                       `👫 Рефералы:\n` +
+                       `• Всего: ${totalReferrals.rows[0].count}\n` +
+                       `• Активированные: ${activatedReferrals.rows[0].count}\n\n` +
+                       `💰 Баланс:\n` +
+                       `• Общий баланс: ${Math.round(totalBalance.rows[0].sum || 0)} ⭐\n` +
+                       `• Всего заработано: ${Math.round(totalEarned.rows[0].sum || 0)} ⭐\n\n` +
+                       `💸 Выводы:\n` +
+                       `• Ожидают: ${pendingWithdrawals.rows[0].count} (${Math.round(pendingWithdrawals.rows[0].sum || 0)} ⭐)\n` +
+                       `• Выполнены: ${completedWithdrawals.rows[0].count} (${Math.round(completedWithdrawals.rows[0].sum || 0)} ⭐)`;
+
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: '🔄 Обновить', callback_data: 'admin_stats' }],
+                [{ text: '🔙 Назад к админ-панели', callback_data: 'admin_back' }]
+            ]
+        };
+
+        if (messageId) {
+            await bot.editMessageText(message, {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: keyboard
+            });
+        } else {
+            await bot.sendMessage(chatId, message, { reply_markup: keyboard });
+        }
+    } catch (error) {
+        console.error('Ошибка получения статистики:', error);
+        const errorMessage = '❌ Ошибка получения статистики';
+        if (messageId) {
+            await bot.editMessageText(errorMessage, { chat_id: chatId, message_id: messageId });
+        } else {
+            await bot.sendMessage(chatId, errorMessage);
+        }
+    }
+}
+
+// Показать рассылки сообщений
+async function showBroadcastPanel(chatId, messageId) {
+    const message = `📢 Рассылка сообщений\n\n` +
+                   `Выберите тип рассылки:`;
+
+    const keyboard = {
+        inline_keyboard: [
+            [{ text: '📊 Всем пользователям', callback_data: 'broadcast_all' }],
+            [{ text: '👥 Только активным', callback_data: 'broadcast_active' }],
+            [{ text: '🏆 Топ рейтинга', callback_data: 'broadcast_top' }],
+            [{ text: '🔙 Назад к админ-панели', callback_data: 'admin_back' }]
+        ]
+    };
+
+    if (messageId) {
+        await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: keyboard
+        });
+    } else {
+        await bot.sendMessage(chatId, message, { reply_markup: keyboard });
+    }
+}
+
+// Показать недельные награды
+async function showWeeklyRewards(chatId, messageId) {
+    try {
+        const leaderboard = await Database.getWeeklyLeaderboard();
+        const currentDate = new Date().toLocaleDateString('ru-RU');
+
+        let message = `🏆 Недельные награды (${currentDate})\n\n`;
+        message += `📋 Топ недели:\n`;
+
+        if (leaderboard.length === 0) {
+            message += `• Нет участников\n\n`;
+        } else {
+            leaderboard.slice(0, 5).forEach((user, index) => {
+                const position = index + 1;
+                const emoji = position <= 3 ? ['🥇', '🥈', '🥉'][position - 1] : `${position}.`;
+                const reward = config.WEEKLY_REWARDS[position] || 0;
+                message += `${emoji} ${user.first_name} - ${user.weekly_points} очков (${reward} ⭐)\n`;
+            });
+        }
+
+        message += `\n💰 Награды:\n`;
+        Object.entries(config.WEEKLY_REWARDS).forEach(([pos, reward]) => {
+            const emoji = pos <= 3 ? ['🥇', '🥈', '🥉'][pos - 1] : `${pos}.`;
+            message += `${emoji} ${pos} место: ${reward} ⭐\n`;
+        });
+
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: '🎁 Выдать награды', callback_data: 'give_weekly_rewards' }],
+                [{ text: '🔄 Сбросить счетчики', callback_data: 'reset_weekly' }],
+                [{ text: '🔙 Назад к админ-панели', callback_data: 'admin_back' }]
+            ]
+        };
+
+        if (messageId) {
+            await bot.editMessageText(message, {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: keyboard
+            });
+        } else {
+            await bot.sendMessage(chatId, message, { reply_markup: keyboard });
+        }
+    } catch (error) {
+        console.error('Ошибка получения недельных наград:', error);
+        const errorMessage = '❌ Ошибка получения данных';
+        if (messageId) {
+            await bot.editMessageText(errorMessage, { chat_id: chatId, message_id: messageId });
+        } else {
+            await bot.sendMessage(chatId, errorMessage);
+        }
+    }
+}
+
+// Показать заявки на вывод
+async function showWithdrawalRequests(chatId, messageId) {
+    try {
+        const pendingRequests = await Database.pool.query(`
+            SELECT wr.id, wr.user_id, wr.amount, wr.created_at, u.first_name, u.username
+            FROM withdrawal_requests wr
+            JOIN users u ON wr.user_id = u.user_id
+            WHERE wr.status = 'pending'
+            ORDER BY wr.created_at ASC
+            LIMIT 10
+        `);
+
+        let message = `💰 Заявки на вывод\n\n`;
+
+        if (pendingRequests.rows.length === 0) {
+            message += `✅ Нет ожидающих заявок`;
+        } else {
+            message += `📋 Ожидающие заявки (${pendingRequests.rows.length}):\n\n`;
+
+            pendingRequests.rows.forEach((req, index) => {
+                const date = new Date(req.created_at).toLocaleDateString('ru-RU');
+                const username = req.username ? `@${req.username}` : 'без username';
+                message += `${index + 1}. ${req.first_name} (${username})\n`;
+                message += `   💰 ${req.amount} ⭐ | 📅 ${date}\n`;
+                message += `   ID: ${req.id}\n\n`;
+            });
+        }
+
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: '✅ Обработать заявки', callback_data: 'process_withdrawals' }],
+                [{ text: '🔄 Обновить', callback_data: 'admin_withdrawals' }],
+                [{ text: '🔙 Назад к админ-панели', callback_data: 'admin_back' }]
+            ]
+        };
+
+        if (messageId) {
+            await bot.editMessageText(message, {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: keyboard
+            });
+        } else {
+            await bot.sendMessage(chatId, message, { reply_markup: keyboard });
+        }
+    } catch (error) {
+        console.error('Ошибка получения заявок на вывод:', error);
+        const errorMessage = '❌ Ошибка получения заявок';
+        if (messageId) {
+            await bot.editMessageText(errorMessage, { chat_id: chatId, message_id: messageId });
+        } else {
+            await bot.sendMessage(chatId, errorMessage);
+        }
+    }
+}
+
+// Обработчик админских действий
 async function handleAdminCallback(chatId, userId, data, messageId, callbackQueryId) {
     // Проверка админских прав
     if (!config.ADMIN_IDS.includes(userId)) {
@@ -1698,11 +1895,53 @@ async function handleAdminCallback(chatId, userId, data, messageId, callbackQuer
     try {
         switch (data) {
             case 'admin_stats':
-                await bot.answerCallbackQuery(callbackQueryId, 'ℹ️ Статистика будет добавлена позже');
+                await showBotStats(chatId, messageId);
+                await bot.answerCallbackQuery(callbackQueryId);
                 break;
+
+            case 'admin_broadcast':
+                await showBroadcastPanel(chatId, messageId);
+                await bot.answerCallbackQuery(callbackQueryId);
+                break;
+
+            case 'admin_rewards':
+                await showWeeklyRewards(chatId, messageId);
+                await bot.answerCallbackQuery(callbackQueryId);
+                break;
+
+            case 'admin_withdrawals':
+                await showWithdrawalRequests(chatId, messageId);
+                await bot.answerCallbackQuery(callbackQueryId);
+                break;
+
+            case 'broadcast_all':
+                await handleBroadcast(chatId, 'all', messageId, callbackQueryId);
+                break;
+
+            case 'broadcast_active':
+                await handleBroadcast(chatId, 'active', messageId, callbackQueryId);
+                break;
+
+            case 'broadcast_top':
+                await handleBroadcast(chatId, 'top', messageId, callbackQueryId);
+                break;
+
+            case 'give_weekly_rewards':
+                await handleWeeklyRewards(chatId, messageId, callbackQueryId);
+                break;
+
+            case 'reset_weekly':
+                await resetWeeklyStats(chatId, messageId, callbackQueryId);
+                break;
+
+            case 'process_withdrawals':
+                await bot.answerCallbackQuery(callbackQueryId, 'ℹ️ Используйте кнопки ✅/❌ под заявками в админ-чате');
+                break;
+
             case 'admin_tasks':
                 await bot.answerCallbackQuery(callbackQueryId, 'ℹ️ Управление заданиями будет добавлено позже');
                 break;
+
             default:
                 await bot.answerCallbackQuery(callbackQueryId, '❌ Неизвестная команда');
                 break;
@@ -1710,6 +1949,118 @@ async function handleAdminCallback(chatId, userId, data, messageId, callbackQuer
     } catch (error) {
         console.error('Ошибка админской команды:', error);
         await bot.answerCallbackQuery(callbackQueryId, '❌ Произошла ошибка');
+    }
+}
+
+// Обработчик рассылок
+async function handleBroadcast(chatId, type, messageId, callbackQueryId) {
+    try {
+        let targetUsers = [];
+        let description = '';
+
+        switch (type) {
+            case 'all':
+                const allUsers = await Database.pool.query('SELECT user_id FROM users');
+                targetUsers = allUsers.rows.map(u => u.user_id);
+                description = 'всем пользователям';
+                break;
+
+            case 'active':
+                const activeUsers = await Database.pool.query('SELECT user_id FROM users WHERE last_activity > NOW() - INTERVAL \'24 hours\'');
+                targetUsers = activeUsers.rows.map(u => u.user_id);
+                description = 'активным пользователям';
+                break;
+
+            case 'top':
+                const topUsers = await Database.getWeeklyLeaderboard();
+                targetUsers = topUsers.slice(0, 10).map(u => u.user_id);
+                description = 'топ-10 рейтинга';
+                break;
+        }
+
+        await bot.answerCallbackQuery(callbackQueryId, `📢 Найдено ${targetUsers.length} пользователей для рассылки`);
+
+        // Отправляем запрос на ввод сообщения
+        await bot.editMessageText(
+            `📢 Рассылка ${description}\n\n` +
+            `👥 Найдено пользователей: ${targetUsers.length}\n\n` +
+            `✏️ Отправьте следующим сообщением текст для рассылки:`,
+            {
+                chat_id: chatId,
+                message_id: messageId,
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: '❌ Отмена', callback_data: 'admin_broadcast' }
+                    ]]
+                }
+            }
+        );
+
+        // Сохраняем данные для рассылки (можно использовать временное хранилище)
+        // Здесь нужно будет добавить логику ожидания сообщения от админа
+
+    } catch (error) {
+        console.error('Ошибка подготовки рассылки:', error);
+        await bot.answerCallbackQuery(callbackQueryId, '❌ Ошибка подготовки рассылки');
+    }
+}
+
+// Обработчик выдачи недельных наград
+async function handleWeeklyRewards(chatId, messageId, callbackQueryId) {
+    try {
+        const leaderboard = await Database.getWeeklyLeaderboard();
+        let rewarded = 0;
+        let totalReward = 0;
+
+        for (let i = 0; i < Math.min(leaderboard.length, 5); i++) {
+            const user = leaderboard[i];
+            const position = i + 1;
+            const reward = config.WEEKLY_REWARDS[position] || 0;
+
+            if (reward > 0) {
+                await Database.updateUserBalance(user.user_id, reward);
+                totalReward += reward;
+                rewarded++;
+
+                // Уведомляем пользователя
+                try {
+                    const positionText = position <= 3 ? ['🥇', '🥈', '🥉'][position - 1] : `${position} место`;
+                    await bot.sendMessage(user.user_id,
+                        `🏆 Поздравляем с ${positionText} в недельном рейтинге!\n\n` +
+                        `📊 Ваши очки: ${user.weekly_points}\n` +
+                        `💰 Награда: ${reward} ⭐\n\n` +
+                        `🎉 Награда зачислена на ваш баланс!`
+                    );
+                } catch (e) {
+                    console.log(`Не удалось уведомить пользователя ${user.user_id} о награде`);
+                }
+            }
+        }
+
+        await bot.answerCallbackQuery(callbackQueryId, `🎁 Выдано наград: ${rewarded} пользователям (${totalReward} ⭐)`);
+
+        // Обновляем отображение
+        await showWeeklyRewards(chatId, messageId);
+
+    } catch (error) {
+        console.error('Ошибка выдачи недельных наград:', error);
+        await bot.answerCallbackQuery(callbackQueryId, '❌ Ошибка выдачи наград');
+    }
+}
+
+// Сброс недельной статистики
+async function resetWeeklyStats(chatId, messageId, callbackQueryId) {
+    try {
+        await Database.pool.query('UPDATE users SET weekly_points = 0, daily_referrals = 0');
+
+        await bot.answerCallbackQuery(callbackQueryId, '🔄 Недельная статистика сброшена');
+
+        // Обновляем отображение
+        await showWeeklyRewards(chatId, messageId);
+
+    } catch (error) {
+        console.error('Ошибка сброса недельной статистики:', error);
+        await bot.answerCallbackQuery(callbackQueryId, '❌ Ошибка сброса статистики');
     }
 }
 
