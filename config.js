@@ -14,7 +14,7 @@ module.exports = {
     },
     // Личные спонсорские каналы (добавьте свои)
     PERSONAL_SPONSOR_CHANNELS: [
-        '@BorshPodarki'
-        'https://t.me/+TK4BRcZ21ohiNDli'
+        '@BorshPodarki',
+        '@NFTStarski'
     ]
 };
