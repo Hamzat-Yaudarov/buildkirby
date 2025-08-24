@@ -193,7 +193,7 @@ class Database {
             `);
             console.log('Таблица subgram_tasks создана');
 
-            console.log('База данных инициализирована успешно!');
+            console.log('База дан��ых инициализирована успешно!');
         } catch (error) {
             console.error('Ошибка инициализации базы данных:', error);
             throw error;
@@ -230,15 +230,26 @@ class Database {
     }
 
     static async updateUserBalance(userId, amount, type = 'add') {
-        const operator = type === 'add' ? '+' : '-';
+        // ИСПРАВЛЕНО: убрали Math.abs() - он превращал отрицательные числа в положительные!
+        // Теперь можно передавать отрицательные числа для списания средств
+        let actualAmount = amount;
+        let actualType = type;
+
+        // Если передано отрицательное число без указания типа, автоматически ставим 'subtract'
+        if (amount < 0 && type === 'add') {
+            actualAmount = Math.abs(amount);
+            actualType = 'subtract';
+        }
+
+        const operator = actualType === 'add' ? '+' : '-';
         const result = await pool.query(`
-            UPDATE users 
+            UPDATE users
             SET balance = balance ${operator} $2,
                 total_earned = total_earned + CASE WHEN $3 = 'add' THEN $2 ELSE 0 END,
                 updated_at = CURRENT_TIMESTAMP
             WHERE user_id = $1
             RETURNING *
-        `, [userId, Math.abs(amount), type]);
+        `, [userId, actualAmount, actualType]);
         return result.rows[0];
     }
 
