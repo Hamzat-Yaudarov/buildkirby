@@ -159,12 +159,19 @@ class Database {
                     user_id BIGINT NOT NULL,
                     amount DECIMAL(10,2) NOT NULL,
                     status VARCHAR(20) DEFAULT 'pending',
+                    closure_number INTEGER,
                     rejection_reason TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     processed_at TIMESTAMP
                 )
             `);
             console.log('Таблица withdrawal_requests создана');
+
+            // Создание последовательности для номеров закрытых заявок
+            await pool.query(`
+                CREATE SEQUENCE withdrawal_closure_seq START 437;
+            `);
+            console.log('Последовательность withdrawal_closure_seq создана');
 
             // Создание таблицы статистики
             await pool.query(`
@@ -180,7 +187,7 @@ class Database {
             `);
             console.log('Таблица bot_stats создана');
 
-            // Создание таблицы выполненных SubGram заданий
+            // Создание таблицы выпо��ненных SubGram заданий
             await pool.query(`
                 CREATE TABLE subgram_tasks (
                     id SERIAL PRIMARY KEY,
@@ -455,7 +462,7 @@ class Database {
             `, [userId]);
             
             if (user.rows[0].balance < lotteryData.ticket_price) {
-                throw new Error('Недостаточно средств');
+                throw new Error('Недостаточн�� средств');
             }
             
             await client.query(`
@@ -510,8 +517,11 @@ class Database {
 
     static async processWithdrawal(requestId, status, reason = null) {
         const result = await pool.query(`
-            UPDATE withdrawal_requests 
-            SET status = $2, rejection_reason = $3, processed_at = CURRENT_TIMESTAMP
+            UPDATE withdrawal_requests
+            SET status = $2,
+                closure_number = CASE WHEN $2 IN ('approved', 'rejected') THEN nextval('withdrawal_closure_seq') ELSE closure_number END,
+                rejection_reason = $3,
+                processed_at = CURRENT_TIMESTAMP
             WHERE id = $1
             RETURNING *
         `, [requestId, status, reason]);
@@ -678,6 +688,54 @@ class Database {
 
         } catch (error) {
             console.error('Ошибка установки начального номера заявок:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    // Установка начального номера для нумерации закрытых заявок
+    static async setWithdrawalClosureStartNumber(startNumber) {
+        try {
+            // Проверяем существование последовательности
+            const seqExists = await pool.query(`
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.sequences
+                    WHERE sequence_name = 'withdrawal_closure_seq'
+                );
+            `);
+
+            if (!seqExists.rows[0].exists) {
+                // Создаем последовательность если не существует
+                await pool.query(`
+                    CREATE SEQUENCE withdrawal_closure_seq START ${startNumber - 1};
+                `);
+                console.log(`✅ Создана последовательность withdrawal_closure_seq, начиная с ${startNumber - 1}`);
+            } else {
+                // Устанавливаем новое значение
+                await pool.query(`
+                    SELECT setval('withdrawal_closure_seq', $1, true);
+                `, [startNumber - 1]);
+                console.log(`✅ Последовательность withdrawal_closure_seq установлена на ${startNumber - 1}`);
+            }
+
+            // Проверяем установленное значение
+            const newSeq = await pool.query(`
+                SELECT last_value FROM withdrawal_closure_seq;
+            `);
+
+            const newValue = parseInt(newSeq.rows[0]?.last_value);
+            console.log(`✅ Следующая закрытая заявка будет иметь номер ${newValue + 1}`);
+
+            return {
+                success: true,
+                newValue: newValue,
+                nextClosureNumber: newValue + 1
+            };
+
+        } catch (error) {
+            console.error('Ошибка установки начального номера закрытых заявок:', error);
             return {
                 success: false,
                 error: error.message

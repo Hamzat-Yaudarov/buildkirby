@@ -7,7 +7,9 @@
     "start": "node index.js",
     "dev": "node index.js",
     "reset-db": "node reset-database.js",
-    "set-withdrawal-number": "node set-withdrawal-start-number.js"
+    "set-withdrawal-number": "node set-withdrawal-start-number.js",
+    "migrate-closure": "node migrate-withdrawal-closure.js",
+    "set-closure-number": "node set-closure-number.js"
   },
   "keywords": [
     "telegram",
