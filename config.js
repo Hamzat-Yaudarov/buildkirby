@@ -16,6 +16,7 @@ module.exports = {
     PERSONAL_SPONSOR_CHANNELS: [
         '@BorshPodarki',
         '@Starfyrobot',
-        '@NFTStarski'
+        '@NFTStarski',
+        '@Starfyrobot'
     ]
 };
