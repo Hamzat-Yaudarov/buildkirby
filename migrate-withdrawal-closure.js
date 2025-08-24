@@ -47,7 +47,7 @@ async function migrateDatabase() {
             `);
             console.log('✅ Последовательность withdrawal_closure_seq создана');
         } else {
-            console.log('ℹ️ Последов��тельность withdrawal_closure_seq уже существует');
+            console.log('ℹ️ Последовтельность withdrawal_closure_seq уже существует');
         }
         
         console.log('🎉 Миграция завершена успешно!');

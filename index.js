@@ -48,7 +48,7 @@ async function checkPersonalChannelsSubscription(userId, skipOnError = false) {
                     });
                 }
             } catch (error) {
-                console.error(`Ошибка проверки подписки на канал ${channel}:`, error.message);
+                console.error(`Ошибка проверка подписки на канал ${channel}:`, error.message);
 
                 if (skipOnError) {
                     // При нажатии кнопки "Проверить подписки" - пропускаем канал при ошибке
@@ -149,7 +149,7 @@ async function checkReferralConditions(userId) {
             return;
         }
 
-        // НОВОЕ: Проверяем подписку на личные спонсорские каналы
+        // НОВОЕ: Проверяем подпи��ку на личные спонсорские каналы
         const personalChannelsStatus = await checkPersonalChannelsSubscription(userId);
         if (!personalChannelsStatus.isSubscribed) {
             console.log(`👥 Реферал ${userId} еще не подписан на личные спонсорские каналы`);
@@ -172,12 +172,12 @@ async function checkReferralConditions(userId) {
         // Все условия выполнены - начисляем награду
         console.log(`🎉 Реферал ${userId} выполнил все условия! Начисляем награду реферору ${user.referrer_id}`);
 
-        // ИСПРАВЛЕНО: Используем атомарную транзакцию для предотвращения race condition
+        // ИСПРА��ЛЕНО: Используем атомарную транзакцию для предотвращения race condition
         const client = await Database.pool.connect();
         try {
             await client.query('BEGIN');
 
-            // Атомарно помечае�� реферала как завершенного ТОЛЬКО если ещё не завершен
+            // Атом��рно помечае�� реферала как завершенного ТОЛЬКО если ещё не завершен
             const updateResult = await client.query(
                 'UPDATE users SET referral_completed = TRUE WHERE user_id = $1 AND referral_completed = FALSE RETURNING referrer_id',
                 [userId]
@@ -208,7 +208,7 @@ async function checkReferralConditions(userId) {
             await client.query('COMMIT');
             console.log(`✅ Реферальная награда успешно начислена атомарно: +2 звезды, +1 очко для ${referrerId}`);
 
-            // Уве��омляем реферера после успешного COMMIT
+            // Уве����омляем реферера после успешного COMMIT
             try {
                 await bot.sendMessage(referrerId,
                     '🎉 Ваш реферал выполнил все условия!\n' +
@@ -352,7 +352,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
         console.log(`📥 SubGram ответ:`, JSON.stringify(taskChannels, null, 2));
 
-        // Проверяем ответ SubGram
+        // Провер��ем ответ SubGram
         if (taskChannels.status === 'error') {
             console.log(`❌ Ошибка SubGram, пытаемся получить ссылки альтернативным способом`);
 
@@ -404,13 +404,13 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         if (taskChannels.status === 'warning') {
             console.log(`⚠️ Пользователь ${userId} НЕ подписан (статус warning): ${taskChannels.message}`);
 
-            // Для статуса warning SubGram может не возвращать ссылки, попробуем разные способы получения
+            // Для статуса warning SubGram может не возв��ащать ссылки, попробуем разные способы получения
             if (!taskChannels.links || taskChannels.links.length === 0) {
                 console.log(` Запрашиваем ссылки каналов для пользователя ${userId} (warning без ссылок)`);
 
                 // Попробуем получить ссылки через getChannelLinks
                 const attempts = [
-                    // 1. Попытка с getChannelLinks
+                    // 1. Попытк�� с getChannelLinks
                     () => SubGram.getChannelLinks(userId, chatId, firstName, languageCode, isPremium)
                 ];
 
@@ -462,7 +462,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
         // Статус "ok" �� нет ссылок - пользователь подписан
         if (taskChannels.status === 'ok') {
-            // Дополнительно проверим, действительно ли нет ссылок
+            // Дополнительн�� проверим, действительно ли нет ссылок
             if (!taskChannels.links || taskChannels.links.length === 0) {
                 console.log(`✅ Пользователь ${userId} подписан на все каналы (статус ok, нет ссылок)`);
                 return {
@@ -563,7 +563,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
         
         console.log(` Статус подписки:`, subscriptionStatus);
 
-        // Если пользователь НЕ подписан - показываем спонсорские каналы (даже если ссылки пустые)
+        // Если пользователь НЕ подписан - показываем спонсорские каналы (да��е если ссылки пустые)
         if (!subscriptionStatus.isSubscribed) {
             console.log(` Пользователь ${userId} НЕ подписан, блокируем доступ`);
 
@@ -593,7 +593,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             return; // ВАЖНО: выходим, НЕ показываем главное меню
         }
 
-        // Только если п��льзователь точно подписан - показыва��м главное меню
+        // Только есл�� п��льзователь точно подписан - показыва��м главное меню
         console.log(`✅ Пользователь ${userId} подписан, показываем главное меню`);
         await showMainMenu(chatId, userId);
         
@@ -657,7 +657,7 @@ bot.on('callback_query', async (callbackQuery) => {
             'admin_back'  // возврат в админ панель
         ];
 
-        // Проверяем разрешённые команды (с учётом точного соответствия для некоторых)
+        // Проверяем раз��ешённые команды (с учётом точного соответствия для некоторых)
         const isAllowedCommand = allowedWithoutSubscription.some(cmd => {
             if (cmd.endsWith('_')) {
                 return data.startsWith(cmd); // для команд с префиксом (admin_, check_custom_task_, и т.д.)
@@ -722,7 +722,7 @@ bot.on('callback_query', async (callbackQuery) => {
             }
         }
 
-        // Отвечаем на callback_query только для команд, которые не отвечают сами
+        // Отвечаем на callback_query толь��о для коман��, которые не отвечают сами
         const commandsThatAnswerThemselves = [
             'check_subscription',
             'check_subscription_personal',
@@ -823,11 +823,25 @@ bot.on('callback_query', async (callbackQuery) => {
                     await handleWithdrawalAction(chatId, userId, data, callbackQuery.id, message.message_id);
                 } else if (data.startsWith('broadcast_')) {
                     const type = data.split('_')[1];
-                    await handleBroadcastNew(type);
-                    await bot.answerCallbackQuery(callbackQuery.id, '📢 Рассылка запущена!');
+                    console.log(`📢 ЗАПУСК РАССЫЛКИ: type="${type}", data="${data}"`);
+                    try {
+                        await handleBroadcastNew(type);
+                        await bot.answerCallbackQuery(callbackQuery.id, '📢 Рассылка запущена!');
+                        console.log(`✅ РАССЫЛКА ЗАПУЩЕНА: type="${type}"`);
+                    } catch (error) {
+                        console.error(`❌ ОШИБКА РАССЫЛКИ: type="${type}"`, error);
+                        await bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка рассылки');
+                    }
                 } else if (data === 'admin_back') {
-                    await showAdminPanel(chatId, message.message_id);
-                    await bot.answerCallbackQuery(callbackQuery.id);
+                    console.log(`🔙 ВОЗВРАТ К АДМИН ПАНЕЛИ от пользователя ${userId}`);
+                    try {
+                        await showAdminPanel(chatId, message.message_id);
+                        await bot.answerCallbackQuery(callbackQuery.id);
+                        console.log(`✅ АДМИН ПАНЕЛЬ ПОКАЗАНА пользователю ${userId}`);
+                    } catch (error) {
+                        console.error(`❌ ОШИБКА ПОКАЗА АДМИН ПАНЕЛИ пользователю ${userId}:`, error);
+                        await bot.answerCallbackQuery(callbackQuery.id, '❌ Ошибка');
+                    }
                 } else if (data === 'open_case') {
                     await handleOpenCase(chatId, userId, message.message_id, callbackQuery.id);
                 } else if (data.startsWith('check_custom_task_')) {
@@ -881,7 +895,7 @@ async function handleSubscriptionCheckPersonal(chatId, userId, messageId, callba
         const personalChannelsStatus = await checkPersonalChannelsSubscription(userId, true);
 
         if (!personalChannelsStatus.isSubscribed && personalChannelsStatus.unsubscribedChannels.length > 0) {
-            // Пользователь не подписан на личные каналы
+            // Пользователь не подписан на личные ��аналы
             console.log(`🔒 Пользователь ${userId} не подписан на личные каналы`);
 
             // Формируем сообщение с личными каналами
@@ -919,7 +933,7 @@ async function handleSubscriptionCheckPersonal(chatId, userId, messageId, callba
             });
 
             if (callbackQueryId) {
-                await bot.answerCallbackQuery(callbackQueryId, '⚠️ Подпишитесь на наши основные каналы!');
+                await bot.answerCallbackQuery(callbackQueryId, ' Подпишитесь на наши основные каналы!');
             }
 
             return; // Блокируем доступ
@@ -1328,7 +1342,7 @@ async function getUserWithdrawalInfo(userId) {
             userSubscriptions = subscribedCount; // реальное количество подписок
             console.log(`📈 Пользователь ${userId}: реальные подписки ${subscribedCount}/${totalChannels}`);
         } else {
-            // Оц��нка на основе статуса активаци��
+            // Оц��нка на основе статуса ��ктиваци��
             userSubscriptions = user.referral_completed ? 4 : 0; // если активирован, то подписан на спонсоров
             console.log(`📈 Пользователь ${userId}: оценка подписок ${userSubscriptions} (нет свежих данных)`);
         }
@@ -1337,7 +1351,7 @@ async function getUserWithdrawalInfo(userId) {
         let referralsSubscriptions = 0;
         const activatedReferrals = await Database.getActivatedReferrals(userId);
 
-        // Проверяем реальные данные о подписках каждого активного реферала
+        // Проверяем реальные дан��ые о подписках каждого активного реферала
         for (const referral of activatedReferrals) {
             const referralSubscriptionStatus = webhookHandler.getUserSubscriptionStatus(referral.user_id);
             if (referralSubscriptionStatus.lastUpdate && referralSubscriptionStatus.subscribedCount) {
@@ -1414,7 +1428,7 @@ async function showWithdrawOptions(chatId, userId, messageId) {
     });
 }
 
-// Обработка заяв��и на вывод
+// Обработка зая����и на вывод
 async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId) {
     const user = await Database.getUser(userId);
 
@@ -1423,7 +1437,7 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
         return;
     }
 
-    // НОВОЕ ОГРАНИЧЕНИЕ: минимум 5 активированных рефералов для вы��ода
+    // НОВОЕ ОГРАНИЧЕНИЕ: минимум 5 активированных реф��ралов для вы��ода
     const referralStats = await Database.getReferralStats(userId);
     if (referralStats.activated_referrals < 5) {
         await bot.answerCallbackQuery(callbackQueryId, '❌ Для вывода нужно минимум 5 активированных рефералов!');
@@ -1501,13 +1515,13 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
     }
 }
 
-// Пок��зать задания (только кастомные, без SubGram)
+// Показать задания (только кастомные, без SubGram)
 async function showTasks(chatId, userId, messageId) {
     try {
         console.log(`📋 ФУНКЦИЯ showTasks ВЫЗВАНА для пользователя ${userId}`);
 
         // Получаем только кастомные задания (не SubGram)
-        const customTasks = await Database.getTasks(false); // false = не SubGram задания
+        const customTasks = await Database.getTasks(false); // false = ��е SubGram задания
         console.log(`🔍 НАЙДЕНО КАСТОМНЫХ ЗАДАНИЙ: ${customTasks.length}`);
         
         // Ищем первое невыполненное кастомное задание
@@ -1522,7 +1536,7 @@ async function showTasks(chatId, userId, messageId) {
         
         if (availableCustomTask) {
             console.log(`✅ ПОКАЗЫВАЕМ КАСТОМНОЕ ЗАДАНИЕ:`, availableCustomTask);
-            // Показываем кастомное задание
+            // ��оказываем кастомное задание
             const message = `📋 Доступное задание\n\n` +
                            ` ${availableCustomTask.title}\n` +
                            `📄 ${availableCustomTask.description || 'Выполните задания'}\n` +
@@ -1535,7 +1549,7 @@ async function showTasks(chatId, userId, messageId) {
                     availableCustomTask.link ? [{ text: '📢 Перейти к заданию', url: availableCustomTask.link }] : [],
                     [{ text: '✅ Проверить выполнение', callback_data: `check_custom_task_${availableCustomTask.id}` }],
                     [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
-                ].filter(row => row.length > 0) // Уби����ем пустые строки
+                ].filter(row => row.length > 0) // Убираем пустые строки
             };
             
             await bot.editMessageText(message, {
@@ -1570,7 +1584,7 @@ async function showTasks(chatId, userId, messageId) {
     }
 }
 
-// П��казать инструкции
+// Показать инструкции
 async function showInstructions(chatId, messageId) {
     const message = `📖 Инструкция по боту\n\n` +
                    `🌟 Как зарабатывать ⭐:\n\n` +
@@ -1778,8 +1792,8 @@ async function handleRouletteBet(chatId, userId, amount, messageId, callbackQuer
             return;
         }
 
-        // ИСПРАВЛЕН��: исп��льзуем честную случайность вместо предсказуемого счетчика
-        // Шанс выигрыша 15% (справедлива�� рулетка)
+        // ИСПРАВЛЕНО: используем честную случайность вместо предсказуемого счетчика
+        // Шанс выигрыша 15% (справедливая рулетка)
         const isWin = Math.random() < 0.15;
 
         if (isWin) {
@@ -1848,7 +1862,7 @@ async function handleCustomTaskCheck(chatId, userId, taskId, messageId, callback
     try {
         console.log(`✅ Проверка выполнения кастомного задания ${taskId} для пользователя ${userId}`);
 
-        // Проверяем есть ли зада��ие
+        // Проверяем есть ли задание
         const tasks = await Database.getTasks(false);
         const task = tasks.find(t => t.id === taskId);
         
@@ -1865,7 +1879,7 @@ async function handleCustomTaskCheck(chatId, userId, taskId, messageId, callback
             return;
         }
 
-        // Отмечаем как выпол��енное
+        // Отмечаем как выполненное
         await Database.completeTask(userId, taskId);
         
         // Начисляем награду
@@ -1877,7 +1891,7 @@ async function handleCustomTaskCheck(chatId, userId, taskId, messageId, callback
         // Проверяем условия для реферала
         await checkReferralConditions(userId);
 
-        // Показываем сле��ующе�� задание или сообщение о завершении
+        // Показываем следующее з��дание или сообщение о завершении
         await showTasks(chatId, userId, messageId);
 
     } catch (error) {
@@ -1917,7 +1931,7 @@ bot.onText(/\/admin/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
-    // Проверка ад��инских прав (добавьте свой ID в config.ADMIN_IDS)
+    // Пр��верка админских прав (добавьте свой ID в config.ADMIN_IDS)
     if (!config.ADMIN_IDS.includes(userId)) {
         await bot.sendMessage(chatId, '❌ У вас нет прав администратора');
         return;
@@ -2002,7 +2016,7 @@ async function showAdminPanel(chatId, messageId = null) {
     const keyboard = {
         inline_keyboard: [
             [{ text: '📊 Статистика бота', callback_data: 'admin_stats' }],
-            [{ text: '📋 У��равление заданиями', callback_data: 'admin_tasks' }],
+            [{ text: '📋 Управление заданиями', callback_data: 'admin_tasks' }],
             [{ text: '🎲 Управление лотереями', callback_data: 'admin_lottery' }],
             [{ text: '🎫 Управление промокодами', callback_data: 'admin_promocodes' }],
             [{ text: '📢 Рассылка сообщений', callback_data: 'admin_broadcast' }],
@@ -2025,8 +2039,11 @@ async function showAdminPanel(chatId, messageId = null) {
 
 // Обработчик админских действий
 async function handleAdminCallback(chatId, userId, data, messageId, callbackQueryId) {
+    console.log(`🔧 АДМИН CALLBACK: data="${data}", userId=${userId}`);
+
     // Проверка админских прав
     if (!config.ADMIN_IDS.includes(userId)) {
+        console.log(`❌ ОТКАЗ В ПРАВАХ: пользователь ${userId} не является админом`);
         await bot.answerCallbackQuery(callbackQueryId, '❌ Нет прав');
         return;
     }
@@ -2057,9 +2074,11 @@ async function handleAdminCallback(chatId, userId, data, messageId, callbackQuer
             await showWithdrawalNumbering(chatId, messageId);
             break;
         case 'admin_custom_broadcast':
+            console.log(`💎 ПОКАЗ КАСТОМНОЙ РАССЫЛКИ пользователю ${userId}`);
             await showCustomBroadcast(chatId, messageId);
             break;
         case 'create_custom_broadcast':
+            console.log(`📝 СОЗДАНИЕ КАСТОМНОЙ РАССЫЛКИ от пользователя ${userId}`);
             await createCustomBroadcast(chatId, userId, messageId);
             break;
         case 'set_closure_435':
@@ -2086,7 +2105,7 @@ async function handleAdminCallback(chatId, userId, data, messageId, callbackQuer
     await bot.answerCallbackQuery(callbackQueryId);
 }
 
-// Показать статисти��у бота
+// Показать статистику бота
 async function showBotStats(chatId, messageId) {
     try {
         const totalUsers = await Database.pool.query('SELECT COUNT(*) as count FROM users');
@@ -2096,7 +2115,7 @@ async function showBotStats(chatId, messageId) {
         const activatedReferrals = await Database.pool.query('SELECT COUNT(*) as count FROM users WHERE referral_completed = TRUE');
         const todayUsers = await Database.pool.query('SELECT COUNT(*) as count FROM users WHERE DATE(created_at) = CURRENT_DATE');
 
-        // Дополнительная статистика по подписк��м
+        // Дополнительная статистика по подпискам
         const subscriptionStats = await Database.pool.query(`
             SELECT
                 COUNT(CASE WHEN referral_completed = TRUE THEN 1 END) as activated_users,
@@ -2154,7 +2173,7 @@ async function showAdminTasks(chatId, messageId) {
     });
 }
 
-// Показать адм��нскую рассылку
+// Показать админскую рассылку
 async function showAdminBroadcast(chatId, messageId) {
     const message = `📢 Рассылка сообщений\n\n` +
                    `Выберите готовое сообщение для рассылки всем пользователям:`;
@@ -2278,7 +2297,7 @@ async function showAdminWithdrawals(chatId, messageId) {
         } else {
             message += `📋 Ожидающих заявок: ${pending.length}\n\n`;
 
-            for (const request of pending.slice(0, 5)) { // Показываем первые 5
+            for (const request of pending.slice(0, 5)) { // Показываем п��рвые 5
                 // Получаем расширенную информацию о пользователе
                 const userInfo = await getUserWithdrawalInfo(request.user_id);
 
@@ -2362,7 +2381,7 @@ async function showWithdrawalNumbering(chatId, messageId) {
             SELECT last_value FROM withdrawal_requests_id_seq;
         `);
 
-        // Получаем те��ущее значение последовательности закрытия заявок
+        // Получаем текущее значение последовательности закрытия заявок
         const closureSeqQuery = await Database.pool.query(`
             SELECT EXISTS (SELECT 1 FROM information_schema.sequences WHERE sequence_name = 'withdrawal_closure_seq');
         `);
@@ -2428,7 +2447,7 @@ async function showWithdrawalNumbering(chatId, messageId) {
     }
 }
 
-// Обработчик установки номера закрытых заявок (для платежног�� чата)
+// Обработчик установки номера закрытых заявок (для платежного чата)
 async function handleSetClosureNumber(chatId, userId, startNumber, messageId, callbackQueryId) {
     try {
         console.log(`🔢 Установка начального номера закрытых заявок: ${startNumber} (админ: ${userId})`);
@@ -2440,7 +2459,7 @@ async function handleSetClosureNumber(chatId, userId, startNumber, messageId, ca
                                  `📊 Изменения:\n` +
                                  `• Последовательность установлена на: ${result.newValue}\n` +
                                  `• Следующая закрытая заявка получит номер: ${result.nextClosureNumber}\n\n` +
-                                 `ℹ️ Это влияет только на нумерацию в платежном чате`;
+                                 ` Это влияет только на нумерацию в платежном чате`;
 
             await bot.answerCallbackQuery(callbackQueryId, `✅ Установлен номер ${startNumber}!`);
 
@@ -2518,7 +2537,7 @@ async function handleSetWithdrawalNumber(chatId, userId, startNumber, messageId,
     }
 }
 
-// Обработчик открытия кейса (упрощенная версия)
+// ��бработчик открытия кейса (упрощенная версия)
 async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
     try {
         const user = await Database.getUser(userId);
@@ -2533,7 +2552,7 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
         // Случайная награда от 1 до 10 звёзд
         const reward = Math.floor(Math.random() * 10) + 1;
         
-        // Начисляем нагр��ду
+        // Начисляем награду
         await Database.updateUserBalance(userId, reward);
         
         // Обновляем дату открытия кейса
@@ -2553,7 +2572,7 @@ async function handleOpenCase(chatId, userId, messageId, callbackQueryId) {
 
 // Обработчик заявок на вывод с убиранием кнопок и отправкой в платежный чат
 async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, messageId) {
-    // Проверка админских прав
+    // ��роверка админских прав
     if (!config.ADMIN_IDS.includes(userId)) {
         await bot.answerCallbackQuery(callbackQueryId, '❌ Нет прав');
         return;
@@ -2567,7 +2586,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
 
         console.log(`🔍 ПАРСИНГ: action="${action}", requestId="${requestId}", id=${id}`);
 
-        // Проверяем корректность парсинга ID
+        // Проверяе�� корректность парсинга ID
         if (isNaN(id) || !requestId) {
             console.error(`❌ ОШИБКА ПАРСИНГА: data="${data}" не содержит корректный ID`);
             await bot.answerCallbackQuery(callbackQueryId, '❌ Ошибка: неверный формат ID заявки');
@@ -2711,12 +2730,12 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
     }
 }
 
-// Обработчик рассылки (упрощенная версия)
+// Обработчик расс��лки (упрощенная версия)
 async function handleBroadcast(type) {
     console.log(` Рассылка типа ${type} (функция будет добавлена позже)`);
 }
 
-// Улучш��нный обработчик рассылки с готовыми сообщениями
+// Улучшенный обработчик рассылки с готовыми сообщениями
 async function handleBroadcastNew(type) {
     try {
         const users = await Database.pool.query('SELECT user_id FROM users');
@@ -2858,13 +2877,12 @@ cron.schedule('0 0 * * *', async () => {
 cron.schedule('3 3 * * 1', async () => {
     console.log('🕛 Еженедельный сброс подписок...');
     try {
-        // Очи��аем кеш подписок webhook handler
+        // Очищаем кеш подписок webhook handler
         webhookHandler.userSubscriptionCache.clear();
         console.log('✅ Кеш подписок очищен');
 
-        // Сбрасываем weekly_points для недельного рейтинга
-        await Database.pool.query('UPDATE users SET weekly_points = 0');
-        console.log('✅ Недельные очки сброшены');
+        // НЕ СБРАСЫВАЕМ ОЧКИ ЗДЕСЬ - они сбрасываются после начисления наград в воскресенье
+        console.log('ℹ️ Недельные очки сбрасываются после начисления наград в воскресенье');
     } catch (error) {
         console.error('❌ Ошибка еженедельного сброса:', error);
     }
@@ -2899,6 +2917,12 @@ cron.schedule('0 20 * * 0', async () => {
         }
 
         console.log('✅ Еженедельные награды начислены');
+
+        // СБРАСЫВАЕМ ОЧКИ СРАЗУ ПОСЛЕ НАЧИСЛЕНИЯ НАГРАД
+        console.log('🔄 Сброс недельных очков после начисления наград...');
+        await Database.resetWeeklyPoints();
+        console.log('✅ Недельные очки сброшены после начисления наград');
+
     } catch (error) {
         console.error('❌ Ошибка начисления еженедельных наград:', error);
     }
