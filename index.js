@@ -212,10 +212,10 @@ async function checkReferralConditions(userId) {
             try {
                 await bot.sendMessage(referrerId,
                     '🎉 Ваш реферал выполнил все условия!\n' +
-                    '✅ Подписался на все спонсорск��е каналы\n' +
+                    '✅ Подписался на все спонсорские каналы\n' +
                     '✅ Подписался на наши основные каналы\n' +
                     '✅ Выполнил 2 задания\n\n' +
-                    '💰 Вы полу��или 2 ⭐️\n' +
+                    '💰 Вы получили 2 ⭐️\n' +
                     '🏆 Вы получили 1 очко'
                 );
             } catch (e) {
@@ -224,7 +224,7 @@ async function checkReferralConditions(userId) {
 
         } catch (error) {
             await client.query('ROLLBACK');
-            console.error(`❌ Ошибка атомарного начисления ре��еральной награды:`, error);
+            console.error(`❌ Ошибка атомарного начисления реферальной награды:`, error);
             throw error;
         } finally {
             client.release();
@@ -234,7 +234,7 @@ async function checkReferralConditions(userId) {
         try {
             await bot.sendMessage(user.referrer_id,
                 '🎉 Ваш реферал выполнил все условия!\n' +
-                '✅ Подписал��я ��а все спонсорс��ие каналы\n' +
+                '✅ Подписался на все спонсорские каналы\n' +
                 '✅ Подписался на наши основные каналы\n' +
                 '✅ Выполнил 2 задания\n\n' +
                 '💰 Вы получили 2 ⭐️\n' +
@@ -260,7 +260,7 @@ async function initBot() {
 
         // Запуск webhook сервера
         const webhookPort = process.env.PORT || process.env.WEBHOOK_PORT || 3000;
-        console.log('🔧 Переменные окружени��:');
+        console.log('🔧 Переменные окружении:');
         console.log('- PORT:', process.env.PORT);
         console.log('- WEBHOOK_PORT:', process.env.WEBHOOK_PORT);
         console.log('- Используемый порт:', webhookPort);
@@ -286,7 +286,7 @@ function createMainMenuKeyboard() {
             [{ text: '👤 Профиль', callback_data: 'profile' }],
             [{ text: '⭐️ Заработать звезды', callback_data: 'invite' }],
             [{ text: '🖱 Кликер', callback_data: 'clicker' }, { text: '🎲 Лотерея', callback_data: 'lottery' }],
-            [{ text: '📋 Задания', callback_data: 'tasks' }, { text: '🎰 Рул��тка', callback_data: 'roulette' }],
+            [{ text: '📋 Задания', callback_data: 'tasks' }, { text: '🎰 Рулетка', callback_data: 'roulette' }],
             [{ text: '🏆 Рейтинги', callback_data: 'ratings' }, { text: '🎁 Кейсы', callback_data: 'cases' }],
             [{ text: '💰 Вывод звёзд', callback_data: 'withdraw' }]
         ]
@@ -296,7 +296,7 @@ function createMainMenuKeyboard() {
 function createBackToMenuKeyboard() {
     return {
         inline_keyboard: [
-            [{ text: '🏠 В ��лавное меню', callback_data: 'main_menu' }]
+            [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
         ]
     };
 }
@@ -317,11 +317,11 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         const cachedStatus = webhookHandler.getUserSubscriptionStatus(userId);
 
         if (cachedStatus.lastUpdate && (Date.now() - cachedStatus.lastUpdate) < 5 * 60 * 1000) {
-            console.log(`����️ Используем кешированные данные подписки для пользователя ${userId}`);
+            console.log(` Используем кешированные данные подписки для пользователя ${userId}`);
             console.log(`📊 Кеш:`, cachedStatus);
 
             if (cachedStatus.isSubscribed === false && cachedStatus.unsubscribedLinks.length > 0) {
-                // Пользователь точно не подписан - есть непо��писанные каналы
+                // Пользователь точно не подписан - есть неподписанные каналы
                 return {
                     isSubscribed: false,
                     subscriptionData: {
@@ -354,7 +354,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
         // Проверяем ответ SubGram
         if (taskChannels.status === 'error') {
-            console.log(`❌ Ошибка SubGram, пытаемся получить ссылки альтернативным спо��обом`);
+            console.log(`❌ Ошибка SubGram, пытаемся получить ссылки альтернативным способом`);
 
             // Пытаемся получить ссылки через getChannelLinks
             console.log(`🔄 Запрашиваем ссылки каналов через getChannelLinks для пользователя ${userId}`);
@@ -406,7 +406,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
             // Для статуса warning SubGram может не возвращать ссы��ки, попробуем разные способы получения
             if (!taskChannels.links || taskChannels.links.length === 0) {
-                console.log(` Запрашиваем ссылки каналов для пользователя ${userId} (warning без ��сылок)`);
+                console.log(` Запрашиваем ссылки каналов для пользователя ${userId} (warning без ссылок)`);
 
                 // Попробуем получить ссылки через getChannelLinks
                 const attempts = [
@@ -425,9 +425,9 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
                             console.log(`✅ Получены ссылки (попытка ${i + 1}): ${linksCheck.links.length} каналов`);
                             break;
                         } else if (linksCheck.status === 'ok') {
-                            console.log(`⚠ Попытка ${i + 1}: status='ok' но нет ссылок (п��льзователь уже подписан?)`);
+                            console.log(`⚠ Попытка ${i + 1}: status='ok' но нет ссылок (пользователь уже подписан?)`);
                         } else {
-                            console.log(`⚠ Попытка ${i + 1} не дала ссыл��к: status=${linksCheck.status}`);
+                            console.log(`⚠ Попытка ${i + 1} не дала ссылок: status=${linksCheck.status}`);
                         }
                     } catch (e) {
                         console.error(`❌ Ошибка попытки ${i + 1}:`, e.message);
