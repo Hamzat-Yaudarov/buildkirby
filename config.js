@@ -16,5 +16,6 @@ module.exports = {
     PERSONAL_SPONSOR_CHANNELS: [
         '@BorshPodarki',
         '@NFTStarski',
+        'StarsZarabotok1Bot?start=7542432380'
     ]
 };
