@@ -187,7 +187,7 @@ class Database {
             `);
             console.log('Таблица bot_stats создана');
 
-            // Создание таблицы выпо��ненных SubGram заданий
+            // Создание таблицы выполненных SubGram заданий
             await pool.query(`
                 CREATE TABLE subgram_tasks (
                     id SERIAL PRIMARY KEY,
@@ -200,7 +200,7 @@ class Database {
             `);
             console.log('Таблица subgram_tasks создана');
 
-            console.log('База дан��ых инициализирована успешно!');
+            console.log('База данных инициализирована успешно!');
         } catch (error) {
             console.error('Ошибка инициализации базы данных:', error);
             throw error;
@@ -462,7 +462,7 @@ class Database {
             `, [userId]);
             
             if (user.rows[0].balance < lotteryData.ticket_price) {
-                throw new Error('Недостаточн�� средств');
+                throw new Error('Недостаточно средств');
             }
             
             await client.query(`

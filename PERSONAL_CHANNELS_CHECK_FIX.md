@@ -55,7 +55,7 @@
 { text: '✅ Проверить подписки', callback_data: 'check_subscription_personal' }
 ```
 
-### 3. Добавлен�� поддержка нового callback
+### 3. Добавлена поддержка нового callback
 
 - Добавлен `'check_subscription_personal'` в `allowedWithoutSubscription`
 - Добавлен в `commandsThatAnswerThemselves`
