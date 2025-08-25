@@ -342,7 +342,7 @@ function createBackToMenuKeyboard() {
 function createProfileKeyboard() {
     return {
         inline_keyboard: [
-            [{ text: '🎫 Промокод', callback_data: 'promocode' }],
+            [{ text: '🎁 Промокод', callback_data: 'promocode' }],
             [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
         ]
     };
@@ -395,7 +395,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             console.log(`❌ Ошибка SubGram, пытаемся получить ссылки альтернативным способом`);
 
             // Пытаемся получить ссылки через getChannelLinks
-            console.log(`🔄 Запрашиваем ссылки каналов через getChannelLinks для пользователя ${userId}`);
+            console.log(` Запрашиваем ссылки каналов через getChannelLinks для пользователя ${userId}`);
             try {
                 const channelLinks = await SubGram.getChannelLinks(
                     userId,
@@ -454,7 +454,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
 
                 for (let i = 0; i < attempts.length; i++) {
                     try {
-                        console.log(`🔄 Попытка ${i + 1}/${attempts.length} получения ссылок`);
+                        console.log(` Попытка ${i + 1}/${attempts.length} получения ссылок`);
                         const linksCheck = await attempts[i]();
 
                         if (linksCheck.links && linksCheck.links.length > 0) {
@@ -1268,7 +1268,7 @@ async function showReferralDetails(chatId, userId, messageId) {
         if (activatedReferrals.length === 0) {
             message += `• Пока нет активированных рефералов\n`;
         } else {
-            activatedReferrals.slice(0, 10).forEach((referral, index) => { // показываем только первые 10
+            activatedReferrals.slice(0, 10).forEach((referral, index) => { // показывает только первые 10
                 const name = referral.first_name || 'Пользователь';
                 const username = referral.username ? `@${referral.username}` : '';
                 const date = new Date(referral.created_at).toLocaleDateString('ru-RU');
@@ -1679,7 +1679,7 @@ async function showInstructions(chatId, messageId) {
     const message = `📖 Инструкция по боту\n\n` +
                    `🌟 Как зарабатывать ⭐:\n\n` +
                    `👥 Рефералы:\n` +
-                   `• Приглашайте друзей по своей ссылке\n` +
+                   `• Приглашайте друзей по твоей ссылке\n` +
                    `• За каждого реферала: 2 звезды\n` +
                    `• Реферал засчитывается после подписки на спонсоров и выполнения 2 заданий\n\n` +
                    `🖱 Кликер:\n` +
@@ -2138,6 +2138,9 @@ async function handleAdminCallback(chatId, userId, data, messageId, callbackQuer
         case 'admin_withdrawal_numbering':
             await showWithdrawalNumbering(chatId, messageId);
             break;
+        case 'admin_broadcast_all':
+            await startBroadcastMessage(chatId, userId);
+            break;
         case 'set_closure_435':
             await handleSetClosureNumber(chatId, userId, 435, messageId, callbackQueryId);
             break;
@@ -2239,7 +2242,7 @@ async function showAdminBroadcast(chatId, messageId) {
         inline_keyboard: [
             [{ text: '🏆 Напоминание о рейтинге', callback_data: 'broadcast_rating' }],
             [{ text: '📋 Уведомление о заданиях', callback_data: 'broadcast_tasks' }],
-            [{ text: '💎 Кастомная рассылка', callback_data: 'admin_custom_broadcast' }],
+            [{ text: '📝 Отправить сообщение всем', callback_data: 'admin_broadcast_all' }],
             [{ text: '🔙 Назад к админ-панели', callback_data: 'admin_back' }]
         ]
     };
