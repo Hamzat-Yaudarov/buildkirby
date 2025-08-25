@@ -4,7 +4,7 @@ module.exports = {
     SUBGRAM_API_KEY: '5d4c6c5283559a05a9558b677669871d6ab58e00e71587546b25b4940ea6029d',
     ADMIN_CHAT_ID: '@kirbyvivodstars',
     PAYMENTS_CHAT_ID: '@kirbystarspayments',
-    ADMIN_IDS: [7972065986, 6910097562], // Добавлен ваш ID
+    ADMIN_IDS: [7972065986, 6910097562], // Замените на ваш Telegram ID
     WEEKLY_REWARDS: {
         1: 100,
         2: 75,
