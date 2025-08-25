@@ -24,6 +24,9 @@ const lastSubscriptionCheck = new Map();
 // Защита от дублирования спонсорские сообщений
 const lastSponsorMessage = new Map();
 
+// Состояния пользователей для кастомной рассылки
+const broadcastStates = new Map();
+
 // Удаляем предсказуемый счетчик рулетки
 // let rouletteBetCounter = 0; // УЯЗВИМОСТЬ ИСПРАВЛЕНА
 
@@ -557,8 +560,13 @@ bot.onText(/\/cancel/, async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
+    console.log(`🚫 Команда /cancel от пользователя ${userId}`);
+    console.log(`🔍 Состояние рассылки: ${broadcastStates.has(userId) ? 'есть' : 'нет'}`);
+    console.log(`📊 Всего активных состояний: ${broadcastStates.size}`);
+
     if (broadcastStates.has(userId)) {
         broadcastStates.delete(userId);
+        console.log(`✅ Удалили состояние рассылки для пользователя ${userId}`);
         await bot.sendMessage(chatId, '❌ Рассылка отменена.');
     } else {
         await bot.sendMessage(chatId, 'ℹ️ Нет активных операций для отмены.');
@@ -572,7 +580,11 @@ bot.on('message', async (msg) => {
     const messageText = msg.text;
 
     // Проверяем, если админ ожидает ввода сообщения для рассылки
+    console.log(`📨 Получено сообщение от пользователя ${userId}: "${messageText}"`);
+    console.log(`🔍 Состояние рассылки: ${broadcastStates.has(userId) ? 'есть' : 'нет'}`);
+
     if (broadcastStates.has(userId) && broadcastStates.get(userId).waiting) {
+        console.log(`✅ Пользователь ${userId} ожидает рассылку, обрабатываем сообщение`);
         // Проверяем админские права
         if (!config.ADMIN_IDS.includes(userId)) {
             broadcastStates.delete(userId);
@@ -609,6 +621,27 @@ bot.on('message', async (msg) => {
 
         await bot.sendMessage(chatId, confirmationMessage, { reply_markup: keyboard });
         return;
+    }
+
+    // Проверяем промокоды только если это не команда
+    if (messageText && !messageText.startsWith('/') && !messageText.startsWith('Участник:')) {
+        const userState = userStates.get(userId);
+
+        if (userState === 'waiting_promocode') {
+            userStates.delete(userId);
+
+            try {
+                const promocode = await Database.usePromocode(userId, messageText);
+                await Database.updateUserBalance(userId, promocode.reward);
+
+                await bot.sendMessage(chatId,
+                    `✅ Промокод активирован!\n💰 Вы получили ${promocode.reward} ⭐`
+                );
+            } catch (error) {
+                await bot.sendMessage(chatId, `❌ ${error.message}`);
+            }
+            return;
+        }
     }
 });
 
@@ -1400,7 +1433,7 @@ async function showClicker(chatId, userId, messageId) {
                 text: canClick && remainingClicks > 0 ? '🖱 КЛИК!' : '❌ Недоступно', 
                 callback_data: canClick && remainingClicks > 0 ? 'click' : 'disabled'
             }],
-            [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
+            [{ text: '◀️ В главное меню', callback_data: 'main_menu' }]
         ]
     };
     
@@ -2037,31 +2070,6 @@ async function handleCustomTaskCheck(chatId, userId, taskId, messageId, callback
     }
 }
 
-// Обработчик текстовых сообщение
-bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const text = msg.text;
-    
-    if (!text || text.startsWith('/')) return;
-    
-    const userState = userStates.get(userId);
-    
-    if (userState === 'waiting_promocode') {
-        userStates.delete(userId);
-        
-        try {
-            const promocode = await Database.usePromocode(userId, text);
-            await Database.updateUserBalance(userId, promocode.reward);
-            
-            await bot.sendMessage(chatId, 
-                `✅ Промокод активирован!\n💰 Вы получили ${promocode.reward} ⭐`
-            );
-        } catch (error) {
-            await bot.sendMessage(chatId, ` ${error.message}`);
-        }
-    }
-});
 
 // Команда /admin
 bot.onText(/\/admin/, async (msg) => {
@@ -2725,8 +2733,6 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
     }
 }
 
-// Состояния пользователей для кастомной рассылки
-const broadcastStates = new Map();
 
 // Функция для начала создания кастомной рассылки
 async function startBroadcastMessage(chatId, userId) {
@@ -2736,6 +2742,8 @@ async function startBroadcastMessage(chatId, userId) {
                    'Отправьте /cancel для отмены.';
 
     broadcastStates.set(userId, { waiting: true, chatId: chatId });
+    console.log(`🎯 Установили состояние рассылки для пользователя ${userId}`);
+    console.log(`📊 Всего активных состояний рассылки: ${broadcastStates.size}`);
 
     await bot.sendMessage(chatId, message);
 }
