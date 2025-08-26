@@ -17,8 +17,7 @@ module.exports = {
     // 1. @username (обычный формат Telegram)
     // 2. https://t.me/username (прямая ссылка)
     PERSONAL_SPONSOR_CHANNELS: [
-        'https://t.me/kirbystarschanel',
-        '@BorshPodarki',
-        'https://t.me/NFTStarski',
+        'https://t.me/+bzNw-bHKmIozMWQy',
+        'https://t.me/nftlyd'
         ]
 };
