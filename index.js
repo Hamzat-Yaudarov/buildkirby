@@ -63,7 +63,7 @@ function normalizeChannelIdentifier(channelInput) {
 }
 
 // Проверка подписки на личные спонсорские каналы (ОБНОВЛЕНО: с базой данных и статистикой)
-// Теперь поддерживает как @username, так и https://t.me/username форматы
+// Теперь п��ддерживает как @username, так и https://t.me/username форматы
 async function checkPersonalChannelsSubscription(userId, skipOnError = false) {
     try {
         // Получаем активные каналы из базы данных
@@ -105,7 +105,7 @@ async function checkPersonalChannelsSubscription(userId, skipOnError = false) {
                 console.error(`Ошибка проверки подписки на канал ${channelData.channel_identifier}:`, error.message);
 
                 if (skipOnError) {
-                    // При нажатии кнопки "Проверить подписки" - пропускаем канал при ошибке
+                    // При нажатии кнопки "Проверить подписки" - пропу��каем канал при ошибке
                     console.log(`⏭️ Пропускаем канал ${channelData.channel_identifier} при проверке по запросу пользователя`);
                 } else {
                     // В остальных случаях считаем что пользователь не подписан
@@ -327,20 +327,6 @@ async function checkReferralConditions(userId) {
             client.release();
         }
 
-        // Уведомляем реферера
-        try {
-            await bot.sendMessage(user.referrer_id,
-                '🎉 Ваш реферал выполнил все условия!\n' +
-                '✅ Подписался на все спонсорские каналы\n' +
-                '✅ Подписался на наши основные каналы\n' +
-                '✅ Выполнил 2 задания\n\n' +
-                '💰 Вы получили 2 ⭐️\n' +
-                '🏆 Вы получили 1 очко'
-            );
-        } catch (e) {
-            console.log(`Не удалось отправить уведомление рефереру ${user.referrer_id}`);
-        }
-
     } catch (error) {
         console.error('Ошибка проверки реферальных условий:', error);
     }
@@ -479,7 +465,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
             // В случае ошибки API используем кеш если есть
             if (cachedStatus.lastUpdate) {
                 return {
-                    isSubscribed: cachedStatus.isSubscribed === true, // СТРОГО: только если точ��о подписан
+                    isSubscribed: cachedStatus.isSubscribed === true, // СТРОГО: только если точно подписан
                     subscriptionData: {
                         status: 'fallback_cache',
                         links: cachedStatus.unsubscribedLinks || []
@@ -975,7 +961,7 @@ bot.on('callback_query', async (callbackQuery) => {
             if (!personalChannelsStatus.isSubscribed && personalChannelsStatus.unsubscribedChannels.length > 0) {
                 console.log(`🔒 ЖЁСТКАЯ БЛОКИРОВКА действий "${data}" - пользователь ${userId} НЕ подписан на личные каналы`);
 
-                // Показываем алерт о необходимости подписки на личные каналы
+                // По��азываем алерт о необходимости подписки на личные каналы
                 await bot.answerCallbackQuery(callbackQuery.id, {
                     text: '🔒 Доступ заблокирован! Подпишитесь на наши основные каналы!',
                     show_alert: true
@@ -1306,7 +1292,7 @@ async function handleSubscriptionCheck(chatId, userId, messageId, callbackQueryI
     const subscriptionStatus = await checkUserSubscription(
         userId,
         chatId,
-        '', // имя не важно для прове��ки
+        '', // имя не важно для проверки
         'ru',
         false
     );
@@ -1657,7 +1643,7 @@ async function getUserWithdrawalInfo(userId) {
         let referralsSubscriptions = 0;
         const activatedReferrals = await Database.getActivatedReferrals(userId);
 
-        // Проверяем реальные данные о подписках каждого активного реферала
+        // Проверяем реальные да��ные о подписках каждого активного реферала
         for (const referral of activatedReferrals) {
             const referralSubscriptionStatus = webhookHandler.getUserSubscriptionStatus(referral.user_id);
             if (referralSubscriptionStatus.lastUpdate && referralSubscriptionStatus.subscribedCount) {
@@ -2863,7 +2849,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
             await bot.answerCallbackQuery(callbackQueryId, '🎉 Заявка одобрена');
 
         } else if (action === 'reject') {
-            // Отклоняем заявку и возвращаем средства
+            // Отклоняем заявку и возв��ащаем средства
             await Database.processWithdrawal(id, 'rejected', 'Отклонено администратором');
             await Database.updateUserBalance(requestData.user_id, requestData.amount, 'add');
 
@@ -2966,7 +2952,7 @@ async function sendCustomBroadcast(messageText, adminUserId) {
         }
 
         // Отправляем отчет админу
-        const reportMessage = `📊 Отчет о кастомной рассылке:\n\n` +
+        const reportMessage = ` Отчет о кастомной рассылке:\n\n` +
                              `✅ Успешно отправлено: ${successCount}\n` +
                              `❌ Не удалось отправить: ${failCount}\n` +
                              `📈 Общий охват: ${successCount}/${users.rows.length} пользователей`;
