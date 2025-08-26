@@ -13,10 +13,7 @@ module.exports = {
         5: 15
     },
     // Личные спонсорские каналы (добавьте свои)
-    // Поддерживается два формата:
-    // 1. @username (обычный формат Telegram)
-    // 2. https://t.me/username (прямая ссылка)
     PERSONAL_SPONSOR_CHANNELS: [
-
+        '@BorshPodarki'
         ]
 };
