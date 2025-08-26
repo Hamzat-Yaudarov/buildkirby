@@ -27,6 +27,9 @@ const lastSponsorMessage = new Map();
 // Состояния пользователей для кастомной рассылки
 const broadcastStates = new Map();
 
+// Временное хранение сообщений для рассылки (решает проблему BUTTON_DATA_INVALID)
+const pendingBroadcastMessages = new Map();
+
 // Удаляем предсказуемый счетчик рулетки
 // let rouletteBetCounter = 0; // УЯЗВИМОСТЬ ИСПРАВЛЕНА
 
@@ -116,7 +119,7 @@ async function checkPersonalChannelsSubscription(userId, skipOnError = false) {
     }
 }
 
-// Централизованная функция для отправки спонсорских сообщений (БЕЗ ДУБЛИРОВАНИЯ)
+// Централизованная ф��нкция для отправки спонсорских сообщений (БЕЗ ДУБЛИРОВАНИЯ)
 async function sendSponsorMessage(chatId, userId, subscriptionData, messageId = null, method = 'send') {
     const now = Date.now();
     const lastMessage = lastSponsorMessage.get(userId);
@@ -186,7 +189,7 @@ async function checkReferralConditions(userId) {
         // Проверяем подписку на SubGram спонсорские каналы
         const subscriptionStatus = await checkUserSubscription(userId, userId);
         if (!subscriptionStatus.isSubscribed) {
-            console.log(`👥 Реферал ${userId} еще не подписан на SubGram спонсорские каналы`);
+            console.log(`👥 Реферал ${userId} еще не подписан на SubGram спонсорские ка��алы`);
             return;
         }
 
@@ -232,7 +235,7 @@ async function checkReferralConditions(userId) {
             }
 
             const referrerId = updateResult.rows[0].referrer_id;
-            console.log(`✅ Атомарно помечен реферал ${userId}, начисляем награду рефереру ${referrerId}`);
+            console.log(`✅ Атомарно помечен реферал ${userId}, начисляем награду реф��реру ${referrerId}`);
 
             // Начисляем баланс и очки рефереру в той же транзакции
             await client.query(
@@ -310,7 +313,7 @@ async function initBot() {
         // Установка команд бота
         await bot.setMyCommands([
             { command: 'start', description: 'Запустить бота' },
-            { command: 'menu', description: 'Главное меню' },
+            { command: 'menu', description: 'Главн��е меню' },
             { command: 'admin', description: 'Админ панель' }
         ]);
         
@@ -849,7 +852,7 @@ bot.on('callback_query', async (callbackQuery) => {
                     }
                 }
 
-                return; // КРИТИЧНО: немедленно завершаем обработку
+                return; // КРИТИ��НО: немедленно завершаем обработку
             }
         }
 
@@ -989,7 +992,7 @@ bot.on('callback_query', async (callbackQuery) => {
 async function handleSubscriptionCheckPersonal(chatId, userId, messageId, callbackQueryId = null) {
     console.log(`🔄 Проверка подписки (личные каналы) по запросу пользователя ${userId}`);
 
-    // ЗАЩИТА ОТ СПАМА: проверяем не вызывали ли мы недавно проверку подписки
+    // ЗАЩИТА ��Т СПАМА: проверяем не вызывали ли мы недавно проверку подписки
     const now = Date.now();
     const lastCheck = lastSubscriptionCheck.get(userId);
     if (lastCheck && (now - lastCheck) < 2000) { // 2 секунды защита для callback
@@ -1462,7 +1465,7 @@ async function getUserWithdrawalInfo(userId) {
             // Если есть свежие данные о подписках
             const subscribedCount = userSubscriptionStatus.subscribedCount || 0;
             const totalChannels = userSubscriptionStatus.totalLinks || 0;
-            userSubscriptions = subscribedCount; // реальное количество подписок
+            userSubscriptions = subscribedCount; // реа��ьное количество подписок
             console.log(`📈 Пользователь ${userId}: реальные подписки ${subscribedCount}/${totalChannels}`);
         } else {
             // Оценка на основе статуса активации
@@ -1598,7 +1601,7 @@ async function handleWithdraw(chatId, userId, amount, messageId, callbackQueryId
                             `📱 Username: @${user.username || 'отсутствует'}\n` +
                             `💰 Сумма: ${amount} звёзд\n` +
                             `💎 Остаток: ${user.balance - amount} звёзд\n` +
-                            `💎 Всего заработано: ${user.total_earned} звёзд\n\n` +
+                            `💎 Все��о заработано: ${user.total_earned} звёзд\n\n` +
                             `📊 Подписки на спонсорские каналы (реальные данные):\n` +
                             `👤 Пользователь: ${userInfo.sponsor_subscriptions} подписок\n` +
                             `👥 Его рефералы: ${userInfo.referrals_subscriptions} подписок\n\n` +
@@ -1721,7 +1724,7 @@ async function showInstructions(chatId, messageId) {
                    `• Время ожидания увеличивается\n\n` +
                    `📋 Задания:\n` +
                    `• Выполняйте кастомные задания\n` +
-                   `• Награда указана в каждом задании\n\n` +
+                   `• Наград�� указана в каждом задании\n\n` +
                    `🏆 Рейтинги:\n` +
                    `• Зарабатывайте очки\n` +
                    `• Топ 5 недели получают бонусы\n\n` +
@@ -1980,7 +1983,7 @@ async function handlePromocodeInput(chatId, userId) {
     await bot.sendMessage(chatId, '🎁 Введите промокод:');
 }
 
-// Обработчик кастомного задания
+// Об��аботчик кастомного задания
 async function handleCustomTaskCheck(chatId, userId, taskId, messageId, callbackQueryId) {
     try {
         console.log(`✅ Проверка выполнения кастомного задания ${taskId} для пользователя ${userId}`);
@@ -2194,7 +2197,7 @@ async function showBotStats(chatId, messageId) {
         const message = `📊 Полная статистика бота\n\n` +
                        `👥 Всего пользователей: ${totalUsers.rows[0].count}\n` +
                        `🆕 Новых сегодня: ${todayUsers.rows[0].count}\n` +
-                       `⭐ Всего заработано звёзд: ${Math.round(totalStarsEarned.rows[0].sum || 0)}\n` +
+                       `⭐ Всего заработано ��вёзд: ${Math.round(totalStarsEarned.rows[0].sum || 0)}\n` +
                        `💰 Всего выведено: ${Math.round(totalWithdrawals.rows[0].sum || 0)}\n` +
                        `⏳ Заявок в ожидании: ${pendingWithdrawals.rows[0].count}\n` +
                        `💎 Сумма в ожидании: ${Math.round(pendingWithdrawals.rows[0].sum || 0)}\n\n` +
@@ -2421,7 +2424,7 @@ async function showWithdrawalNumbering(chatId, messageId) {
         const nextRequestId = requestValue + 1;
 
         const message = `🔢 Управление нумерацией заявок\n\n` +
-                       `📊 Текущее состояние:\n` +
+                       `📊 Тек��щее состояние:\n` +
                        `📋 Создание заявок (админ-чат):\n` +
                        `• Последний ID: ${requestValue}\n` +
                        `• Следующая заявка: #${nextRequestId}\n\n` +
@@ -2446,7 +2449,7 @@ async function showWithdrawalNumbering(chatId, messageId) {
         });
 
     } catch (error) {
-        console.error('Ошибка показа нумерации заявок:', error);
+        console.error('Ошибка показа нум��рации заявок:', error);
 
         const errorMessage = `🔢 Управление нумерацией заявок\n\n` +
                             `❌ Ошибка получения информации о последовательности\n\n` +
@@ -2522,7 +2525,7 @@ async function handleSetWithdrawalNumber(chatId, userId, startNumber, messageId,
         const result = await Database.setWithdrawalStartNumber(startNumber);
 
         if (result.success) {
-            const successMessage = `✅ Номер заявок успешно установлен!\n\n` +
+            const successMessage = `��� Номер заявок успешно установлен!\n\n` +
                                  `📊 Изменения:\n` +
                                  `• Предыдущий номер: ${result.previousValue}\n` +
                                  `• Новый номер: ${result.newValue}\n` +
@@ -2717,7 +2720,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
             // Уведомляем пользователя
             try {
                 await bot.sendMessage(requestData.user_id,
-                    `❌ Ваша заявка на вывод ${requestData.amount} звёзд была отклонена.\n` +
+                    `❌ Ва��а заявка на вывод ${requestData.amount} звёзд была отклонена.\n` +
                     `💰 Средства возвращены на баланс.`
                 );
             } catch (e) {
@@ -2934,7 +2937,7 @@ cron.schedule('3 3 * * 1', async () => {
         webhookHandler.userSubscriptionCache.clear();
         console.log('✅ Кеш подписок очищен');
 
-        // Сбрасываем weekly_points для недельного рейтинга
+        // Сбрасыва��м weekly_points для недельного рейтинга
         await Database.pool.query('UPDATE users SET weekly_points = 0');
         console.log('✅ Недельные очки сброшены');
     } catch (error) {
