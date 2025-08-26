@@ -742,6 +742,209 @@ class Database {
             };
         }
     }
+
+    // ==================== SPONSOR CHANNELS STATISTICS ====================
+
+    // Добавить или обновить статистику спонсорского канала
+    static async addOrUpdateSponsorChannel(channelIdentifier, channelTitle, channelUrl, isEnabled = true) {
+        try {
+            const result = await pool.query(`
+                INSERT INTO sponsor_channels_stats (
+                    channel_identifier,
+                    channel_title,
+                    channel_url,
+                    is_enabled,
+                    updated_at
+                ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                ON CONFLICT (channel_identifier)
+                DO UPDATE SET
+                    channel_title = EXCLUDED.channel_title,
+                    channel_url = EXCLUDED.channel_url,
+                    is_enabled = EXCLUDED.is_enabled,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *
+            `, [channelIdentifier, channelTitle, channelUrl, isEnabled]);
+
+            return result.rows[0];
+        } catch (error) {
+            console.error('Ошибка добавления/обновления спонсорского канала:', error);
+            throw error;
+        }
+    }
+
+    // Получить все спонсорские каналы
+    static async getAllSponsorChannels() {
+        try {
+            const result = await pool.query(`
+                SELECT * FROM sponsor_channels_stats
+                ORDER BY created_at DESC
+            `);
+            return result.rows;
+        } catch (error) {
+            console.error('Ошибка получения спонсорских каналов:', error);
+            throw error;
+        }
+    }
+
+    // Получить только активные спонсорские каналы
+    static async getActiveSponsorChannels() {
+        try {
+            const result = await pool.query(`
+                SELECT * FROM sponsor_channels_stats
+                WHERE is_enabled = true
+                ORDER BY created_at DESC
+            `);
+            return result.rows;
+        } catch (error) {
+            console.error('Ошибка получения активных спонсорских каналов:', error);
+            throw error;
+        }
+    }
+
+    // Включить/выключить спонсорский канал
+    static async toggleSponsorChannel(channelIdentifier, isEnabled) {
+        try {
+            const result = await pool.query(`
+                UPDATE sponsor_channels_stats
+                SET is_enabled = $2, updated_at = CURRENT_TIMESTAMP
+                WHERE channel_identifier = $1
+                RETURNING *
+            `, [channelIdentifier, isEnabled]);
+
+            if (result.rows.length === 0) {
+                throw new Error(`Канал ${channelIdentifier} не найден`);
+            }
+
+            return result.rows[0];
+        } catch (error) {
+            console.error('Ошибка переключения статуса канала:', error);
+            throw error;
+        }
+    }
+
+    // Записать проверку подписки пользователя на канал (с учетом уникальности)
+    static async recordSponsorChannelCheck(channelIdentifier, userId) {
+        try {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+
+                // Проверяем, была ли уже проверка этого пользователя для этого канала
+                const existingCheck = await client.query(`
+                    SELECT id, total_checks FROM sponsor_channel_user_checks
+                    WHERE channel_identifier = $1 AND user_id = $2
+                `, [channelIdentifier, userId]);
+
+                if (existingCheck.rows.length > 0) {
+                    // Обновляем существующую запись (увеличиваем счетчик, но НЕ увеличиваем unique_users_count)
+                    await client.query(`
+                        UPDATE sponsor_channel_user_checks
+                        SET total_checks = total_checks + 1, last_check_at = CURRENT_TIMESTAMP
+                        WHERE channel_identifier = $1 AND user_id = $2
+                    `, [channelIdentifier, userId]);
+
+                    // Увеличиваем только общий счетчик проверок для канала
+                    await client.query(`
+                        UPDATE sponsor_channels_stats
+                        SET total_checks = total_checks + 1, updated_at = CURRENT_TIMESTAMP
+                        WHERE channel_identifier = $1
+                    `, [channelIdentifier]);
+
+                    console.log(`📊 Обновлена проверка канала ${channelIdentifier} для пользователя ${userId} (повторная)`);
+                } else {
+                    // Новый пользователь - добавляем запись и увеличиваем оба счетчика
+                    await client.query(`
+                        INSERT INTO sponsor_channel_user_checks (channel_identifier, user_id)
+                        VALUES ($1, $2)
+                    `, [channelIdentifier, userId]);
+
+                    // Увеличиваем оба счетчика для канала
+                    await client.query(`
+                        UPDATE sponsor_channels_stats
+                        SET total_checks = total_checks + 1,
+                            unique_users_count = unique_users_count + 1,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE channel_identifier = $1
+                    `, [channelIdentifier]);
+
+                    console.log(`📊 Новая проверка канала ${channelIdentifier} для пользователя ${userId} (уникальная)`);
+                }
+
+                await client.query('COMMIT');
+                return { success: true };
+            } catch (error) {
+                await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
+        } catch (error) {
+            console.error('Ошибка записи проверки канала:', error);
+            throw error;
+        }
+    }
+
+    // Получить статистику канала
+    static async getSponsorChannelStats(channelIdentifier) {
+        try {
+            const result = await pool.query(`
+                SELECT * FROM sponsor_channels_stats
+                WHERE channel_identifier = $1
+            `, [channelIdentifier]);
+
+            if (result.rows.length === 0) {
+                return null;
+            }
+
+            return result.rows[0];
+        } catch (error) {
+            console.error('Ошибка получения статистики канала:', error);
+            throw error;
+        }
+    }
+
+    // Удалить спонсорский канал
+    static async deleteSponsorChannel(channelIdentifier) {
+        try {
+            const result = await pool.query(`
+                DELETE FROM sponsor_channels_stats
+                WHERE channel_identifier = $1
+                RETURNING *
+            `, [channelIdentifier]);
+
+            if (result.rows.length === 0) {
+                throw new Error(`Канал ${channelIdentifier} не найден`);
+            }
+
+            return result.rows[0];
+        } catch (error) {
+            console.error('Ошибка удаления спонсорского канала:', error);
+            throw error;
+        }
+    }
+
+    // Получить топ каналов по количеству проверок
+    static async getTopSponsorChannels(limit = 10) {
+        try {
+            const result = await pool.query(`
+                SELECT
+                    channel_identifier,
+                    channel_title,
+                    total_checks,
+                    unique_users_count,
+                    is_enabled,
+                    ROUND((unique_users_count::float / NULLIF(total_checks, 0) * 100), 2) as uniqueness_rate
+                FROM sponsor_channels_stats
+                ORDER BY total_checks DESC
+                LIMIT $1
+            `, [limit]);
+
+            return result.rows;
+        } catch (error) {
+            console.error('Ошибка получения топа каналов:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = Database;
