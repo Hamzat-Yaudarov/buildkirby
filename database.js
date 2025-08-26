@@ -34,9 +34,13 @@ class Database {
             `);
 
             if (usersTableExists.rows[0].exists) {
-                console.log('✅ Таблицы уже существуют, пропускаем создание');
+                console.log('✅ Основные таблицы уже существуют');
+
+                // Проверяем и создаем таблицы спонсорских каналов отдельно
+                await this.ensureSponsorChannelTables();
+
                 console.log('База данных готова к работе!');
-                return; // Выходим, не создавая таблицы заново
+                return; // Выходим, не создавая основные таблицы заново
             }
 
             console.log('📝 Таблицы не найдены, создаём структуру БД...');
@@ -200,9 +204,205 @@ class Database {
             `);
             console.log('Таблица subgram_tasks создана');
 
+            // Создание таблицы статистики спонсорских каналов
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS sponsor_channels_stats (
+                    id SERIAL PRIMARY KEY,
+                    channel_identifier VARCHAR(255) UNIQUE NOT NULL,
+                    channel_title VARCHAR(255) NOT NULL,
+                    channel_url VARCHAR(500) NOT NULL,
+                    is_enabled BOOLEAN DEFAULT true,
+                    total_checks INTEGER DEFAULT 0,
+                    unique_users_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            console.log('Таблица sponsor_channels_stats создана');
+
+            // Создание таблицы для связи пользователей и спонсорских каналов
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS sponsor_channel_user_checks (
+                    id SERIAL PRIMARY KEY,
+                    channel_identifier VARCHAR(255) NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    first_check_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_check_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    total_checks INTEGER DEFAULT 1,
+                    UNIQUE(channel_identifier, user_id)
+                )
+            `);
+
+            // Добавляем внешний ключ отдельно (если таблица уже существует, то ключ не будет добавлен повторно)
+            try {
+                await pool.query(`
+                    ALTER TABLE sponsor_channel_user_checks
+                    ADD CONSTRAINT fk_sponsor_channel_user_checks_channel
+                    FOREIGN KEY (channel_identifier)
+                    REFERENCES sponsor_channels_stats(channel_identifier)
+                    ON DELETE CASCADE
+                `);
+            } catch (fkError) {
+                // Внешний ключ уже существует, это нормально
+                console.log('Внешний ключ для sponsor_channel_user_checks уже существует');
+            }
+            console.log('Таблица sponsor_channel_user_checks создана');
+
+            // Создание индексов для производительности
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_sponsor_channels_enabled
+                ON sponsor_channels_stats(is_enabled)
+            `);
+
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_sponsor_channel_user_checks_channel
+                ON sponsor_channel_user_checks(channel_identifier)
+            `);
+
+            await pool.query(`
+                CREATE INDEX IF NOT EXISTS idx_sponsor_channel_user_checks_user
+                ON sponsor_channel_user_checks(user_id)
+            `);
+            console.log('Индексы для спонсорских каналов созданы');
+
+            // Инициализация личных спонсорских каналов из конфигурации
+            try {
+                const config = require('./config');
+                if (config.PERSONAL_SPONSOR_CHANNELS && config.PERSONAL_SPONSOR_CHANNELS.length > 0) {
+                    console.log('📝 Инициализация личных спонсорских каналов из конфигурации...');
+
+                    for (const channelInput of config.PERSONAL_SPONSOR_CHANNELS) {
+                        const channelData = Database.normalizeChannelIdentifier(channelInput);
+
+                        try {
+                            await pool.query(`
+                                INSERT INTO sponsor_channels_stats (
+                                    channel_identifier,
+                                    channel_title,
+                                    channel_url,
+                                    is_enabled
+                                ) VALUES ($1, $2, $3, $4)
+                                ON CONFLICT (channel_identifier) DO NOTHING
+                            `, [
+                                channelData.identifier,
+                                channelData.title,
+                                channelData.url,
+                                true
+                            ]);
+
+                            console.log(`✅ Инициализирован канал: ${channelData.identifier}`);
+                        } catch (error) {
+                            console.error(`❌ Ошибка инициализации канала ${channelInput}:`, error.message);
+                        }
+                    }
+                }
+            } catch (configError) {
+                console.log('⚠️ Ошибка чтения конфигурации каналов, пропускаем инициализацию');
+            }
+
             console.log('База данных инициализирована успешно!');
         } catch (error) {
             console.error('Ошибка инициализации базы данных:', error);
+            throw error;
+        }
+    }
+
+    // Отдельный метод для проверки и создания таблиц спонсорских каналов
+    static async ensureSponsorChannelTables() {
+        try {
+            console.log('🔍 Проверка таблиц спонсорских каналов...');
+
+            // Проверяем существование таблицы sponsor_channels_stats
+            const sponsorTableExists = await pool.query(`
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public'
+                    AND table_name = 'sponsor_channels_stats'
+                );
+            `);
+
+            if (!sponsorTableExists.rows[0].exists) {
+                console.log('📝 Создаем таблицы спонсорских каналов...');
+
+                // Создание таблицы статистики спонсорских каналов
+                await pool.query(`
+                    CREATE TABLE sponsor_channels_stats (
+                        id SERIAL PRIMARY KEY,
+                        channel_identifier VARCHAR(255) UNIQUE NOT NULL,
+                        channel_title VARCHAR(255) NOT NULL,
+                        channel_url VARCHAR(500) NOT NULL,
+                        is_enabled BOOLEAN DEFAULT true,
+                        total_checks INTEGER DEFAULT 0,
+                        unique_users_count INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+                console.log('✅ Таблица sponsor_channels_stats создана');
+
+                // Создание таблицы для связи пользователей и спонсорских каналов
+                await pool.query(`
+                    CREATE TABLE sponsor_channel_user_checks (
+                        id SERIAL PRIMARY KEY,
+                        channel_identifier VARCHAR(255) NOT NULL,
+                        user_id BIGINT NOT NULL,
+                        first_check_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_check_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        total_checks INTEGER DEFAULT 1,
+                        UNIQUE(channel_identifier, user_id),
+                        FOREIGN KEY (channel_identifier)
+                        REFERENCES sponsor_channels_stats(channel_identifier)
+                        ON DELETE CASCADE
+                    )
+                `);
+                console.log('✅ Таблица sponsor_channel_user_checks создана');
+
+                // Создание индексов
+                await pool.query(`CREATE INDEX idx_sponsor_channels_enabled ON sponsor_channels_stats(is_enabled)`);
+                await pool.query(`CREATE INDEX idx_sponsor_channel_user_checks_channel ON sponsor_channel_user_checks(channel_identifier)`);
+                await pool.query(`CREATE INDEX idx_sponsor_channel_user_checks_user ON sponsor_channel_user_checks(user_id)`);
+                console.log('✅ Индексы для спонсорских каналов созданы');
+
+                // Инициализация каналов из конфигурации
+                try {
+                    const config = require('./config');
+                    if (config.PERSONAL_SPONSOR_CHANNELS && config.PERSONAL_SPONSOR_CHANNELS.length > 0) {
+                        console.log('📝 Инициализация личных спонсорских каналов из конфигурации...');
+
+                        for (const channelInput of config.PERSONAL_SPONSOR_CHANNELS) {
+                            const channelData = Database.normalizeChannelIdentifier(channelInput);
+
+                            try {
+                                await pool.query(`
+                                    INSERT INTO sponsor_channels_stats (
+                                        channel_identifier,
+                                        channel_title,
+                                        channel_url,
+                                        is_enabled
+                                    ) VALUES ($1, $2, $3, $4)
+                                `, [
+                                    channelData.identifier,
+                                    channelData.title,
+                                    channelData.url,
+                                    true
+                                ]);
+
+                                console.log(`✅ Инициализирован канал: ${channelData.identifier}`);
+                            } catch (error) {
+                                console.error(`❌ Ошибка инициализации канала ${channelInput}:`, error.message);
+                            }
+                        }
+                    }
+                } catch (configError) {
+                    console.log('⚠️ Ошибка чтения конфигурации каналов, пропускаем инициализацию');
+                }
+
+                console.log('🎉 Таблицы спонсорских каналов созданы и инициализированы!');
+            } else {
+                console.log('✅ Таблицы спонсорских каналов уже существуют');
+            }
+        } catch (error) {
+            console.error('❌ Ошибка создания таблиц спонсорских каналов:', error);
             throw error;
         }
     }
@@ -228,7 +428,7 @@ class Database {
         `, [userId, username, firstName, languageCode, isPremium, referrerId]);
 
         // НЕ увеличиваем счетчики рефералов при создании пользователя
-        // Рефералы будут засчитаны только после выполнения условий в checkReferralConditions()
+        // Рефералы буд��т засчитаны только после выполнения условий в checkReferralConditions()
         if (referrerId) {
             console.log(`👥 Новый пользователь ${userId} добавлен с реферером ${referrerId}, но счетчики пока не увеличиваем`);
         }
@@ -745,6 +945,30 @@ class Database {
 
     // ==================== SPONSOR CHANNELS STATISTICS ====================
 
+    // Функция для нормализации идентификатора канала
+    static normalizeChannelIdentifier(channelInput) {
+        if (channelInput.startsWith('https://t.me/')) {
+            const username = channelInput.replace('https://t.me/', '');
+            return {
+                identifier: `@${username}`,
+                title: username,
+                url: channelInput
+            };
+        } else if (channelInput.startsWith('@')) {
+            return {
+                identifier: channelInput,
+                title: channelInput.replace('@', ''),
+                url: `https://t.me/${channelInput.replace('@', '')}`
+            };
+        } else {
+            return {
+                identifier: `@${channelInput}`,
+                title: channelInput,
+                url: `https://t.me/${channelInput}`
+            };
+        }
+    }
+
     // Добавить или обновить статистику спонсорского канала
     static async addOrUpdateSponsorChannel(channelIdentifier, channelTitle, channelUrl, isEnabled = true) {
         try {
@@ -923,7 +1147,7 @@ class Database {
         }
     }
 
-    // Получить топ каналов по количеству проверок
+    // Получить топ каналов по количеств�� проверок
     static async getTopSponsorChannels(limit = 10) {
         try {
             const result = await pool.query(`
