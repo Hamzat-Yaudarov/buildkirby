@@ -39,6 +39,9 @@ class Database {
                 // Проверяем и создаем таблицы спонсорских каналов отдельно
                 await this.ensureSponsorChannelTables();
 
+                // Проверяем и добавляем поле captcha_passed если его нет
+                await this.ensureCaptchaPassedField();
+
                 console.log('База данных готова к работе!');
                 return; // Выходим, не создавая основные таблицы заново
             }
@@ -66,6 +69,7 @@ class Database {
                     last_case_open DATE,
                     referrer_id BIGINT,
                     referral_completed BOOLEAN DEFAULT FALSE,
+                    captcha_passed BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -307,6 +311,39 @@ class Database {
         }
     }
 
+    // Отдельный метод для проверки и добавления поля captcha_passed
+    static async ensureCaptchaPassedField() {
+        try {
+            console.log('🔍 Проверка поля captcha_passed в таблице users...');
+
+            // Проверяем существование поля captcha_passed
+            const fieldExists = await pool.query(`
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = 'users'
+                    AND column_name = 'captcha_passed'
+                );
+            `);
+
+            if (!fieldExists.rows[0].exists) {
+                console.log('📝 Добавляем поле captcha_passed в таблицу users...');
+
+                await pool.query(`
+                    ALTER TABLE users
+                    ADD COLUMN captcha_passed BOOLEAN DEFAULT FALSE
+                `);
+
+                console.log('✅ Поле captcha_passed добавлено в таблицу users');
+            } else {
+                console.log('✅ Поле captcha_passed уже существует в таблице users');
+            }
+        } catch (error) {
+            console.error('❌ Ошибка добавления поля captcha_passed:', error);
+            throw error;
+        }
+    }
+
     // Отдельный метод для проверки и создания таблиц спонсорских каналов
     static async ensureSponsorChannelTables() {
         try {
@@ -484,12 +521,21 @@ class Database {
 
     static async updateUserPoints(userId, points) {
         await pool.query(`
-            UPDATE users 
+            UPDATE users
             SET points = points + $2,
                 weekly_points = weekly_points + $2,
                 updated_at = CURRENT_TIMESTAMP
             WHERE user_id = $1
         `, [userId, points]);
+    }
+
+    static async setCaptchaPassed(userId, passed = true) {
+        await pool.query(`
+            UPDATE users
+            SET captcha_passed = $2,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1
+        `, [userId, passed]);
     }
 
     static async resetWeeklyPoints() {
@@ -1005,7 +1051,7 @@ class Database {
             `);
             return result.rows;
         } catch (error) {
-            console.error('Ошибка получения спонсорских каналов:', error);
+            console.error('Ошибка п��лучения спонсорских каналов:', error);
             throw error;
         }
     }
