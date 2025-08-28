@@ -10,9 +10,7 @@
     "set-withdrawal-number": "node set-withdrawal-start-number.js",
     "migrate-closure": "node migrate-withdrawal-closure.js",
     "set-closure-number": "node set-closure-number.js",
-    "migrate-db": "node full-migration.js",
-    "migrate-data-only": "node migrate-database.js",
-    "update-db-config": "node update-database-config.js"
+    "migrate-xlsx": "node migrate-from-xlsx.js"
   },
   "keywords": [
     "telegram",
@@ -28,7 +26,8 @@
     "express": "^4.21.2",
     "node-cron": "^3.0.3",
     "node-telegram-bot-api": "^0.64.0",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "xlsx": "^0.18.5"
   },
   "engines": {
     "node": ">=16.0.0"
