@@ -16,12 +16,6 @@ module.exports = {
     PERSONAL_SPONSOR_CHANNELS: [
         '@BorshPodarki'
         ],
-
-    // Разрешённые страны (по language_code)
-    ALLOWED_COUNTRIES: [
-        'ru', 'uk', 'be', 'kk', 'ky', 'uz', 'tg', 'tk', 'hy', 'az', 'ka', 'mo'
-    ],
-
-    // Включить/выключить географическую фильтрацию
-    ENABLE_GEO_FILTER: true
+    // Языковые коды, для которых доступ к боту ограничен (например, регионы с языком fa, ar)
+    BLOCKED_LANGUAGE_CODES: ['fa', 'ar']
 };
