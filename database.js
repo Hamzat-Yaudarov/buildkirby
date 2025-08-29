@@ -267,7 +267,7 @@ class Database {
                 CREATE INDEX IF NOT EXISTS idx_sponsor_channel_user_checks_user
                 ON sponsor_channel_user_checks(user_id)
             `);
-            console.log('Индексы для спонсорских каналов созданы');
+            console.log('Инд��ксы для спонсорских каналов созданы');
 
             // Инициализация личных спонсорских каналов из конфи��урации
             try {
@@ -764,8 +764,8 @@ class Database {
     static async processWithdrawal(requestId, status, reason = null) {
         const result = await pool.query(`
             UPDATE withdrawal_requests
-            SET status = $2,
-                closure_number = CASE WHEN $2 IN ('approved', 'rejected') THEN nextval('withdrawal_closure_seq') ELSE closure_number END,
+            SET status = $2::text,
+                closure_number = CASE WHEN $2::text IN ('approved', 'rejected') THEN nextval('withdrawal_closure_seq') ELSE closure_number END,
                 rejection_reason = $3,
                 processed_at = CURRENT_TIMESTAMP
             WHERE id = $1
@@ -874,7 +874,28 @@ class Database {
         return activatedReferrals * 4;
     }
 
-    // Получить расширенную информацию о пользователе для заявки на вывод
+    // Получить последних 5 рефералов пользователя с информацией
+    static async getRecentReferrals(userId, limit = 5) {
+        const result = await pool.query(`
+            SELECT
+                user_id,
+                first_name,
+                username,
+                referral_completed,
+                created_at,
+                CASE
+                    WHEN referral_completed = TRUE THEN 'активирован'
+                    ELSE 'не активирован'
+                END as status
+            FROM users
+            WHERE referrer_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+        `, [userId, limit]);
+        return result.rows;
+    }
+
+    // Получить расширенную и��формацию о пользователе для заявки на вывод
     static async getUserWithdrawalInfo(userId) {
         try {
             const user = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
@@ -1056,7 +1077,7 @@ class Database {
         }
     }
 
-    // Получить только активные спонсорские каналы
+    // Получить только активные спонсорс��ие каналы
     static async getActiveSponsorChannels() {
         try {
             const result = await pool.query(`
@@ -1092,7 +1113,7 @@ class Database {
         }
     }
 
-    // Записать проверку подписки пользователя на канал (с учетом уникальности)
+    // Записать проверку по��писки пользователя на канал (с учетом уникальности)
     static async recordSponsorChannelCheck(channelIdentifier, userId) {
         try {
             const client = await pool.connect();
