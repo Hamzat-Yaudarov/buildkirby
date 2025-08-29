@@ -393,7 +393,7 @@ function createMainMenuKeyboard() {
     return {
         inline_keyboard: [
             [{ text: '👤 Профиль', callback_data: 'profile' }],
-            [{ text: '��️ Заработать звезды', callback_data: 'invite' }],
+            [{ text: '⭐ Заработать звезды', callback_data: 'invite' }],
             [{ text: '🖱 Кликер', callback_data: 'clicker' }, { text: '🎲 Лотерея', callback_data: 'lottery' }],
             [{ text: '📋 Задания', callback_data: 'tasks' }, { text: '🎰 Рулетка', callback_data: 'roulette' }],
             [{ text: '🏆 Рейтинги', callback_data: 'ratings' }, { text: '🎁 Кейсы', callback_data: 'cases' }],
