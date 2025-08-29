@@ -15,5 +15,13 @@ module.exports = {
     // Личные спонсорские каналы (добавьте свои)
     PERSONAL_SPONSOR_CHANNELS: [
         '@BorshPodarki'
-        ]
+        ],
+
+    // Разрешённые страны (по language_code)
+    ALLOWED_COUNTRIES: [
+        'ru', 'uk', 'be', 'kk', 'ky', 'uz', 'tg', 'tk', 'hy', 'az', 'ka', 'mo'
+    ],
+
+    // Включить/выключить географическую фильтрацию
+    ENABLE_GEO_FILTER: true
 };
