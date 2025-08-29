@@ -21,7 +21,7 @@ const userStates = new Map();
 // Храним пройденные капчи пользователей
 const passedCaptcha = new Map();
 
-// Защ��та от спама - храним пос��едний вызов для каждого пользователя
+// Защ��та от спама - храним пос��едний вызов для каждого по��ьзователя
 const lastSubscriptionCheck = new Map();
 
 // Защита от дублирования спонсорс��ие сообщений
@@ -65,7 +65,7 @@ function normalizeChannelIdentifier(channelInput) {
     }
 }
 
-// Проверка подписки на личные спонс��рские каналы (ОБНОВЛЕНО: с базой данных и статистикой)
+// Проверка подписки на личные спонс��рские каналы (ОБНОВЛЕНО: с базой данных и стат��стикой)
 // Теперь п��ддерживает как @username, так и https://t.me/username форматы
 async function checkPersonalChannelsSubscription(userId, skipOnError = false) {
     try {
@@ -96,7 +96,7 @@ async function checkPersonalChannelsSubscription(userId, skipOnError = false) {
                         console.error(`❌ Ошибка записи статистики для канала ${channelData.channel_identifier}:`, statsError.message);
                     }
                 } else {
-                    // Пользователь ��е п��дписан
+                    // Пользователь ��е п��дп��сан
                     unsubscribedChannels.push({
                         username: channelData.channel_identifier,
                         title: channelData.channel_title,
@@ -256,7 +256,7 @@ async function checkReferralConditions(userId) {
             return;
         }
 
-        // Проверяем количество выполненных кастомных заданий (больше не SubGram)
+        // Проверяем количество выполне��ных кастомных заданий (больше не SubGram)
         const completedTasks = await Database.getUserCompletedTasks(userId);
         if (completedTasks < 2) {
             console.log(`👥 Реферал ${userId} выполнил только ${completedTasks}/2 заданий`);
@@ -294,7 +294,7 @@ async function checkReferralConditions(userId) {
         // Все условия выполнен�� - начисляем награду
         console.log(`🎉 Реферал ${userId} выполнил все условия! Начисляем награду реферору ${user.referrer_id}`);
 
-        // ИСПРАВЛ��НО: Используем атомарную транзакцию для предотвращения race condition
+        // ИСПРАВЛ����НО: Используем атомарную транзакцию для предотвращения race condition
         const client = await Database.pool.connect();
         try {
             await client.query('BEGIN');
@@ -315,7 +315,7 @@ async function checkReferralConditions(userId) {
             const referrerId = updateResult.rows[0].referrer_id;
             console.log(`✅ Атомарно помечен реферал ${userId}, начисляем награду рефереру ${referrerId}`);
 
-            // Начи��ляем баланс и очк�� рефереру в той же транзакции
+            // Начи��ляем баланс и очк���� рефереру в той же транзакции
             await client.query(
                 'UPDATE users SET balance = balance + 3, total_earned = total_earned + 3, points = points + 1, weekly_points = weekly_points + 1 WHERE user_id = $1',
                 [referrerId]
@@ -452,7 +452,7 @@ function showCaptcha(chatId, userId) {
 async function handleCaptcha(chatId, userId, data, messageId, callbackQueryId) {
     const choice = parseInt(data.split('_')[1]);
 
-    if (choice === 6) { // Правильный отве�� - земляника (6-я кнопка)
+    if (choice === 6) { // Правильный отве�� - ��емляника (6-я кнопка)
         // Капча п��ойдена успешно
         passedCaptcha.set(userId, true);
 
@@ -980,7 +980,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
 
     try {
         // ПЕРВЫЙ ЭТАП: Проверяем, прошел ли пользователь капчу
-        // Проверяем сначала в памяти (быстро), затем в базе данных (если нет в памяти)
+        // Проверяем сначала в памяти (быстро), затем в базе данны�� (если нет в памяти)
         let captchaPassed = passedCaptcha.get(userId);
 
         if (!captchaPassed) {
@@ -999,7 +999,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
             console.log(`🤖 Пользователь ${userId} не прошел капчу, показываем капчу`);
             await showCaptcha(chatId, userId);
 
-            // Сохраняем реферальный код и данные пользователя для создания после прохождения капчи
+            // Сохраняем реферальный код и данн��е пользователя для создания после прохождения капчи
             if (referralCode || msg.from.username || msg.from.first_name) {
                 userStates.set(userId, JSON.stringify({
                     state: 'waiting_after_captcha',
@@ -1038,7 +1038,7 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
                 referrerId: referrerId
             });
             
-            // Реферальная награда будет начислена позже после выполнения условий
+            // Реферальная награда буд��т начислена позже после выполнения условий
             if (referrerId) {
                 console.log(`👥 Новый пользователь ${userId} пришел по реферальной ссылке от ${referrerId}`);
                 // Награда будет начислена в функции checkReferralConditions()
@@ -1465,7 +1465,7 @@ bot.on('callback_query', async (callbackQuery) => {
     }
 });
 
-// Проверка ��одписки в контексты личных каналов (с пропуском ошибок)
+// Проверка ��о��писки в контексты личных каналов (с пропуском ошибок)
 async function handleSubscriptionCheckPersonal(chatId, userId, messageId, callbackQueryId = null) {
     console.log(`🔄 Проверка подписки (личные каналы) по запросу пользователя ${userId}`);
 
@@ -1523,7 +1523,7 @@ async function handleSubscriptionCheckPersonal(chatId, userId, messageId, callba
                 }]);
             });
 
-            // Добавляем кнопку проверки (для личных каналов - пропускат�� ошибки)
+            // Добавляем кнопку проверки (для личных к��налов - пропускат�� ошибки)
             personalKeyboard.inline_keyboard.push([{
                 text: '✅ Проверить подписки',
                 callback_data: 'check_subscription_personal'
@@ -1817,7 +1817,7 @@ async function showReferralDetails(chatId, userId, messageId) {
 
         const keyboard = {
             inline_keyboard: [
-                [{ text: '👤 Назад к профилю', callback_data: 'profile' }],
+                [{ text: '◀️ Назад к профилю', callback_data: 'profile' }],
                 [{ text: '🏠 В главное меню', callback_data: 'main_menu' }]
             ]
         };
@@ -1950,7 +1950,7 @@ async function getUserWithdrawalInfo(userId) {
             console.log(`📈 Пользователь ${userId}: оценка подписок ${userSubscriptions} (нет свежих данных)`);
         }
 
-        // Подсчитываем подписки активированных рефералов
+        // Подсчитываем подписки активирова��ных рефералов
         let referralsSubscriptions = 0;
         const activatedReferrals = await Database.getActivatedReferrals(userId);
 
@@ -2282,7 +2282,7 @@ async function showRatingType(chatId, type, messageId) {
     });
 }
 
-// Показать кейсы
+// Показ��ть кейсы
 async function showCases(chatId, userId, messageId) {
     const user = await Database.getUser(userId);
     const today = new Date().toDateString();
@@ -2351,7 +2351,6 @@ async function showRoulette(chatId, userId, messageId) {
                    `• Выберите сумму ставки\n` +
                    `• При выигрыше ставка удваивается\n` +
                    `• При проигрыше теряете ставку\n` +
-                   `• Шанс выигрыша: 15% (честная игра)\n\n` +
                    `💫 Выберите ставку:`;
 
     const betAmounts = [0.5, 1, 2, 3, 5, 10, 25, 50, 100];
@@ -2395,7 +2394,7 @@ async function handleRouletteBet(chatId, userId, amount, messageId, callbackQuer
             return;
         }
 
-        // ИСПРАВЛЕНЫ: используем честную случайность вместо предсказуемого счетчика
+        // ИСПРАВЛЕНЫ: используем честную случайн��сть вместо предсказуемого счетчика
         // Шанс выигрыша 15% (справедливая рул��тка)
         const isWin = Math.random() < 0.15;
 
@@ -2710,7 +2709,7 @@ async function showBotStats(chatId, messageId) {
     }
 }
 
-// Управление заданиями
+// Управление задан��ями
 async function showAdminTasks(chatId, messageId) {
     const message = `📋 Управление заданиями\n\n` +
                    `Здесь вы можете создавать собственные задания\n` +
@@ -2733,7 +2732,7 @@ async function showAdminTasks(chatId, messageId) {
 
 // Показать адм��нскую рассылку
 async function showAdminBroadcast(chatId, messageId) {
-    const message = `📢 Рассылка сообщений\n\n` +
+    const message = ` Рассылка сообщений\n\n` +
                    `Выберите готовое сообщение для рассылки всем пользователям:`;
 
     const keyboard = {
@@ -3115,12 +3114,12 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
 
         if (action === 'approve') {
             console.log(`✅ ОБРАБОТКА ОДОБРЕНИЯ заявки: id=${id}`);
-            // Одобряем заявку
+            // Одо��ряем заявку
             console.log(`🔄 Вызываем Database.processWithdrawal для одобрения...`);
             await Database.processWithdrawal(id, 'approved');
             console.log(`✅ Database.processWithdrawal выполнен успешно`);
 
-            // УБИРАЕМ КНОПКИ из админского сообщения
+            // УБИРАЕМ КНОПКИ из ад��инского сообщения
             try {
                 await bot.editMessageReplyMarkup(null, {
                     chat_id: chatId,
@@ -3158,10 +3157,18 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
             };
 
             console.log(`📤 Отправляем сообщение о выполнении в платежный чат...`);
-            await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage, {
-                reply_markup: paymentKeyboard
-            });
-            console.log(`✅ Сообщение о выполнении отправлено успешно`);
+            try {
+                await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage, {
+                    reply_markup: paymentKeyboard
+                });
+                console.log(`✅ Сообщение о выполнении отправлено успешно`);
+            } catch (paymentError) {
+                console.error(`❌ Ошибка отправки в платежный чат (APPROVE):`, paymentError.message);
+                // Уведомляем админа об ошибке
+                try {
+                    await bot.sendMessage(chatId, `⚠️ Заявка одобрена в базе, но не удалось отправить в чат платежей:\n${paymentError.message}`);
+                } catch (e) {}
+            }
 
             // Уведомляем пользователя
             try {
@@ -3176,7 +3183,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
 
         } else if (action === 'reject') {
             console.log(`❌ ОБРАБОТКА ОТКЛОНЕНИЯ заявки: id=${id}`);
-            // Отклоняем заявку и возвращаем средства
+            // Отклоняем заявку и возвращаем сре��ства
             console.log(`🔄 Вызываем Database.processWithdrawal для отклонения...`);
             await Database.processWithdrawal(id, 'rejected', 'Отклонено администратором');
             console.log(`✅ Database.processWithdrawal (reject) выполнен успешно`);
@@ -3192,13 +3199,16 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
                     message_id: messageId
                 });
 
-                // Добавляем статус к тексту со��бщения
-                await bot.editMessageText(`Заявка обработана\n\n❌ ЗАЯВКА ОТКЛОНЕНА`, {
+                // Добавляем статус к тексту сообщения
+                const messageData = `💰 Заявка на вывод #${id}`;
+                await bot.editMessageText(`${messageData}\n\n❌ ЗАЯВКА ОТКЛОНЕНА`, {
                     chat_id: chatId,
-                    message_id: messageId
+                    message_id: messageId,
+                    reply_markup: null
                 });
+                console.log(`✅ Админское сообщение обновлено: ОТКЛОНЕНО`);
             } catch (e) {
-                console.log('Не удалось отредактировать админское сообщение');
+                console.log('Не удалось отредактировать админское сообщение:', e.message);
             }
 
             // Отправляем в чат платежей с НОМЕРОМ ЗАЯВКИ И КНОПКАМИ
@@ -3222,11 +3232,19 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
                 ]
             };
 
-            console.log(` Отправляем сообщение об отклонении в платежный чат...`);
-            await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage, {
-                reply_markup: paymentKeyboard
-            });
-            console.log(`✅ Сообщение об отклонении отправлено успешно`);
+            console.log(`📤 Отправляем сообщение об отклонении в платежный чат...`);
+            try {
+                await bot.sendMessage(config.PAYMENTS_CHAT_ID, paymentMessage, {
+                    reply_markup: paymentKeyboard
+                });
+                console.log(`✅ Сообщение об отклонении отправлено успешно`);
+            } catch (paymentError) {
+                console.error(`❌ Ошибка отправки в платежный чат (REJECT):`, paymentError.message);
+                // Уведомляем админа об ошибке
+                try {
+                    await bot.sendMessage(chatId, `⚠️ Заявка отклонена и средства возвращены, но не удалось отправить в чат платежей:\n${paymentError.message}`);
+                } catch (e) {}
+            }
 
             // У��едомляем пользователя
             try {
