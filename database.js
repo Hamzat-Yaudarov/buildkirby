@@ -24,7 +24,7 @@ class Database {
             // БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ: проверяем существование таблиц вместо их удаления
             console.log('Проверка существования таблиц...');
 
-            // Проверяем существование основной таблицы users
+            // Проверяем существование осно��ной таблицы users
             const usersTableExists = await pool.query(`
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables
@@ -178,6 +178,11 @@ class Database {
             // Создание последовательности для номеров закрытых заявок
             await pool.query(`
                 CREATE SEQUENCE withdrawal_closure_seq START 437;
+            `);
+
+            // Устанавливаем начальную нумерацию заявок на вывод с 521
+            await pool.query(`
+                SELECT setval('withdrawal_requests_id_seq', 520, true);
             `);
             console.log('Последовательность withdrawal_closure_seq создана');
 
@@ -377,7 +382,7 @@ class Database {
                 `);
                 console.log('✅ Таблица sponsor_channels_stats создана');
 
-                // Создание таблицы для связи пользователей и спонсорских каналов
+                // Создание таблицы для связи пользователей и спонсорских канало��
                 await pool.query(`
                     CREATE TABLE sponsor_channel_user_checks (
                         id SERIAL PRIMARY KEY,
@@ -984,7 +989,7 @@ class Database {
                 await pool.query(`
                     SELECT setval('withdrawal_closure_seq', $1, true);
                 `, [startNumber - 1]);
-                console.log(`✅ Последовательность withdrawal_closure_seq установлена на ${startNumber - 1}`);
+                console.log(`✅ По��ледовательность withdrawal_closure_seq установлена на ${startNumber - 1}`);
             }
 
             // Проверяем установленное значение
