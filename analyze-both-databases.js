@@ -41,7 +41,7 @@ async function quickAnalysis() {
         const tables = ['users', 'tasks', 'user_tasks', 'withdrawal_requests', 'subgram_tasks', 'promocodes', 'sponsor_channels_stats'];
 
         console.log('📋 СРАВНЕНИЕ КОЛИЧЕСТВА ЗАПИСЕЙ:\n');
-        console.log('┌────────────────────────┬───────────┬─────��─────┬───────────┐');
+        console.log('┌────────────────────────┬───────────┬───────────┬───────────┐');
         console.log('│ Таблица                │ DB1       │ DB2       │ Разница   │');
         console.log('├────────────────────────┼───────────┼───────────┼───────────┤');
 
@@ -68,7 +68,7 @@ async function quickAnalysis() {
                 const db2Str = db2Count.toString().padStart(9);
                 const diffStr = diff.toString().padStart(9);
 
-                console.log(`│ ${tableName} ��� ${db1Str} │ ${db2Str} │ ${diffStr} │`);
+                console.log(`│ ${tableName} │ ${db1Str} │ ${db2Str} │ ${diffStr} │`);
 
             } catch (error) {
                 const tableName = table.padEnd(22);
