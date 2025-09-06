@@ -272,7 +272,7 @@ class Database {
                 CREATE INDEX IF NOT EXISTS idx_sponsor_channel_user_checks_user
                 ON sponsor_channel_user_checks(user_id)
             `);
-            console.log('Инд��ксы для спонсорских каналов созданы');
+            console.log('Индексы для спонсорских каналов созданы');
 
             // Инициализация личных спонсорских каналов из конфи��урации
             try {
@@ -989,7 +989,7 @@ class Database {
                 await pool.query(`
                     SELECT setval('withdrawal_closure_seq', $1, true);
                 `, [startNumber - 1]);
-                console.log(`✅ По��ледовательность withdrawal_closure_seq установлена на ${startNumber - 1}`);
+                console.log(`✅ Последовательность withdrawal_closure_seq установлена на ${startNumber - 1}`);
             }
 
             // Проверяем установленное значение
@@ -1077,7 +1077,7 @@ class Database {
             `);
             return result.rows;
         } catch (error) {
-            console.error('Ошибка п��лучения спонсорских каналов:', error);
+            console.error('Ошибка получения спонсорских каналов:', error);
             throw error;
         }
     }

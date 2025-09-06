@@ -24,6 +24,7 @@ module.exports = {
         4: 25,
         5: 15
     },
+<<<<<<< HEAD
 
     // Личные спонсорские каналы: перечислите через запятую в PERSONAL_SPONSOR_CHANNELS
     PERSONAL_SPONSOR_CHANNELS: (process.env.PERSONAL_SPONSOR_CHANNELS || '')
@@ -36,4 +37,14 @@ module.exports = {
         .split(',')
         .map(x => x.trim())
         .filter(x => x.length > 0)
+=======
+    // Личные спонсорские каналы (добавьте свои)
+    PERSONAL_SPONSOR_CHANNELS: [
+        '@BorshPodarki'
+        ],
+    CASE_MAX_REWARD: 10,
+    CASE_RARITY_EXP: 1.3,
+    // Языковые коды, для которых доступ к боту ограничен (например, регионы с языком fa, ar)
+    BLOCKED_LANGUAGE_CODES: ['']
+>>>>>>> 0eac760 (запуск теста)
 };
