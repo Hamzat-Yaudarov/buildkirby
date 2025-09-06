@@ -297,7 +297,7 @@ async function checkReferralConditions(userId) {
         // Все условия выполнен�� - начисляем награду
         console.log(`🎉 Реферал ${userId} выполнил все условия! Начисляем награду реферору ${user.referrer_id}`);
 
-        // ИСПРАВЛ����НО: Используем атомарную транзакцию для предотвращения race condition
+        // ИСПРАВЛ������НО: Используем атомарную транзакцию для предотвращения race condition
         const client = await Database.pool.connect();
         try {
             await client.query('BEGIN');
@@ -840,7 +840,7 @@ async function checkUserSubscription(userId, chatId, firstName = '', languageCod
         if (taskChannels.status === 'ok') {
             // Дополн��тельно проверим, действительно ли нет ссылок
             if (!taskChannels.links || taskChannels.links.length === 0) {
-                console.log(`✅ П��льзователь ${userId} подписан на все каналы (статус ok, нет ссы��ок)`);
+                console.log(`✅ Пользователь ${userId} подписан на все каналы (статус ok, нет ссылок)`);
                 return {
                     isSubscribed: true,
                     subscriptionData: taskChannels
@@ -914,7 +914,7 @@ bot.on('message', async (msg) => {
     const userId = msg.from.id;
     const messageText = msg.text;
 
-    // Обработка ожидания причины отклонения заявки (админ)
+    // Обработка ожидания причины отклонения заяв��и (админ)
     if (pendingRejectionReasons.has(userId) && config.ADMIN_IDS.includes(userId)) {
         const state = pendingRejectionReasons.get(userId);
         if (!messageText || messageText.startsWith('/')) {
@@ -1011,7 +1011,7 @@ bot.on('message', async (msg) => {
             }
         }, 10 * 60 * 1000);
 
-        // Подтверждаем отправку (��гранич���ваем отобр��жение длинных сообщений)
+        // Подтверждаем отправку (��гранич����ваем отобр��жение длинных сообщений)
         const displayMessage = messageText.length > 200 ? messageText.substring(0, 200) + '...' : messageText;
         const confirmationMessage = `ℹ️ Подтвердите отправку сообщения:\n\n` +
                                `“${messageText}”\n\n` +
@@ -2103,7 +2103,7 @@ async function getUserWithdrawalInfo(userId) {
             console.log(`📈 Пользователь ${userId}: реальные подписки ${subscribedCount}/${totalChannels}`);
         } else {
             // Оценка ��а основе статуса активации
-            userSubscriptions = user.referral_completed ? 4 : 0; // если активирован, то подписан на спонсоров
+            userSubscriptions = user.referral_completed ? 4 : 0; // если активирован, то подписан на спонс��ров
             console.log(`📈 Пользователь ${userId}: оценка подписок ${userSubscriptions} (нет свежих данных)`);
         }
 
@@ -2143,9 +2143,24 @@ async function getUserWithdrawalInfo(userId) {
 // Обраб��тка клика
 async function handleClick(chatId, userId, messageId, callbackQueryId) {
     try {
-        const clicksToday = await Database.updateUserClicks(userId);
-        await Database.updateUserBalance(userId, 0.1);
-        await Database.updateUserPoints(userId, 1);
+        const clickResult = await Database.attemptUserClick(userId);
+        if (!clickResult) {
+            // Определяем причину отказа: лимит в день или нужно подождать
+            const user = await Database.getUser(userId);
+            const today = new Date().toDateString();
+            const lastClickDate = user.last_click_time ? new Date(user.last_click_time).toDateString() : null;
+            if (lastClickDate === today && (user.clicks_today || 0) >= 10) {
+                await bot.answerCallbackQuery(callbackQueryId, '❌ Лимит 10 кликов на сегодня');
+            } else {
+                const clicksToday = lastClickDate === today ? (user.clicks_today || 0) : 0;
+                const requiredWaitMin = clicksToday * 5;
+                const elapsedMs = user.last_click_time ? (Date.now() - new Date(user.last_click_time).getTime()) : Infinity;
+                const remainingMin = Math.max(0, Math.ceil((requiredWaitMin * 60 * 1000 - elapsedMs) / 60000));
+                await bot.answerCallbackQuery(callbackQueryId, `⏰ Ждите ${remainingMin} мин.`);
+            }
+            await showClicker(chatId, userId, messageId);
+            return;
+        }
 
         await bot.answerCallbackQuery(callbackQueryId, '🎉 +0.1 звезды! +1 очко!');
         await showClicker(chatId, userId, messageId);
@@ -2336,7 +2351,7 @@ async function showTasks(chatId, userId, messageId) {
             });
         } else {
             console.log(`НЕТ ДОСТУПНЫХ ЗАДАНИЙ`);
-            // Нет доступных заданий
+            // Нет досту��ных заданий
             const message = `📋 Задания\n\n` +
                            `✅ Все задания выполнены!\n` +
                            `⏳ Проверьте позже, возможно появятся новые задания.`;
@@ -2883,7 +2898,7 @@ async function showBotStats(chatId, messageId) {
     }
 }
 
-// Управление задан��ями
+// Управление задан���ями
 async function showAdminTasks(chatId, messageId) {
     const message = ` Управление заданиями\n\n` +
                    `Здесь вы можете создавать собственные задания\n` +
@@ -3264,7 +3279,7 @@ async function handleWithdrawalAction(chatId, userId, data, callbackQueryId, mes
     }
 
     try {
-        console.log(`🔍 НАЧ��ЛО ОБРАБОТКИ ЗАЯВКИ: data=${data}, userId=${userId}, chatId=${chatId}`);
+        console.log(`🔍 НАЧАЛО ОБРАБОТКИ ЗАЯВКИ: data=${data}, userId=${userId}, chatId=${chatId}`);
 
         const [action, requestId] = data.split('_');
         const id = parseInt(requestId);
@@ -3427,7 +3442,7 @@ async function startBroadcastMessage(chatId, userId) {
     await bot.sendMessage(chatId, message);
 }
 
-// Функция для отправки кастомного сообщения всем пользователям
+// Функция для отправки кастомног�� сообщения всем пользователям
 async function sendCustomBroadcast(messageText, adminUserId) {
     try {
         const users = await Database.pool.query('SELECT user_id FROM users WHERE user_id != $1', [adminUserId]);

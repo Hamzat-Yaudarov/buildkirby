@@ -200,7 +200,7 @@ class Database {
             `);
             console.log('Таблица bot_stats создана');
 
-            // Создание таблицы выполненных SubGram заданий
+            // Создание таблицы выпол��енных SubGram заданий
             await pool.query(`
                 CREATE TABLE subgram_tasks (
                     id SERIAL PRIMARY KEY,
@@ -252,7 +252,7 @@ class Database {
                     ON DELETE CASCADE
                 `);
             } catch (fkError) {
-                // Внешний ключ уже существует, это нормально
+                // Внешний ключ уже сущес��вует, это нормально
                 console.log('Внешний ключ для sponsor_channel_user_checks уже существует');
             }
             console.log('Таблица sponsor_channel_user_checks создана');
@@ -480,7 +480,7 @@ class Database {
 
     static async updateUserBalance(userId, amount, type = 'add') {
         // ИСПРАВЛЕНО: ��брали Math.abs() - он превращал отрицательные числа в положительные!
-        // Теперь можно передавать отрицательные числа для списания средств
+        // Теперь можн�� передавать отрицательные числа для списания средств
         let actualAmount = amount;
         let actualType = type;
 
@@ -511,8 +511,8 @@ class Database {
 
     static async updateUserClicks(userId) {
         const result = await pool.query(`
-            UPDATE users 
-            SET clicks_today = CASE 
+            UPDATE users
+            SET clicks_today = CASE
                     WHEN DATE(last_click_time) = CURRENT_DATE THEN clicks_today + 1
                     ELSE 1
                 END,
@@ -522,6 +522,38 @@ class Database {
             RETURNING clicks_today
         `, [userId]);
         return result.rows[0]?.clicks_today || 1;
+    }
+
+    static async attemptUserClick(userId) {
+        const result = await pool.query(`
+            UPDATE users
+            SET
+                clicks_today = CASE WHEN DATE(last_click_time) = CURRENT_DATE THEN clicks_today + 1 ELSE 1 END,
+                last_click_time = CURRENT_TIMESTAMP,
+                balance = balance + 0.1,
+                total_earned = total_earned + 0.1,
+                points = points + 1,
+                weekly_points = weekly_points + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1
+              AND (
+                last_click_time IS NULL
+                OR (
+                    CASE WHEN DATE(last_click_time) = CURRENT_DATE
+                         THEN (CURRENT_TIMESTAMP - last_click_time) >= (clicks_today * INTERVAL '5 minutes')
+                         ELSE TRUE
+                    END
+                )
+              )
+              AND (
+                CASE WHEN DATE(last_click_time) = CURRENT_DATE
+                     THEN clicks_today < 10
+                     ELSE TRUE
+                END
+              )
+            RETURNING clicks_today, last_click_time, balance, points, weekly_points;
+        `, [userId]);
+        return result.rows[0] || null;
     }
 
     static async updateUserPoints(userId, points) {
@@ -967,7 +999,7 @@ class Database {
         }
     }
 
-    // Установка начального номера для нумерации закрытых заявок
+    // Установка начального номер�� для нумерации закрытых заявок
     static async setWithdrawalClosureStartNumber(startNumber) {
         try {
             // Проверяем существование последовательности
@@ -1209,7 +1241,7 @@ class Database {
             `, [channelIdentifier]);
 
             if (result.rows.length === 0) {
-                throw new Error(`Канал ${channelIdentifier} не найден`);
+                throw new Error(`Канал ${channelIdentifier} не н��йден`);
             }
 
             return result.rows[0];
