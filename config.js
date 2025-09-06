@@ -1,10 +1,22 @@
 module.exports = {
-    BOT_TOKEN: '8379368723:AAEnG133OZ4qMrb5vQfM7VdEFSuLiWydsyM',
-    DATABASE_URL: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_YC1S8JfBNKWg@ep-quiet-cloud-a2e7auqd-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
-    SUBGRAM_API_KEY: '5d4c6c5283559a05a9558b677669871d6ab58e00e71587546b25b4940ea6029d',
-    ADMIN_CHAT_ID: '@kirbyvivodstars',
-    PAYMENTS_CHAT_ID: '@kirbystarspayments',
-    ADMIN_IDS: [7972065986, 6910097562], // Замените на ваш Telegram ID
+    // Обязательные параметры — задаются только через переменные окружения
+    BOT_TOKEN: process.env.BOT_TOKEN || '',
+    DATABASE_URL: process.env.DATABASE_URL || '',
+    SUBGRAM_API_KEY: process.env.SUBGRAM_API_KEY || '',
+
+    // Служебные чаты (можно оставить дефолты и переопределить через ENV)
+    ADMIN_CHAT_ID: process.env.ADMIN_CHAT_ID || '@kirbyvivodstars',
+    PAYMENTS_CHAT_ID: process.env.PAYMENTS_CHAT_ID || '@kirbystarspayments',
+
+    // Администраторы: перечислите ID через запятую в ADMIN_IDS
+    ADMIN_IDS: (process.env.ADMIN_IDS || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(x => x.length > 0)
+        .map(x => Number(x))
+        .filter(n => Number.isFinite(n)),
+
+    // Награды недел�� (фиксированная бизнес-логика)
     WEEKLY_REWARDS: {
         1: 100,
         2: 75,
@@ -12,10 +24,16 @@ module.exports = {
         4: 25,
         5: 15
     },
-    // Личные спонсорские каналы (добавьте свои)
-    PERSONAL_SPONSOR_CHANNELS: [
-        '@BorshPodarki'
-        ],
-    // Языковые коды, для которых доступ к боту ограничен (например, регионы с языком fa, ar)
-    BLOCKED_LANGUAGE_CODES: ['fa', 'ar']
+
+    // Личные спонсорские каналы: перечислите через запятую в PERSONAL_SPONSOR_CHANNELS
+    PERSONAL_SPONSOR_CHANNELS: (process.env.PERSONAL_SPONSOR_CHANNELS || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(x => x.length > 0),
+
+    // Блокировки по языковым кодам: перечислите через запятую в BLOCKED_LANGUAGE_CODES
+    BLOCKED_LANGUAGE_CODES: (process.env.BLOCKED_LANGUAGE_CODES || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(x => x.length > 0)
 };
